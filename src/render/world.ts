@@ -407,16 +407,14 @@ export class WorldRenderer {
     const top = (y + 1) * T - 56;
     drawSprite(ctx, 'bread_case', px, top);
     const bk = sim.state.bakery;
-    BREADS.forEach((b, i) => {
-      const n = bk[b].good + bk[b].golden;
-      if (n <= 0) return;
+    BREADS.filter((b) => bk[b].good + bk[b].golden > 0).forEach((b, i) => {
       const q = bk[b].golden > 0 ? 'golden' : 'good';
       ctx.save();
       ctx.beginPath();
       ctx.rect(px + 2, top, 60, 22);
       ctx.clip();
-      ctx.translate(px + 4 + (i % 2) * 30, top + (i < 2 ? -8 : 3));
-      ctx.scale(0.66, 0.66);
+      ctx.translate(px + 3 + (i % 4) * 14, top + (i < 4 ? -5 : 5));
+      ctx.scale(0.5, 0.5);
       drawSprite(ctx, `bread_${b}_${q}`, 0, 0);
       ctx.restore();
     });

@@ -100,9 +100,11 @@ export type Meat = (typeof MEATS)[number];
 export const MEAT_PRICE_LB: Record<Meat, number> = { turkey: 11.99, ham: 9.99, roastbeef: 13.99, salami: 12.49, swiss: 10.49 };
 export const MEAT_COST_RATIO = 0.55;
 
-export const BREADS = ['croissant', 'baguette', 'muffin', 'cinnamon'] as const;
+export const BREADS = ['croissant', 'baguette', 'muffin', 'cinnamon', 'melonpan', 'bagel', 'pretzel', 'anpan'] as const;
 export type Bread = (typeof BREADS)[number];
-export const BREAD_PRICE: Record<Bread, number> = { croissant: 2.75, baguette: 3.5, muffin: 2.5, cinnamon: 3.25 };
+export const BREAD_PRICE: Record<Bread, number> = {
+  croissant: 2.75, baguette: 3.5, muffin: 2.5, cinnamon: 3.25, melonpan: 2.5, bagel: 2.25, pretzel: 3, anpan: 2.5,
+};
 export const BREAD_COST_RATIO = 0.3;
 export type BreadQuality = 'good' | 'golden';
 

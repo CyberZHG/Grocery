@@ -339,21 +339,27 @@ export class UI {
 
   private audioControls(): HTMLElement {
     const a = audioSettings();
-    const slider = (key: 'master' | 'music' | 'sfx', label: Key) => h('label', { class: 'row slider' }, [
-      h('span', {}, [t(label)]),
-      h('input', {
-        type: 'range', min: 0, max: 1, step: 0.05, value: String(a[key]),
-        oninput: (e: Event) => setAudio({ [key]: Number((e.target as HTMLInputElement).value) }),
-      }),
+    const range = (key: 'master' | 'music' | 'sfx') => h('input', {
+      type: 'range', min: 0, max: 1, step: 0.05, value: String(a[key]),
+      oninput: (e: Event) => setAudio({ [key]: Number((e.target as HTMLInputElement).value) }),
+    });
+    const toggle = (key: 'musicOn' | 'sfxOn', label: Key, vol: 'music' | 'sfx') => h('div', { class: 'row slider' }, [
+      h('label', { class: 'row' }, [
+        h('input', { type: 'checkbox', checked: a[key], onchange: (e: Event) => setAudio({ [key]: (e.target as HTMLInputElement).checked }) }),
+        h('span', {}, [t(label)]),
+      ]),
+      range(vol),
     ]);
     return h('div', { class: 'stack' }, [
-      h('label', { class: 'row' }, [
-        h('input', { type: 'checkbox', checked: a.muted, onchange: (e: Event) => { setAudio({ muted: (e.target as HTMLInputElement).checked }); this.refresh(); } }),
-        h('span', {}, [t('menu.mute')]),
+      h('div', { class: 'row slider' }, [
+        h('label', { class: 'row' }, [
+          h('input', { type: 'checkbox', checked: !a.muted, onchange: (e: Event) => { setAudio({ muted: !(e.target as HTMLInputElement).checked }); this.refresh(); } }),
+          h('span', {}, [t('menu.soundOn')]),
+        ]),
+        range('master'),
       ]),
-      slider('master', 'menu.volume'),
-      slider('music', 'menu.music'),
-      slider('sfx', 'menu.sfx'),
+      toggle('musicOn', 'menu.music', 'music'),
+      toggle('sfxOn', 'menu.sfx', 'sfx'),
     ]);
   }
 

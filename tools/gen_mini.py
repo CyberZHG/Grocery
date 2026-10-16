@@ -284,12 +284,13 @@ def oden_item(kind):
             cv.px(rnd.randint(6, 21), rnd.randint(9, 20), hexc('b87830'))
     elif kind == 'kelp':
         cv.line(14, 2, 14, 26, stick, 2)
-        k = hexc('2a4a3a')
-        cv.ellipse(10, 12, 5, 4, k)
-        cv.ellipse(18, 14, 5, 4, k)
-        cv.ellipse(14, 19, 4, 4, k)
-        cv.ellipse(14, 13, 2, 2, hexc('1a2a20'))
-        cv.px(9, 10, hexc('5a8a6a')); cv.px(17, 12, hexc('5a8a6a'))
+        k, hi = hexc('2a4a3a'), hexc('4a7a5a')
+        cv.line(7, 8, 21, 20, k, 4)
+        cv.line(21, 8, 7, 20, k, 4)
+        cv.ellipse(14, 14, 4, 3, hexc('1e3a2c'))
+        cv.line(8, 8, 12, 12, hi)
+        cv.line(20, 8, 17, 11, hi)
+        cv.px(13, 13, hi)
     elif kind == 'tendon':
         cv.line(14, 2, 14, 26, stick, 2)
         for y in (8, 18):
@@ -315,28 +316,92 @@ def oden_pot():
     w, h = 240, 120
     cv = Canvas(w, h)
     rim = hexc('a8acb8')
-    cv.rrect(0, 0, w - 1, h - 1, rim, 6)
-    cv.rrect(4, 4, w - 5, h - 5, hexc('c89050'), 4)
+    cv.rrect(0, 0, w - 1, h - 1, W(rim, -3), 7)
+    cv.rrect(1, 1, w - 2, h - 2, rim, 6)
+    cv.hline(6, w - 7, 1, W(rim, 3))
+    cv.hline(6, w - 7, 2, W(rim, 2))
+    cv.hline(6, w - 7, h - 3, W(rim, -2))
+    light, deep = hexc('d49a4c'), hexc('9a5a22')
+    for y in range(4, h - 4):
+        for x in range(4, w - 4):
+            cx = ((x - 4) % 46) / 45
+            cy = ((y - 4) % 56) / 55
+            k = min(1.0, (abs(cx - 0.5) * 1.6) ** 2 + (abs(cy - 0.45) * 1.5) ** 2)
+            cv.px(x, y, mix(light, deep, k))
+    rnd = random.Random(1)
+    for _ in range(90):
+        x, y = rnd.randint(6, w - 7), rnd.randint(6, h - 7)
+        cv.px(x, y, hexc('e8b868'))
+    for _ in range(30):
+        x, y = rnd.randint(8, w - 9), rnd.randint(8, h - 9)
+        cv.px(x, y, hexc('f4d8a0'))
+        cv.px(x + 1, y, hexc('e8b868'))
     for i in range(1, 5):
         x = 4 + i * 46
-        cv.rect(x, 4, x + 1, h - 5, rim)
-    cv.rect(4, h // 2 - 1, w - 5, h // 2, rim)
-    rnd = random.Random(1)
-    for _ in range(140):
-        x, y = rnd.randint(6, w - 7), rnd.randint(6, h - 7)
-        if cv.get(x, y) == hexc('c89050'):
-            cv.px(x, y, hexc('d8a060'))
+        cv.vline(x - 1, 4, h - 5, W(rim, -3))
+        cv.vline(x, 4, h - 5, W(rim, 2))
+        cv.vline(x + 1, 4, h - 5, rim)
+    cv.hline(4, w - 5, h // 2 - 2, W(rim, -3))
+    cv.hline(4, w - 5, h // 2 - 1, W(rim, 2))
+    cv.hline(4, w - 5, h // 2, rim)
     return cv
 
 
-def oden_cup():
-    cv = Canvas(64, 56)
-    c = hexc('f4f0e8')
-    cv.poly([(2, 4), (61, 4), (54, 55), (9, 55)], c)
-    cv.ellipse(31.5, 6, 30, 5, hexc('d8c098'))
-    cv.ellipse(31.5, 6, 27, 3.5, hexc('c89050'))
-    cv.rect(10, 30, 53, 36, hexc('c84848'))
-    cv.shade_cyl(2, 8, 61, 55, 0.6)
+BOX_W, BOX_H, BOX_CY, BOX_RX, BOX_RY = 128, 92, 20, 60, 15
+
+
+def _box_rim_y(x):
+    """Front edge of the box opening at column x."""
+    dx = (x - BOX_W / 2 + 0.5) / BOX_RX
+    return BOX_CY + BOX_RY * math.sqrt(max(0.0, 1 - dx * dx))
+
+
+def oden_box_back():
+    """Takeaway oden bowl: the rim, inner wall and broth. Items are drawn over this, under oden_box_front."""
+    cv = Canvas(BOX_W, BOX_H)
+    cx = BOX_W / 2 - 0.5
+    rim, wall = hexc('f4f0e8'), hexc('d8cfc0')
+    cv.ellipse(cx, BOX_CY, BOX_RX, BOX_RY, rim)
+    cv.ellipse(cx, BOX_CY, BOX_RX - 2, BOX_RY - 2, wall)
+    for y in range(BOX_CY - BOX_RY, BOX_CY + 2):
+        for x in range(BOX_W):
+            if cv.get(x, y) == wall:
+                cv.px(x, y, mix(hexc('b8ae9e'), wall, (y - (BOX_CY - BOX_RY)) / (BOX_RY + 2)))
+    broth = hexc('c48a44')
+    cv.ellipse(cx, BOX_CY + 4, BOX_RX - 6, BOX_RY - 6, broth)
+    cv.ellipse(cx, BOX_CY + 5, BOX_RX - 14, BOX_RY - 9, hexc('d09a50'))
+    rnd = random.Random(3)
+    for _ in range(18):
+        x, y = rnd.randint(12, BOX_W - 13), rnd.randint(BOX_CY - 3, BOX_CY + 10)
+        if cv.get(x, y) in (broth, hexc('d09a50')):
+            cv.px(x, y, hexc('e8b868'))
+    cv.outline(0.5)
+    return cv
+
+
+def oden_box_front():
+    cv = Canvas(BOX_W, BOX_H)
+    cup = hexc('f4f0e8')
+    bottom = BOX_H - 3
+    for x in range(BOX_W):
+        inset = (x < 4 or x > BOX_W - 5)
+        top = _box_rim_y(x)
+        for y in range(int(math.ceil(top)), bottom + 1):
+            f = (y - BOX_CY) / (bottom - BOX_CY)
+            left = 4 + 10 * f
+            right = BOX_W - 5 - 10 * f
+            if left <= x <= right and not inset:
+                cv.px(x, y, cup)
+        y0 = int(math.ceil(top))
+        if 4 <= x <= BOX_W - 5:
+            cv.px(x, y0, hexc('ffffff'))
+            cv.px(x, y0 + 1, W(cup, 1))
+    for x in range(BOX_W):
+        top = int(math.ceil(_box_rim_y(x)))
+        for y in range(top + 14, top + 22):
+            if cv.get(x, y):
+                cv.px(x, y, hexc('c84848') if y < top + 20 else hexc('a83838'))
+    cv.shade_cyl(4, BOX_CY, BOX_W - 5, bottom, 0.6)
     cv.outline(0.5)
     return cv
 
@@ -413,7 +478,7 @@ def scale_box():
 
 # ---------- bakery ----------
 
-BREADS = ['croissant', 'baguette', 'muffin', 'cinnamon']
+BREADS = ['croissant', 'baguette', 'muffin', 'cinnamon', 'melonpan', 'bagel', 'pretzel', 'anpan']
 
 
 def bread(kind, state):
@@ -445,6 +510,56 @@ def bread(kind, state):
         cv.shade_ball(20, 15, 12, 8, 0.8)
         for (x, y) in ((15, 13), (22, 11), (25, 16), (18, 17)):
             cv.px(x, y, hexc('3a3a8a'))
+    elif kind == 'melonpan':
+        top = mix(A, hexc('f8e8a0'), 0.45) if state != 'burnt' else A
+        cv.ellipse(20, 18, 15, 11, top)
+        cv.shade_ball(20, 18, 15, 11, 0.6)
+        line = W(top, -2)
+        for k in range(-30, 40, 6):
+            cv.line(k, 32, k + 20, 6, line)
+            cv.line(k + 20, 32, k, 6, line)
+        clip = Canvas(40, 32)
+        clip.ellipse(20, 18, 15, 11, top)
+        for y in range(32):
+            for x in range(40):
+                if clip.get(x, y) is None:
+                    cv.p[y][x] = None
+    elif kind == 'bagel':
+        cv.ellipse(20, 18, 15, 10, A)
+        cv.shade_ball(20, 18, 15, 10, 0.8)
+        for y in range(32):
+            for x in range(40):
+                if ((x - 20) / 4.5) ** 2 + ((y - 16) / 2.6) ** 2 <= 1:
+                    cv.p[y][x] = None
+        cv.hline(16, 24, 19, W(A, -2))
+        rnd = random.Random(7)
+        for _ in range(14):
+            x, y = rnd.randint(8, 32), rnd.randint(10, 24)
+            if cv.get(x, y) and abs(x - 20) > 5:
+                cv.px(x, y, hexc('f4ecd8'))
+    elif kind == 'pretzel':
+        P = W(A, -2) if state not in ('raw', 'burnt') else A
+        for y in range(32):
+            for x in range(40):
+                o = ((x - 20) / 15.5) ** 2 + ((y - 17) / 11.5) ** 2
+                i = ((x - 20) / 11) ** 2 + ((y - 17) / 7.5) ** 2
+                if o <= 1 and i > 1:
+                    cv.px(x, y, P)
+        cv.line(25, 27, 11, 9, P, 3)
+        cv.line(15, 27, 29, 9, P, 3)
+        cv.shade_ball(20, 17, 15.5, 11.5, 0.7)
+        cv.line(12, 10, 24, 25, W(P, 2))
+        if state != 'burnt':
+            for (x, y) in ((8, 13), (14, 7), (26, 7), (32, 14), (12, 25), (28, 25), (20, 22), (6, 19), (34, 20)):
+                cv.px(x, y, hexc('f8f8f0'))
+    elif kind == 'anpan':
+        cv.ellipse(20, 18, 14, 10, A)
+        cv.shade_ball(20, 18, 14, 10, 0.9)
+        cv.ellipse(20, 12, 3, 2, W(A, -2))
+        if state != 'raw':
+            for (x, y) in ((19, 11), (21, 12), (20, 13), (18, 12), (22, 11)):
+                cv.px(x, y, hexc('2a2228') if state != 'burnt' else hexc('1a1210'))
+        cv.px(13, 13, W(A, 3)); cv.px(14, 12, W(A, 3)); cv.px(15, 12, W(A, 2))
     else:
         cv.ellipse(20, 17, 14, 11, A)
         for r in (10, 7, 4):
@@ -465,13 +580,60 @@ def bread(kind, state):
     return cv
 
 
-def oven_tray():
-    w, h = 120, 44
-    cv = Canvas(w, h)
-    c = hexc('8a8e98')
-    cv.rect(0, 30, w - 1, 37, c)
-    cv.rect(0, 30, w - 1, 31, W(c, 2))
-    cv.rect(0, 38, w - 1, 43, hexc('2a2228'))
+def bake_sheet():
+    """Tileable slice of a baking sheet with parchment, seen slightly from above."""
+    cv = Canvas(32, 14)
+    rim = hexc('b8bcc8')
+    cv.rect(0, 0, 31, 1, W(rim, 2))
+    cv.rect(0, 2, 31, 9, hexc('e8dcc0'))
+    for x in (5, 13, 22, 29):
+        cv.px(x, 4 + x % 3, hexc('dccfae'))
+        cv.px(x + 1, 4 + x % 3, hexc('dccfae'))
+    cv.rect(0, 10, 31, 11, rim)
+    cv.rect(0, 12, 31, 13, W(rim, -3))
+    return cv
+
+
+def bake_sheet_end():
+    cv = Canvas(4, 14)
+    rim = hexc('b8bcc8')
+    cv.rect(0, 0, 3, 13, rim)
+    cv.vline(0, 0, 13, W(rim, 2))
+    cv.vline(3, 2, 13, W(rim, -3))
+    return cv
+
+
+def oven_wall():
+    cv = Canvas(32, 32)
+    base = hexc('2a2a3a')
+    cv.rect(0, 0, 31, 31, base)
+    rnd = random.Random(9)
+    for _ in range(40):
+        cv.px(rnd.randint(0, 31), rnd.randint(0, 31), W(base, rnd.choice((-1, 1))))
+    for _ in range(6):
+        cv.px(rnd.randint(0, 31), rnd.randint(0, 31), hexc('5a5a74'))
+    return cv
+
+
+def oven_coil():
+    cv = Canvas(32, 6)
+    hot, warm = hexc('f8a040'), hexc('c84828')
+    for x in range(32):
+        y = 1 if (x // 4) % 2 == 0 else 3
+        cv.px(x, y, hot)
+        cv.px(x, y + 1, warm)
+        if x % 4 == 0:
+            cv.vline(x, 1, 4, warm)
+    return cv
+
+
+def oven_rail():
+    cv = Canvas(8, 6)
+    steel = hexc('9aa0ac')
+    cv.rect(0, 1, 7, 4, steel)
+    cv.hline(0, 7, 1, W(steel, 2))
+    cv.hline(0, 7, 4, W(steel, -3))
+    cv.px(3, 2, hexc('5a5e68')); cv.px(4, 2, hexc('5a5e68'))
     return cv
 
 

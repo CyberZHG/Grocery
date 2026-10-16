@@ -349,25 +349,64 @@ def register():
     return cv
 
 
+def _oden_bits(cv, x, y, kind):
+    """Tiny oden pieces seen from above, about 6x5 px each."""
+    if kind == 'egg':
+        cv.ellipse(x + 3, y + 2.5, 2.6, 2.1, hexc('c89a58'))
+        cv.px(x + 2, y + 1, hexc('f0d8a8'))
+    elif kind == 'daikon':
+        cv.ellipse(x + 3, y + 2.5, 2.8, 2.3, hexc('e8cc90'))
+        cv.ellipse(x + 3, y + 2.5, 1.4, 1.1, hexc('f4e2b4'))
+    elif kind == 'konjac':
+        cv.poly([(x, y + 5), (x + 6, y + 5), (x + 3, y)], hexc('7a7884'))
+        cv.px(x + 3, y + 3, hexc('4a4854'))
+    elif kind == 'balls':
+        cv.hline(x - 1, x + 7, y + 2, hexc('d8b070'))
+        for i in range(3):
+            cv.ellipse(x + 1 + i * 2.2, y + 2.5, 1.3, 1.6, hexc('ece0c4'))
+    elif kind == 'chikuwa':
+        cv.rect(x, y + 1, x + 6, y + 4, hexc('f0dcb0'))
+        cv.rect(x, y + 1, x + 6, y + 2, hexc('b8743a'))
+        cv.px(x + 6, y + 3, hexc('8a6040'))
+    elif kind == 'tofu':
+        cv.rect(x, y + 1, x + 5, y + 5, hexc('d08c38'))
+        cv.hline(x, x + 5, y + 1, hexc('e8a850'))
+
+
 def oden_counter():
     cv = Canvas(64, 56)
     counter_base(cv, top=hexc('d8d0c0'), front=hexc('8a3a3a'))
-    cv.rect(6, 6, 57, 21, STEEL)
-    cv.rect(8, 8, 55, 19, hexc('c89050'))
-    for x in range(8, 56, 8):
-        cv.vline(x, 8, 19, STEEL)
-    cv.hline(8, 55, 13, STEEL)
-    rnd = random.Random(4)
-    cols = [hexc('f0e8c8'), hexc('a08060'), hexc('e8d8b0'), hexc('8a8a8a'), hexc('d8a860')]
-    for x in range(10, 54, 8):
-        for y in (9, 15):
-            cv.ellipse(x + 2.5, y + 2, 2.4, 2, rnd.choice(cols))
-    for i in range(4):
-        cv.px(14 + i * 10, 3 - (i % 2), (255, 255, 255, 140))
-        cv.px(15 + i * 10, 2 - (i % 2), (255, 255, 255, 110))
-    cv.rect(18, 32, 45, 44, hexc('f0e0c0'))
-    cv.ellipse(31.5, 38, 4, 3, hexc('c89050'))
+    steel = STEEL
+    cv.rrect(4, 7, 59, 22, W(steel, -2), 2)
+    cv.rrect(5, 8, 58, 21, steel, 2)
+    cv.hline(6, 57, 8, W(steel, 2))
+    cv.rect(7, 10, 56, 20, hexc('b87a34'))
+    for y in range(10, 21):
+        k = abs(y - 15) / 5
+        cv.hline(7, 56, y, mix(hexc('c88a40'), hexc('9a5c24'), k))
+    for x in (19, 32, 44):
+        cv.vline(x, 10, 20, W(steel, 1))
+        cv.vline(x + 1, 10, 20, W(steel, -2))
+    cv.hline(7, 56, 15, W(steel, 1))
+    layout = [('egg', 8, 10), ('daikon', 12, 10), ('konjac', 21, 10), ('egg', 25, 10), ('balls', 34, 10), ('tofu', 38, 10),
+              ('chikuwa', 46, 10), ('daikon', 50, 10), ('daikon', 8, 16), ('tofu', 13, 16), ('chikuwa', 21, 16), ('konjac', 26, 16),
+              ('egg', 34, 16), ('konjac', 38, 16), ('balls', 47, 16), ('egg', 51, 16)]
+    for kind, x, y in layout:
+        _oden_bits(cv, x, y, kind)
+    cv.rect(4, 25, 59, 30, hexc('f4ece0'))
+    for x in range(4, 60, 14):
+        cv.vline(x, 25, 31, W(hexc('f4ece0'), -2))
+    cv.hline(4, 59, 31, hexc('c8b8a0'))
+    cv.rect(22, 35, 41, 48, hexc('f0e0c0'))
+    cv.rect(23, 36, 40, 47, hexc('f8ecd4'))
+    cv.line(31, 37, 31, 47, hexc('a07a4a'))
+    cv.poly([(28, 41), (34, 41), (31, 37)], hexc('7a7884'))
+    cv.ellipse(31, 43.5, 2.2, 1.8, hexc('e8cc90'))
+    cv.rect(29, 45, 33, 46, hexc('d08c38'))
     cv.outline(0.5)
+    for i, x in enumerate((11, 25, 38, 51)):
+        for k in range(4):
+            cv.px(x + (k + i) % 2, 6 - k + (i % 2), (255, 255, 255, 110 - k * 22))
     return cv
 
 

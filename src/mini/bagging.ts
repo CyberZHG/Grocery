@@ -46,7 +46,7 @@ export class BaggingGame extends MiniGame {
   constructor(ids: string[]) {
     super('bag.title', 'bag.hint');
     this.items = bagItems(ids);
-    this.button('bag.done', () => this.done());
+    this.confirm('bag.done', () => this.done());
     const keys = ['bag.fragile', 'bag.light', 'bag.normal', 'bag.heavy'] as const;
     this.head.append(h('div', { class: 'legend' }, [
       ...keys.map((k, i) => h('span', {}, [h('i', { style: { background: WEIGHT_COLOR[i] } }), t(k)])),

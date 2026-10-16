@@ -234,7 +234,8 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 .goal-check { color: var(--good); }
 .goal-text { display: flex; flex-direction: column; gap: 3px; }
 .goal-reward { color: var(--good); }
-.slider input { flex: 1; }
+.slider > input[type=range] { flex: 1; }
+.slider > label { min-width: 7em; }
 .btn.lang { min-width: 44px; }
 .recs { display: flex; flex-direction: column; gap: 6px; }
 .rec-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
@@ -400,6 +401,10 @@ label.row > span { white-space: nowrap; }
 .mini-bottom { display: flex; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); border-top: 2px solid var(--edge); align-items: center; }
 .mini-footer { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; }
 .mini-footer .btn { flex: 1 1 auto; padding: 10px 14px; }
+.mini-footer:empty { visibility: hidden; }
+.mini-confirm { display: flex; }
+.mini-confirm:empty { display: none; }
+.mini-confirm .btn { min-width: 168px; padding: 10px 14px; }
 
 @media (max-width: 560px) {
   html, body { font-size: 14px; }
@@ -415,4 +420,8 @@ label.row > span { white-space: nowrap; }
   .bar { justify-content: flex-start; }
   .cards { grid-template-columns: 1fr; }
   .mini-bottom { flex-wrap: wrap; }
+  .mini-footer { order: -1; flex-basis: 100%; }
+  .mini-footer:empty { display: none; }
+  .mini-confirm { flex: 1; }
+  .mini-confirm .btn { flex: 1; min-width: 0; }
 }

@@ -54,7 +54,7 @@ export class CheckoutGame extends MiniGame {
     super('checkout.title', 'checkout.hint');
     this.due = roundCash(total);
     this.rng = new Rng(seed);
-    this.button('checkout.give', () => this.give());
+    this.confirm('checkout.give', () => this.give());
     this.button('checkout.short', () => this.short(), 'btn warn');
     this.button('checkout.reset', () => (this.tray = []), 'btn ghost');
   }

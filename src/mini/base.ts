@@ -19,6 +19,7 @@ export abstract class MiniGame<R = MiniResult> {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   footer: HTMLElement;
+  private confirmSlot: HTMLElement;
   msg: HTMLElement;
   timerEl: HTMLElement;
   head: HTMLElement;
@@ -41,6 +42,7 @@ export abstract class MiniGame<R = MiniResult> {
     this.msg = h('div', { class: 'mini-msg' });
     this.timerEl = h('div', { class: 'mini-timer' });
     this.footer = h('div', { class: 'mini-footer' });
+    this.confirmSlot = h('div', { class: 'mini-confirm' });
     this.stage = h('div', { class: 'mini-stage' }, [this.canvas, this.msg]);
     const leave = h('button', { class: 'btn ghost', onclick: () => this.close(null) }, [t('mini.leave')]);
     this.sub = h('span', { class: 'mini-sub' });
@@ -51,7 +53,7 @@ export abstract class MiniGame<R = MiniResult> {
     this.root = h('div', { class: 'mini' }, [
       this.head,
       this.stage,
-      h('div', { class: 'mini-bottom' }, [this.footer, leave]),
+      h('div', { class: 'mini-bottom' }, [leave, this.footer, this.confirmSlot]),
     ]);
     this.ro = new ResizeObserver(() => this.resize());
     const pd = (e: PointerEvent) => {
@@ -129,6 +131,13 @@ export abstract class MiniGame<R = MiniResult> {
     const text = label.includes('.') ? t(label as Key) : label;
     const b = h('button', { class: cls, onclick: () => !this.ended && onClick() }, [text]) as HTMLButtonElement;
     this.footer.appendChild(b);
+    return b;
+  }
+
+  /** The finishing action of a mini-game; always sits in the same bottom-right slot. */
+  protected confirm(label: Key, onClick: () => void): HTMLButtonElement {
+    const b = this.button(label, onClick, 'btn primary');
+    this.confirmSlot.appendChild(b);
     return b;
   }
 

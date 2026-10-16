@@ -4,17 +4,22 @@ import { sfx } from '../core/audio';
 import { ODEN_ITEMS, type OdenItem } from '../game/defs';
 import { accuracyLabel, inRect, MiniGame, panel } from './base';
 
+/** Where the n-th item sits in the box, filling the front middle first; drawn back to front. */
+const BOX_SLOTS: [number, number][] = [
+  [50, 9], [32, 9], [68, 9], [41, -1], [59, -1], [14, 8], [86, 8], [23, -1], [77, -1], [8, 0], [92, 0], [50, -9],
+];
+
 export class OdenGame extends MiniGame {
   private cup: OdenItem[] = [];
   private pot = { x: 0, y: 0 };
-  private cupR = { x: 0, y: 0, w: 64, h: 56 };
+  private cupR = { x: 0, y: 0, w: 128, h: 92 };
   private order: [OdenItem, number][];
   private mistakes = 0;
 
   constructor(items: Partial<Record<OdenItem, number>>) {
     super('oden.title', 'oden.hint');
     this.order = Object.entries(items).map(([k, v]) => [k as OdenItem, v ?? 0]);
-    this.button('oden.serve', () => this.serve());
+    this.confirm('oden.serve', () => this.serve());
   }
 
   protected minW(): number {
@@ -22,13 +27,14 @@ export class OdenGame extends MiniGame {
   }
 
   protected minH(): number {
-    return 290;
+    return 300;
   }
 
   protected layout(): void {
     const { vw, vh } = this;
-    this.pot = { x: Math.floor((vw - 240) / 2), y: Math.floor(vh * 0.32) };
-    this.cupR = { x: Math.floor((vw - 64) / 2), y: Math.min(vh - 62, this.pot.y + 132), w: 64, h: 56 };
+    const y = Math.max(62, 62 + Math.floor((vh - 62 - 228) / 2));
+    this.pot = { x: Math.floor((vw - 240) / 2), y };
+    this.cupR = { x: Math.floor((vw - 128) / 2), y: Math.min(vh - 94, y + 128), w: 128, h: 92 };
   }
 
   private cell(i: number): { x: number; y: number; w: number; h: number } {
@@ -60,7 +66,7 @@ export class OdenGame extends MiniGame {
         return;
       }
     }
-    if (inRect(x, y, { x: this.cupR.x - 30, y: this.cupR.y - 30, w: this.cupR.w + 60, h: this.cupR.h + 30 })) this.cup.pop();
+    if (inRect(x, y, { x: this.cupR.x - 10, y: this.cupR.y - 16, w: this.cupR.w + 20, h: this.cupR.h + 16 })) this.cup.pop();
   }
 
   protected render(ctx: CanvasRenderingContext2D): void {
@@ -82,6 +88,8 @@ export class OdenGame extends MiniGame {
       const c = this.cell(i);
       drawSprite(ctx, `oden_${ODEN_ITEMS[i]}`, c.x + 4, c.y + 6);
       drawSprite(ctx, `oden_${ODEN_ITEMS[i]}`, c.x + 14, c.y + 22);
+      ctx.fillStyle = 'rgba(176, 112, 44, 0.45)';
+      ctx.fillRect(c.x + 2, c.y + 42, c.w - 4, 10);
     }
     const t = this.elapsed;
     for (let i = 0; i < 5; i++) {
@@ -91,11 +99,11 @@ export class OdenGame extends MiniGame {
       ctx.fillRect(sx, sy, 2, 2);
     }
     const c = this.cupR;
-    this.cup.forEach((k, i) => {
-      const col = i % 4;
-      const row = Math.floor(i / 4);
-      drawSprite(ctx, `oden_${k}`, c.x - 14 + col * 20, c.y - 18 - row * 10);
-    });
-    drawSprite(ctx, 'oden_cup', c.x, c.y);
+    drawSprite(ctx, 'oden_box_back', c.x, c.y);
+    this.cup
+      .map((k, i) => ({ k, s: BOX_SLOTS[i] }))
+      .sort((a, b) => a.s[1] - b.s[1])
+      .forEach(({ k, s }) => drawSprite(ctx, `oden_${k}`, c.x + s[0], c.y + s[1]));
+    drawSprite(ctx, 'oden_box_front', c.x, c.y);
   }
 }

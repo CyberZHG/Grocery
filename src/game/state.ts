@@ -223,6 +223,7 @@ export function migrate(data: unknown): GameState | null {
     s.suppliers = { ...g.suppliers, ...(s.suppliers ?? {}) };
     s.equipment = { ...g.equipment, ...(s.equipment ?? {}) };
     s.cat = { ...g.cat, ...(s.cat ?? {}) };
+    s.bakery = { ...Object.fromEntries(BREADS.map((b) => [b, { good: 0, golden: 0 }])), ...(s.bakery ?? {}) } as GameState['bakery'];
     s.catCoat ??= CAT_COATS[Math.abs(s.seed) % CAT_COATS.length];
     s.catName ??= '';
     s.storeName ??= '';

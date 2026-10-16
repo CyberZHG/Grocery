@@ -214,8 +214,8 @@ def atlas():
         'b_heart': GW.bubble(GW.ic_heart), 'b_sad': GW.bubble(GW.ic_sad), 'b_empty': GW.bubble(GW.ic_empty),
         'b_wait': GW.bubble(GW.ic_wait),
         'drawer': GM.drawer(), 'tray': GM.tray(), 'counter_wood': GM.wood_counter(),
-        'oden_pot': GM.oden_pot(), 'oden_cup': GM.oden_cup(), 'slicer': GM.slicer(), 'scale': GM.scale_box(),
-        'oven_tray': GM.oven_tray(), 'coffee_cup': GM.coffee_cup(),
+        'oden_pot': GM.oden_pot(), 'oden_box_back': GM.oden_box_back(), 'oden_box_front': GM.oden_box_front(), 'slicer': GM.slicer(), 'scale': GM.scale_box(),
+        'bake_sheet': GM.bake_sheet(), 'bake_sheet_end': GM.bake_sheet_end(), 'oven_wall': GM.oven_wall(), 'oven_coil': GM.oven_coil(), 'oven_rail': GM.oven_rail(), 'coffee_cup': GM.coffee_cup(),
         'bag_paper': GM.bag_bg('paper'), 'bag_cold': GM.bag_bg('cold'), 'font': GM.font_sheet(),
     }
     for name, kind in (('register', 'register'), ('oden', 'oden'), ('deli', 'deli'), ('oven', 'oven'), ('coffee', 'coffee'), ('bagging', 'bagging')):

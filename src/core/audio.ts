@@ -4,14 +4,17 @@ export type Sfx = 'door' | 'ding' | 'coin' | 'slice' | 'steam' | 'meow' | 'level
 export type Music = 'day' | 'night' | null;
 
 interface Settings {
+  /** Overall switch in the HUD; sound starts off until the player turns it on. */
   muted: boolean;
+  musicOn: boolean;
+  sfxOn: boolean;
   master: number;
   music: number;
   sfx: number;
 }
 
-const KEY = 'grocery.audio';
-let settings: Settings = { muted: false, master: 0.8, music: 0.5, sfx: 0.8 };
+const KEY = 'grocery.audio2';
+let settings: Settings = { muted: true, musicOn: true, sfxOn: true, master: 0.8, music: 0.5, sfx: 0.8 };
 try {
   const raw = localStorage.getItem(KEY);
   if (raw) settings = { ...settings, ...JSON.parse(raw) };
@@ -48,8 +51,8 @@ export function setAudio(patch: Partial<Settings>): void {
 function apply(): void {
   if (!ctx || !master || !musicBus || !sfxBus) return;
   master.gain.value = settings.muted ? 0 : settings.master;
-  musicBus.gain.value = settings.music * 0.35;
-  sfxBus.gain.value = settings.sfx * 0.6;
+  musicBus.gain.value = settings.musicOn ? settings.music * 0.35 : 0;
+  sfxBus.gain.value = settings.sfxOn ? settings.sfx * 0.6 : 0;
 }
 
 /** Browsers only allow audio after a user gesture; call this from the first pointer event. */

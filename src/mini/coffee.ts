@@ -21,8 +21,8 @@ export class CoffeeGame extends MiniGame {
   constructor(private drink: DrinkDef) {
     super('coffee.title', 'coffee.hint');
     this.memoTotal = this.memoLeft = 1.2 + 0.6 * drink.steps.length;
-    this.goBtn = this.button('coffee.go', () => this.startMaking());
     this.button('coffee.restart', () => (this.made = []), 'btn ghost');
+    this.goBtn = this.confirm('coffee.go', () => this.startMaking());
     this.subtitle(t(`drink.${drink.id}` as Key));
   }
 

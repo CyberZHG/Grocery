@@ -11,7 +11,8 @@ export class DeliGame extends MiniGame {
   private holding = false;
   private acc = 0;
   private weight = 0;
-  private slices: { x: number; y: number; vy: number; landed: boolean }[] = [];
+  /** Slices fly in an arc from the blade to the scale; `t` runs 0..1 over the flight. */
+  private slices: { x0: number; y0: number; x1: number; y1: number; t: number; landed: boolean }[] = [];
   private spin = 0;
   private rng: Rng;
   private slicer = { x: 0, y: 0 };
@@ -32,7 +33,7 @@ export class DeliGame extends MiniGame {
     hold.addEventListener('pointerup', stop);
     hold.addEventListener('pointercancel', stop);
     hold.addEventListener('contextmenu', (e) => e.preventDefault());
-    this.button('deli.wrap', () => this.wrap());
+    this.confirm('deli.wrap', () => this.wrap());
   }
 
   protected minW(): number {
@@ -89,23 +90,25 @@ export class DeliGame extends MiniGame {
         this.acc -= SLICE_EVERY;
         this.weight += this.rng.range(0.035, 0.055);
         sfx('slice');
-        this.slices.push({ x: this.slicer.x + 30 + this.rng.range(-4, 4), y: this.slicer.y + 70, vy: 0, landed: false });
+        const n = this.slices.length;
+        this.slices.push({
+          x0: this.slicer.x + 74, y0: this.slicer.y + 42,
+          x1: this.scaleR.x + 50 + this.rng.range(-8, 8), y1: this.scaleR.y + 2 - Math.min(16, n * 1.3),
+          t: 0, landed: false,
+        });
       }
     }
     for (const s of this.slices) {
       if (s.landed) continue;
-      const tx = this.scaleR.x + 34;
-      s.x += (tx - s.x) * Math.min(1, dt * 6);
-      s.vy += dt * 400;
-      s.y += s.vy * dt;
-      const stack = this.slices.filter((o) => o.landed).length;
-      const floor = this.scaleR.y + 2 - Math.min(14, stack * 1.2);
-      if (s.y >= floor && Math.abs(s.x - tx) < 6) {
-        s.y = floor;
-        s.x = tx + this.rng.range(-3, 3);
-        s.landed = true;
-      } else if (s.y > floor) s.y = floor;
+      s.t = Math.min(1, s.t + dt / 0.55);
+      if (s.t >= 1) s.landed = true;
     }
+  }
+
+  private slicePos(s: DeliGame['slices'][number]): [number, number] {
+    const x = s.x0 + (s.x1 - s.x0) * s.t;
+    const y = s.y0 + (s.y1 - s.y0) * s.t - 60 * Math.sin(Math.PI * s.t);
+    return [x, y];
   }
 
   protected render(ctx: CanvasRenderingContext2D): void {
@@ -140,7 +143,18 @@ export class DeliGame extends MiniGame {
     drawSprite(ctx, `meat_${this.meat}`, sx + 80 + push, sy + 20);
 
     drawSprite(ctx, 'scale', this.scaleR.x, this.scaleR.y);
-    for (const s of this.slices) drawSprite(ctx, `slice_${this.meat}`, s.x - 15, s.y - 10);
+    for (const s of this.slices) {
+      const [x, y] = this.slicePos(s);
+      if (s.landed) {
+        drawSprite(ctx, `slice_${this.meat}`, Math.round(x - 15), Math.round(y - 10));
+        continue;
+      }
+      ctx.save();
+      ctx.translate(Math.round(x), Math.round(y - 4));
+      ctx.scale(1, Math.max(0.2, Math.abs(Math.cos(s.t * Math.PI * 3))));
+      drawSprite(ctx, `slice_${this.meat}`, -15, -6);
+      ctx.restore();
+    }
     const wtxt = `${this.weight.toFixed(2)}`;
     drawText(ctx, wtxt, this.scaleR.x + 50 - textWidth(wtxt, 2) / 2, this.scaleR.y + 30, '#8ef08a', 2);
   }

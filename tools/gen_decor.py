@@ -382,107 +382,218 @@ CAT_COATS = {
     'calico': ('f4f0e8', 'e08a40', '3a3440', 'calico'),
     'gray': ('9aa0ac', '6a7080', 'd0d4dc', 'tabby'),
     'tuxedo': ('2e2a34', '2e2a34', 'f4f2ee', 'tuxedo'),
-    'shorthair': ('c8ccd4', '3a3a44', 'eceef2', 'swirl'),
+    'shorthair': ('c8ccd4', '50545f', 'eceef2', 'swirl'),
     'siamese': ('efe4d0', '5a4034', 'f8f0e4', 'points'),
 }
 CAT_POSES = ['sit', 'walk1', 'walk2', 'sleep', 'groom', 'stretch', 'loaf']
 
-# region tags painted first, recolored per coat afterwards
-B, BE, HD, TL, LG, EA = (hexc('ff0000'), hexc('00ff00'), hexc('0000ff'), hexc('ffff00'), hexc('ff00ff'), hexc('00ffff'))
+# Hand-placed 24x18 templates, facing right. Tags: B body, D underside, L chest/belly, H head, E ear, e inner ear,
+# T tail, P near paw, Q far paw, O eye, C closed eye, N nose, M muzzle.
+_SIDE = [
+    '........................',
+    '........................',
+    '................E...E...',
+    '...............EeE.EeE..',
+    '..TT...........HHHHHHH..',
+    '.TT...........HHHHHHHHH.',
+    '.T............HHHHHOHHH.',
+    '.T............HHHHHHMMN.',
+    '.TT.....BBBBBBBHHHHMMMM.',
+    '..TTBBBBBBBBBBBBHHHHHH..',
+    '...BBBBBBBBBBBBBBLLL....',
+    '...BBBBBBBBBBBBBBLLL....',
+    '...BBBBBBBBBBBBBBLL.....',
+    '....DDDDDDDDDDDDDD......',
+]
+_LEGS = {
+    'walk1': [
+        '....PPQQ......QQPP......',
+        '...PP..QQ....QQ..PP.....',
+        '...PP...QQ..QQ....PP....',
+    ],
+    'walk2': [
+        '.....QQPP.....QQPP......',
+        '.....QQPP.....QQPP......',
+        '.....QQPP.....QQPP......',
+    ],
+}
+_TEMPLATES = {
+    'sit': [
+        '........................',
+        '.......E.....E..........',
+        '......EeE...EeE.........',
+        '......EHHHHHHHE.........',
+        '.....HHHHHHHHHHH........',
+        '.....HHOHHHHHOHH........',
+        '.....HHOHHHHHOHH........',
+        '.....HHHHMNMHHHH........',
+        '......HHMMMMMHH.........',
+        '.......BLLLLLB..........',
+        '......BBLLLLLBB.........',
+        '.....BBBLLLLLBBB........',
+        '.....BBBLLLLLBBBB.......',
+        '.....BBBLLLLLBBBB..TT...',
+        '.....DBBLLLLLBBBD...TT..',
+        '.....DDPPPDPPPDDDTTTTT..',
+        '.....DDPPPDPPPDDTTTT....',
+        '........................',
+    ],
+    'groom': [
+        '........................',
+        '.......E.....E..........',
+        '......EeE...EeE.........',
+        '......EHHHHHHHE.........',
+        '.....HHHHHHHHHHH........',
+        '.....HHHHHHHHHHH........',
+        '.....HHCCHHHCCHH........',
+        '.....HHHHMNMHHHH........',
+        '......HHMMPPMHH.........',
+        '.......BLLPPLB..........',
+        '......BBLLPLLBB.........',
+        '.....BBBLLLLLBBB........',
+        '.....BBBLLLLLBBBB.......',
+        '.....BBBLLLLLBBBB..TT...',
+        '.....DBBLLLLLBBBD...TT..',
+        '.....DDPPPDDDDDDDTTTTT..',
+        '.....DDPPPDDDDDDTTTT....',
+        '........................',
+    ],
+    'loaf': [
+        '........................',
+        '........................',
+        '........................',
+        '................E...E...',
+        '...............EeE.EeE..',
+        '...............HHHHHHH..',
+        '..............HHHHHHHHH.',
+        '..............HHOHHHOHH.',
+        '..............HHHHMNMHH.',
+        '.......BBBBBBBHHHMMMMH..',
+        '.....BBBBBBBBBBBHHHHH...',
+        '....BBBBBBBBBBBBBLLLL...',
+        '...BBBBBBBBBBBBBBLLLL...',
+        '...BBBBBBBBBBBBBBBLLL...',
+        '..TBBBBBBBBBBBBBBBBL....',
+        '..TDDDDDDDDDDDDDDPPPP...',
+        '...TTTTTTTTTTT..........',
+        '........................',
+    ],
+    'sleep': [
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '........BBBBB...........',
+        '......BBBBBBBBB.........',
+        '.....BBBBBBBBBBE....E...',
+        '....BBBBBBBBBBEeE..EeE..',
+        '....BBBBBBBBBBHHHHHHHH..',
+        '...BBBBBBBBBBHHHHHHHHHH.',
+        '...BBBBBBBBBBHHCCHHCCHH.',
+        '..TBBBBBBBBBBHHHHMNMHHH.',
+        '..TBBBBBBBBBBBHHMMMMMH..',
+        '..TTDDDDDDDDPPPPPHHHH...',
+    ],
+    'stretch': [
+        '',
+        '',
+        '.TT.....................',
+        '..TT....................',
+        '...TT...................',
+        '....TBBBB...............',
+        '...BBBBBBBB.............',
+        '...BBBBBBBBBBB..........',
+        '...BBBBBBBBBBBBB..E..E..',
+        '...DBBBBBBBBBBBBBEeEEeE..',
+        '...DDBBBBBBBBBBBBHHHHHH.',
+        '...QQDDDDDBBBBBHHHHHHHH.',
+        '...QQ.....DDDDHHHHHOHH..',
+        '...QQ..........HHHHMMMN.',
+        '...PP..........LLHMMMM..',
+        '...PP.......QQQQQQQQQ...',
+        '..PPP......PPPPPPPPPPP..',
+    ],
+}
 
 
-def _cat_shape(pose):
-    cv = Canvas(24, 18)
-    if pose == 'sleep':
-        cv.ellipse(12, 12, 9, 5, B)
-        cv.ellipse(12, 15, 6, 1.5, BE)
-        cv.line(4, 14, 14, 16, TL, 2)
-        hx, hy = 18, 11
-        cv.ellipse(hx, hy, 4, 3.5, HD)
-        cv.poly([(16, 8), (17, 5), (19, 8)], EA)
-        cv.poly([(19, 8), (21, 5), (22, 9)], EA)
-        return cv, (hx, hy), 'closed'
-    if pose == 'loaf':
-        cv.ellipse(11, 12, 8, 5, B)
-        cv.ellipse(11, 15, 6, 1.5, BE)
-        cv.line(3, 15, 9, 16, TL, 2)
-        hx, hy = 17, 8
-    elif pose == 'stretch':
-        cv.poly([(4, 8), (16, 11), (16, 14), (4, 12)], B)
-        cv.ellipse(9, 10, 6, 3, B)
-        for (x, y0) in ((5, 12), (7, 12)):
-            cv.vline(x, y0, 16, LG)
-        for x in (15, 17):
-            cv.vline(x, 13, 16, LG)
-        cv.line(4, 8, 1, 2, TL, 2)
-        hx, hy = 19, 12
-    elif pose in ('sit', 'groom'):
-        cv.ellipse(10, 11, 6, 5, B)
-        cv.ellipse(10, 13, 3.5, 3, BE)
-        cv.ellipse(9, 15, 5, 2, B)
-        cv.vline(12, 13, 16, LG)
-        cv.vline(14, 13, 16, LG)
-        cv.line(4, 14, 1, 8, TL, 2)
-        hx, hy = 15, 6
-        if pose == 'groom':
-            cv.line(14, 12, 17, 8, LG, 2)
-    else:
-        body_y = 10
-        cv.ellipse(11, body_y, 7, 3.5, B)
-        cv.ellipse(11, body_y + 2, 5, 1.5, BE)
-        step = 1 if pose == 'walk1' else -1
-        for (x, d) in ((6, step), (9, -step), (14, step), (16, -step)):
-            cv.vline(x + d, body_y + 2, 16, LG)
-        cv.line(4, body_y - 1, 1, body_y - 6, TL, 2)
-        hx, hy = 18, 7
-    cv.ellipse(hx, hy, 4, 3.5, HD)
-    cv.poly([(hx - 3, hy - 2), (hx - 2, hy - 6), (hx, hy - 3)], EA)
-    cv.poly([(hx + 1, hy - 3), (hx + 3, hy - 6), (hx + 4, hy - 1)], EA)
-    return cv, (hx, hy), 'closed' if pose == 'groom' else 'open'
+def _cat_template(pose):
+    rows = _TEMPLATES.get(pose) or (_SIDE + _LEGS[pose])
+    return [r.ljust(24, '.') for r in rows] + ['.' * 24] * (18 - len(rows))
 
 
 def cat_sprite(coat, pose):
     base, stripe, belly, pattern = CAT_COATS[coat]
     base, stripe, belly = hexc(base), hexc(stripe), hexc(belly)
-    shape, (hx, hy), eyes = _cat_shape(pose)
+    rows = _cat_template(pose)
+    cells = {(x, y): ch for y, r in enumerate(rows) for x, ch in enumerate(r) if ch != '.'}
+    body = [(x, y) for (x, y), ch in cells.items() if ch in 'BD']
+    cx = sum(x for x, _ in body) / len(body)
+    cy = sum(y for _, y in body) / len(body)
+    heads = [(x, y) for (x, y), ch in cells.items() if ch in 'HM']
+    hx = sum(x for x, _ in heads) / len(heads)
+    hy = min(y for _, y in heads)
+    furred = 'BDHTE'
+    eye = {'black': '8ac050', 'tuxedo': '8ac050', 'white': '5aa0d0', 'siamese': '4a80d0'}.get(coat, '2a2030')
     cv = Canvas(24, 18)
-    for y in range(18):
-        for x in range(24):
-            tag = shape.get(x, y)
-            if tag is None:
-                continue
-            c = base
-            if tag == BE:
-                c = belly
-            if pattern == 'tabby' and tag in (B, HD, TL) and (x + (y // 2)) % 4 == 0:
-                c = stripe
-            elif pattern == 'swirl' and tag in (B, TL):
-                r = math.hypot(x - 10, y - 11)
-                c = stripe if int(r * 1.3) % 3 == 0 else base
-            elif pattern == 'swirl' and tag == HD and (x + y) % 3 == 0:
-                c = stripe
-            elif pattern == 'calico' and tag in (B, HD, TL):
-                if (x // 5 + y // 4) % 3 == 1:
+    for (x, y), ch in cells.items():
+        c = base
+        if ch == 'D':
+            c = tone(base, -1) if pattern != 'tuxedo' else base
+        elif ch in 'LM':
+            c = base if pattern == 'calico' else belly if pattern != 'solid' or coat == 'white' else tone(base, 1)
+        elif ch == 'e':
+            c = hexc('e89a9a') if coat != 'black' else hexc('7a5a6a')
+        elif ch == 'N':
+            c = hexc('e07a80') if coat not in ('black', 'tuxedo') else hexc('6a4a5a')
+        elif ch == 'O':
+            c = hexc(eye)
+        elif ch == 'C':
+            c = tone(base, -3) if coat not in ('black', 'tuxedo') else tone(base, 3)
+        elif ch == 'Q':
+            c = tone(base, -1)
+        if ch in furred:
+            if pattern == 'tabby':
+                if ch in 'BD' and x % 3 == 0 and y < cy + 2:
                     c = stripe
-                elif (x // 4 + y // 5) % 4 == 3:
+                elif ch == 'H' and y <= hy + 1 and x % 2 == 1:
+                    c = stripe
+                elif ch == 'T' and (x + y) % 3 == 0:
+                    c = stripe
+            elif pattern == 'swirl':
+                wave = x + round(1.4 * math.sin(y * 1.1 + x * 0.3))
+                if ch in 'BD' and wave % 4 == 0 and y < cy + 2:
+                    c = stripe
+                elif ch == 'B' and (x, y - 1) not in cells and x % 2 == 0:
+                    c = stripe
+                elif ch == 'H' and y <= hy + 1 and abs(x - hx) <= 2.5 and x % 2 == 0:
+                    c = stripe
+                elif ch == 'T' and x % 3 == 0:
+                    c = stripe
+            elif pattern == 'calico':
+                n = (x * 7 + y * 13 + (x // 3) * 5) % 11
+                patch = (x // 4 + (y // 3) * 2) % 5
+                if patch == 1 or (ch in 'HE' and x < hx):
+                    c = stripe
+                elif patch == 3 and n > 3:
                     c = belly
-            elif pattern == 'tuxedo' and (tag in (BE, LG) or (tag == HD and x > hx and y > hy)):
-                c = belly
-            elif pattern == 'points' and (tag in (TL, LG, EA) or (tag == HD and abs(x - hx) + abs(y - hy) < 3)):
-                c = stripe
-            if tag == EA and pattern not in ('points',):
-                c = stripe if pattern in ('tabby', 'swirl') else c
-            cv.px(x, y, c)
-    eye = hexc('3a8a4a') if coat in ('black', 'white', 'tuxedo') else hexc('2a2030')
-    if pose == 'sleep':
-        cv.hline(17, 19, 11, W(base, -4))
-        cv.hline(20, 21, 11, W(base, -4))
-    elif eyes == 'closed':
-        cv.hline(hx, hx + 1, hy, W(base, -4))
-    else:
-        cv.px(hx + 1, hy, eye)
-        if coat in ('black', 'tuxedo'):
-            cv.px(hx + 1, hy - 1, hexc('8ae070'))
-    cv.px(hx + 3, hy + 1, hexc('e08080'))
+            elif pattern == 'points':
+                if ch in 'TE' or (ch == 'H' and y > hy + 1 and abs(x - hx) < 3):
+                    c = stripe
+                elif ch in 'BD' and y < cy - 1:
+                    c = mix(base, stripe, 0.25)
+        if pattern == 'points' and ch in 'PQM':
+            c = stripe if ch != 'M' else mix(base, stripe, 0.6)
+        if pattern == 'tuxedo' and ch in 'PLM':
+            c = belly
+        if pattern == 'tuxedo' and ch == 'Q':
+            c = tone(belly, -1)
+        if ch in 'BHT' and (x, y - 1) not in cells and c == base:
+            c = tone(base, 1)
+        if ch in 'BD' and any(cells.get((x + dx, y + dy), '') in ('H', 'M') for dx, dy in ((1, 0), (-1, 0), (0, -1))):
+            c = tone(c, -1)
+        cv.px(x, y, c)
     cv.outline(0.5)
     return cv
