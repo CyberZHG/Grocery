@@ -114,15 +114,31 @@ def door_stock():
     return cv
 
 
-def entrance():
+def entrance_frame():
+    """Door frame with a transparent opening; the sliding panels are drawn separately."""
     cv = Canvas(64, T)
-    cv.rect(0, 0, 63, 31, hexc('6a5a58'))
-    cv.rect(2, 2, 61, 29, hexc('9ec8d8'))
-    cv.vline(31, 2, 29, hexc('4a5a68'))
-    cv.vline(32, 2, 29, hexc('4a5a68'))
-    for x0 in (2, 33):
-        cv.line(x0 + 4, 26, x0 + 20, 4, W(hexc('9ec8d8'), 3))
-    cv.rect(0, 0, 63, 1, hexc('4a5a68'))
+    frame = hexc('4a5a68')
+    cv.rect(0, 0, 63, 31, frame)
+    cv.rect(0, 0, 63, 1, W(frame, -2))
+    cv.rect(1, 2, 2, 31, W(frame, 1))
+    cv.rect(61, 2, 62, 31, W(frame, -1))
+    for y in range(3, 31):
+        for x in range(3, 61):
+            cv.p[y][x] = None
+    cv.hline(3, 60, 30, hexc('8a8e98'))
+    cv.hline(3, 60, 31, hexc('6a6e78'))
+    return cv
+
+
+def door_panel():
+    cv = Canvas(30, 27)
+    glass = hexc('9ec8d8')
+    cv.rect(0, 0, 29, 26, hexc('5a6a78'))
+    cv.rect(2, 2, 27, 24, glass)
+    cv.shade_vgrad(2, 2, 27, 24, 0.8, -0.6)
+    cv.line(5, 21, 18, 4, W(glass, 3))
+    cv.line(8, 22, 21, 5, W(glass, 2))
+    cv.rect(2, 13, 27, 13, W(glass, -1))
     return cv
 
 
@@ -539,6 +555,29 @@ def ic_wait(cv):
     cv.ellipse(11.5, 10, 7, 7, hexc('f0f2f6'))
     cv.vline(11, 5, 10, c)
     cv.hline(11, 14, 10, c)
+
+
+def trophy():
+    cv = Canvas(20, 22)
+    g = hexc('f0c040')
+    cv.rect(4, 2, 15, 3, g)
+    cv.poly([(4, 3), (16, 3), (14, 10), (11, 13), (9, 13), (6, 10)], g)
+    for (x0, x1) in ((1, 4), (15, 18)):
+        cv.rect(x0, 4, x1, 5, g)
+    cv.rect(1, 4, 2, 8, g)
+    cv.rect(17, 4, 18, 8, g)
+    cv.rect(2, 8, 4, 9, g)
+    cv.rect(15, 8, 17, 9, g)
+    cv.rect(9, 13, 10, 16, W(g, -1))
+    cv.rect(6, 17, 13, 18, W(g, -1))
+    cv.rect(5, 19, 14, 20, hexc('8a5a3a'))
+    cv.shade_cyl(4, 2, 16, 13, 0.8)
+    cv.px(7, 5, W(g, 4)); cv.px(7, 6, W(g, 4)); cv.px(8, 5, W(g, 3))
+    cv.rect(1, 6, 2, 7, (0, 0, 0, 0))
+    cv.p[6][1] = cv.p[6][2] = cv.p[7][1] = cv.p[7][2] = None
+    cv.p[6][17] = cv.p[6][18] = cv.p[7][17] = cv.p[7][18] = None
+    cv.outline(0.5)
+    return cv
 
 
 def shadow():

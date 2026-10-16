@@ -307,6 +307,7 @@ export class Sim {
     c.targets = this.planTargets(c);
     this.customers.push(c);
     this.stats.customers += 1;
+    this.state.lifetime.customers += 1;
     c.mover.goTo(this.grid, entryTile(this.layout));
   }
 
@@ -500,6 +501,7 @@ export class Sim {
     if (ups > 0) {
       this.emit({ type: 'productLevel', id, level: prog.level });
       const after = unlockedCount(cat, this.state.products);
+      this.state.lifetime.unlocks += after - before;
       for (let i = before; i < after; i++) this.emit({ type: 'unlock', id: UNLOCK_ORDER[cat][i] });
     }
   }
@@ -603,6 +605,7 @@ export class Sim {
       const paid = c.cash ? roundCash(Math.round(total * 100)) / 100 : total;
       this.state.money += paid;
       this.stats.revenue += paid;
+      this.state.lifetime.revenue += paid;
       this.stats.goodsCost += c.basket.reduce((a, b) => a + b.cost * b.qty, 0);
       const st = this.state.npcs[c.npc.id];
       st.spent += paid;

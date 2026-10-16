@@ -124,7 +124,7 @@ export class CheckoutGame extends MiniGame {
       return;
     }
     const accuracy = this.mistakes === 0 ? 1 : this.mistakes === 1 ? 0.5 : 0.25;
-    this.finish({ accuracy, seconds: this.elapsed, manual: true }, accuracyLabel(accuracy));
+    this.finish({ accuracy, seconds: this.elapsed, manual: true, amount: change }, accuracyLabel(accuracy));
   }
 
   private short(): void {

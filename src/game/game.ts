@@ -10,7 +10,9 @@ import { T, worldBounds, WorldRenderer, type BuildView, type Hit, type HitAction
 import type { UI } from '../ui/app';
 import { DAY_START, FIXTURES, LEVELS, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF_LOOKS, TRAITS, type Skill } from './defs';
 import { BATCH, Sim, type Line } from './sim';
-import { freshSkills, loadGame, newGame, saveGame, type GameState, type StaffState } from './state';
+import { checkAchievements } from './achievements';
+import { achName } from '../ui/achievements';
+import { freshSkills, loadGame, newGame, saveGame, type GameState, type MiniKind, type StaffState } from './state';
 
 export type Phase = 'day' | 'night';
 
@@ -27,6 +29,7 @@ export class Game {
   phase: Phase = 'night';
   speed = 1;
   userPaused = false;
+  nightPaused = false;
   nightLeft = NIGHT_SECONDS;
   miniOpen = false;
   build: BuildView | null = null;
@@ -37,6 +40,7 @@ export class Game {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   private last = 0;
+  private achTimer = 0;
   private pointers = new Map<number, { x: number; y: number; sx: number; sy: number }>();
   private panned = false;
   private pinchDist = 0;
@@ -70,9 +74,11 @@ export class Game {
   enterNight(showReport: boolean): void {
     this.phase = 'night';
     this.nightLeft = NIGHT_SECONDS;
+    this.nightPaused = false;
     this.makeSim();
     this.state.nightRestock += this.sim.restockAll();
     if (!this.state.candidates.length) this.state.candidates = this.makeCandidates();
+    this.checkAchievements();
     saveGame(this.state);
     this.ui.refresh();
     if (showReport && this.state.history.length) this.ui.showReport(this.state.history[this.state.history.length - 1]);
@@ -106,7 +112,7 @@ export class Game {
 
   paused(): boolean {
     if (this.miniOpen) return true;
-    return this.phase === 'day' ? this.userPaused : !!this.build;
+    return this.phase === 'day' ? this.userPaused : !!this.build || this.nightPaused;
   }
 
   // ---------- staff ----------
@@ -144,6 +150,7 @@ export class Game {
   }
 
   hire(c: StaffState): void {
+    this.state.lifetime.hires += 1;
     this.state.candidates = this.state.candidates.filter((x) => x.id !== c.id);
     c.hiredDay = this.state.day;
     this.state.staff.push(c);
@@ -197,6 +204,11 @@ export class Game {
         this.nightLeft -= dt;
         if (this.nightLeft <= 0) this.startDay();
       }
+    }
+    this.achTimer += simulated;
+    if (this.achTimer > 1) {
+      this.achTimer = 0;
+      this.checkAchievements();
     }
     if (!draw) return;
     this.render(Math.min(0.1, simulated));
@@ -404,7 +416,29 @@ export class Game {
     this.miniOpen = true;
     const r = await game.open(this.ui.overlay);
     this.miniOpen = false;
-    if (r && line.front() === c) this.sim.manualLine(line, r);
+    if (r && line.front() === c) {
+      this.sim.manualLine(line, r);
+      const kind: MiniKind = line.kind === 'register' ? 'checkout' : line.kind === 'bagging' ? 'bagging' : c.order?.kind ?? 'oden';
+      this.recordMini(kind, r.amount ?? 0);
+    }
+  }
+
+  private recordMini(kind: MiniKind, amount: number): void {
+    this.state.lifetime.manual[kind] += 1;
+    this.state.lifetime.amount[kind] += amount;
+    this.checkAchievements();
+  }
+
+  checkAchievements(): void {
+    for (const a of checkAchievements(this.state)) this.ui.toast(t('ach.unlocked', { name: achName(a) }));
+  }
+
+  /** Replaces the running game with an imported save. */
+  loadState(s: GameState): void {
+    this.state = s;
+    saveGame(s);
+    this.enterNight(false);
+    this.fit();
   }
 
   private async serveOven(): Promise<void> {
@@ -413,7 +447,10 @@ export class Game {
     this.miniOpen = true;
     const r = await new BakeryGame(o.bread, (this.state.seed + Math.floor(this.sim.clock)) | 0).open(this.ui.overlay);
     this.miniOpen = false;
-    if (r) this.sim.manualOven(r.trays);
+    if (r) {
+      this.sim.manualOven(r.trays);
+      this.recordMini('bakery', r.amount ?? 0);
+    }
   }
 
   timeLabel(): string {

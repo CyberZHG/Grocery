@@ -34,6 +34,21 @@ def write_json(path, obj, compact=True):
         f.write('\n')
 
 
+def small_products(img, cols):
+    """16px shelf icons: box-filtered downscale with a hard alpha cut so edges stay crisp."""
+    rows = img.height // 32
+    out = Image.new('RGBA', (cols * 16, rows * 16), (0, 0, 0, 0))
+    for i in range(cols * rows):
+        tile = img.crop(((i % cols) * 32, (i // cols) * 32, (i % cols) * 32 + 32, (i // cols) * 32 + 32)).resize((16, 16), Image.BOX)
+        px = tile.load()
+        for y in range(16):
+            for x in range(16):
+                c = px[x, y]
+                px[x, y] = (c[0], c[1], c[2], 255) if c[3] >= 110 else (0, 0, 0, 0)
+        out.paste(tile, ((i % cols) * 16, (i // cols) * 16))
+    out.save(os.path.join(ASSETS, 'products_small.png'))
+
+
 def products():
     rows = list(csv.DictReader(open(os.path.join(ROOT, 'tools', 'products.psv'), encoding='utf-8'), delimiter='|'))
     cols = 20
@@ -54,6 +69,7 @@ def products():
         en[r['id']] = r['en']
         zh[r['id']] = r['zh']
     img.save(os.path.join(ASSETS, 'products.png'))
+    small_products(img, cols)
     write_json(os.path.join(DATA, 'products.json'), out)
     return out, en, zh
 
@@ -169,7 +185,7 @@ def atlas():
         'floor0': GW.floor(0), 'floor1': GW.floor(1), 'sidewalk': GW.sidewalk(),
         'wall0': GW.wall_face(0), 'wall1': GW.wall_face(1), 'wall2': GW.wall_face(2), 'wall3': GW.wall_face(3),
         'wallcap': GW.wall_cap(), 'wallL': GW.wall_side(False), 'wallR': GW.wall_side(True),
-        'door_stock': GW.door_stock(), 'entrance': GW.entrance(), 'mat': GW.mat(),
+        'door_stock': GW.door_stock(), 'entrance_frame': GW.entrance_frame(), 'door_panel': GW.door_panel(), 'mat': GW.mat(),
         'shelf_h': outlined(GW.shelf_h()), 'shelf_v': outlined(GW.shelf_v()),
         'produce_h': outlined(GW.produce_h()), 'produce_v': outlined(GW.produce_v()),
         'fridge_h': outlined(GW.fridge_h()), 'fridge_v': outlined(GW.fridge_v()),
@@ -179,7 +195,7 @@ def atlas():
         'register': outlined(GW.register()), 'oden': GW.oden_counter(), 'deli': outlined(GW.deli_counter()),
         'oven': outlined(GW.oven()), 'bread_case': outlined(GW.bread_case()), 'coffee': outlined(GW.coffee_bar()),
         'bagging': outlined(GW.bagging()), 'plant': GW.plant(),
-        'basket': GW.basket(), 'carton': GW.carton(), 'shadow': GW.shadow(), 'select': GW.selection(),
+        'basket': GW.basket(), 'trophy': GW.trophy(), 'carton': GW.carton(), 'shadow': GW.shadow(), 'select': GW.selection(),
         'b_cash': GW.bubble(GW.ic_cash, hexc('f0c040')), 'b_oden': GW.bubble(GW.ic_oden, hexc('f0c040')),
         'b_deli': GW.bubble(GW.ic_deli, hexc('f0c040')), 'b_coffee': GW.bubble(GW.ic_coffee, hexc('f0c040')),
         'b_bag': GW.bubble(GW.ic_bag, hexc('f0c040')), 'b_bread': GW.bubble(GW.ic_bread, hexc('f0c040')),

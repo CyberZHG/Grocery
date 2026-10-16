@@ -157,6 +157,7 @@ export function expandPanel(g: Game, ui: UI): HTMLElement {
       st.money -= next.cost;
       st.level += 1;
       const moved = relocate(g);
+      g.checkAchievements();
       saveGame(st);
       g.rebuild();
       g.fit();

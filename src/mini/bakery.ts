@@ -64,7 +64,7 @@ export class BakeryGame extends MiniGame<BakeResult> {
     if (this.trays.every((tr) => tr.pulled)) {
       const trays = this.trays.map((tr) => tr.pulled!);
       const accuracy = trays.reduce((a, q) => a + SCORE[q], 0) / trays.length;
-      this.finish({ accuracy, seconds: this.elapsed, manual: true, trays }, accuracy >= 0.95 ? 'mini.perfect' : accuracy > 0.3 ? 'mini.good' : 'mini.wrong');
+      this.finish({ accuracy, seconds: this.elapsed, manual: true, trays, amount: trays.length }, accuracy >= 0.95 ? 'mini.perfect' : accuracy > 0.3 ? 'mini.good' : 'mini.wrong');
     }
   }
 

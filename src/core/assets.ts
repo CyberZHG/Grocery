@@ -4,6 +4,7 @@ const base = import.meta.env.BASE_URL;
 const atlasUrl = `${base}assets/atlas.png?v=${__BUILD__}`;
 const productsUrl = `${base}assets/products.png?v=${__BUILD__}`;
 const charsUrl = `${base}assets/chars.png?v=${__BUILD__}`;
+const smallUrl = `${base}assets/products_small.png?v=${__BUILD__}`;
 
 export type Rect = [number, number, number, number];
 
@@ -11,6 +12,7 @@ export interface Assets {
   atlas: HTMLImageElement;
   products: HTMLImageElement;
   chars: HTMLImageElement;
+  small: HTMLImageElement;
 }
 
 let assets: Assets;
@@ -28,8 +30,8 @@ function load(src: string): Promise<HTMLImageElement> {
 }
 
 export async function loadAssets(): Promise<void> {
-  const [atlas, products, chars] = await Promise.all([load(atlasUrl), load(productsUrl), load(charsUrl)]);
-  assets = { atlas, products, chars };
+  const [atlas, products, chars, small] = await Promise.all([load(atlasUrl), load(productsUrl), load(charsUrl), load(smallUrl)]);
+  assets = { atlas, products, chars, small };
 }
 
 export function rect(name: string): Rect {
@@ -49,6 +51,10 @@ export function drawSprite(ctx: CanvasRenderingContext2D, name: string, x: numbe
 
 export function drawProduct(ctx: CanvasRenderingContext2D, index: number, x: number, y: number, scale = 1): void {
   blit(ctx, assets.products, (index % 20) * 32, Math.floor(index / 20) * 32, 32, 32, x, y, false, scale);
+}
+
+export function drawProductSmall(ctx: CanvasRenderingContext2D, index: number, x: number, y: number): void {
+  blit(ctx, assets.small, (index % 20) * 16, Math.floor(index / 20) * 16, 16, 16, x, y, false);
 }
 
 export const CHAR_W = 32;
@@ -101,8 +107,8 @@ export function drawText(ctx: CanvasRenderingContext2D, s: string, x: number, y:
   const img = fontFor(color);
   let cx = Math.round(x);
   for (const raw of s) {
-    const ch = raw.toUpperCase();
-    const i = fontChars.indexOf(ch);
+    let i = fontChars.indexOf(raw);
+    if (i < 0) i = fontChars.indexOf(raw.toUpperCase());
     if (i >= 0) ctx.drawImage(img, i * 6, 0, 5, 8, cx, Math.round(y), 5 * scale, 8 * scale);
     cx += 6 * scale;
   }

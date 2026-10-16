@@ -5,6 +5,8 @@ export interface MiniResult {
   accuracy: number;
   seconds: number;
   manual: true;
+  /** cumulative quantity for achievements (change cents, pieces, pounds, trays, steps, items) */
+  amount?: number;
 }
 
 /**

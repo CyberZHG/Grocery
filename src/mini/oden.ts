@@ -47,7 +47,7 @@ export class OdenGame extends MiniGame {
       return;
     }
     const accuracy = this.mistakes === 0 ? 1 : 0.5;
-    this.finish({ accuracy, seconds: this.elapsed, manual: true }, accuracyLabel(accuracy));
+    this.finish({ accuracy, seconds: this.elapsed, manual: true, amount: this.cup.length }, accuracyLabel(accuracy));
   }
 
   protected pointerDown(x: number, y: number): void {

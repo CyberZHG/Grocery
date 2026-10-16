@@ -51,6 +51,24 @@ export interface DayStats {
   avgAffinity: number;
 }
 
+export type MiniKind = 'checkout' | 'oden' | 'deli' | 'bakery' | 'coffee' | 'bagging';
+
+/** Lifetime totals used by achievements. */
+export interface Lifetime {
+  revenue: number;
+  customers: number;
+  unlocks: number;
+  hires: number;
+  manual: Record<MiniKind, number>;
+  /** cumulative amounts: change in cents, oden pieces, deli pounds, oven trays, coffee steps, bagged items */
+  amount: Record<MiniKind, number>;
+}
+
+export function freshLifetime(): Lifetime {
+  const zero = { checkout: 0, oden: 0, deli: 0, bakery: 0, coffee: 0, bagging: 0 };
+  return { revenue: 0, customers: 0, unlocks: 0, hires: 0, manual: { ...zero }, amount: { ...zero } };
+}
+
 export interface GameState {
   version: number;
   seed: number;
@@ -68,6 +86,8 @@ export interface GameState {
   npcs: Record<string, NpcState>;
   bakery: Record<Bread, { good: number; golden: number }>;
   history: DayStats[];
+  lifetime: Lifetime;
+  achievements: Record<string, number>;
 }
 
 export const SAVE_VERSION = 1;
@@ -113,6 +133,8 @@ export function newGame(seed = Date.now() % 1e9): GameState {
     npcs,
     bakery,
     history: [],
+    lifetime: freshLifetime(),
+    achievements: {},
   };
 }
 
@@ -128,13 +150,29 @@ export function loadGame(): GameState | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
-    const s = JSON.parse(raw) as GameState;
-    if (s.version !== SAVE_VERSION) return null;
+    return migrate(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+/** Fills fields added after a save was written; returns null for unusable data. */
+export function migrate(data: unknown): GameState | null {
+  try {
+    const s = data as GameState;
+    if (!s || typeof s !== 'object' || s.version !== SAVE_VERSION || !Array.isArray(s.fixtures) || typeof s.money !== 'number') return null;
+    s.npcs ??= {};
+    s.staff ??= [];
+    s.candidates ??= [];
+    s.history ??= [];
     for (const n of NPCS) s.npcs[n.id] ??= { affinity: 30, level: 1, exp: 0, visits: 0, spent: 0 };
     s.former ??= [];
     s.nightRestock ??= 0;
     s.products = { ...freshProducts(), ...(s.products ?? {}) };
     for (const st of [...s.staff, ...s.candidates, ...s.former]) st.trait ??= null;
+    const life = freshLifetime();
+    s.lifetime = { ...life, ...(s.lifetime ?? {}), manual: { ...life.manual, ...(s.lifetime?.manual ?? {}) }, amount: { ...life.amount, ...(s.lifetime?.amount ?? {}) } };
+    s.achievements ??= {};
     return s;
   } catch {
     return null;

@@ -1,4 +1,4 @@
-import { drawChar, drawProduct, drawSprite, drawText, textWidth } from '../core/assets';
+import { drawChar, drawProductSmall, drawSprite, drawText, textWidth } from '../core/assets';
 import { BREADS, FIXTURES, PRODUCT_BY_ID, type FixtureKind } from '../game/defs';
 import { fixtureCells, type Layout } from '../game/layout';
 import { OFFER_SECONDS, OVEN_OFFER_SECONDS, type Customer, type Line, type Sim, type Worker } from '../game/sim';
@@ -57,6 +57,7 @@ export class WorldRenderer {
   hits: Hit[] = [];
   prompts: Prompt[] = [];
   time = 0;
+  doorOpen = 0;
 
   drawFloor(ctx: CanvasRenderingContext2D, l: Layout): void {
     for (let x = -1; x <= l.w; x++) {
@@ -85,13 +86,41 @@ export class WorldRenderer {
       drawSprite(ctx, 'wallcap', x * T, l.h * T);
     }
     drawSprite(ctx, 'mat', l.entrance * T, (l.h - 1) * T);
-    drawSprite(ctx, 'entrance', l.entrance * T, l.h * T);
+    this.drawDoor(ctx, l);
+  }
+
+  /** Automatic sliding doors: two panels slide into the walls, clipped to the opening. */
+  private drawDoor(ctx: CanvasRenderingContext2D, l: Layout): void {
+    const x = l.entrance * T;
+    const y = l.h * T;
+    drawSprite(ctx, 'floor0', x, y);
+    drawSprite(ctx, 'floor1', x + T, y);
+    const slide = Math.round(this.doorOpen * 28);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x + 3, y + 2, 58, 28);
+    ctx.clip();
+    drawSprite(ctx, 'door_panel', x + 2 - slide, y + 3);
+    drawSprite(ctx, 'door_panel', x + 32 + slide, y + 3);
+    ctx.restore();
+    drawSprite(ctx, 'entrance_frame', x, y);
+  }
+
+  private updateDoor(sim: Sim, dt: number): void {
+    const l = sim.layout;
+    const cx = l.entrance + 0.5;
+    const near = (m: { x: number; y: number }) => Math.abs(m.x - cx) < 1.6 && m.y > l.h - 2.2 && m.y < l.h + 1.8;
+    const want = sim.customers.some((c) => near(c.mover)) || sim.workers.some((w) => near(w.mover)) ? 1 : 0;
+    // ease at a fixed real-time rate; dt is 0 while paused so the doors freeze too
+    const step = dt * 3.5;
+    this.doorOpen = want ? Math.min(1, this.doorOpen + step) : Math.max(0, this.doorOpen - step * 0.7);
   }
 
   draw(ctx: CanvasRenderingContext2D, sim: Sim, dt: number, build: BuildView | null): void {
     this.time += dt;
     this.hits = [];
     this.prompts = [];
+    this.updateDoor(sim, dt);
     const l = sim.layout;
     this.drawFloor(ctx, l);
     if (build) this.drawReserved(ctx, l);
@@ -158,20 +187,18 @@ export class WorldRenderer {
     f.slots.forEach((s, i) => {
       if (!s.product) return;
       const p = PRODUCT_BY_ID.get(s.product)!;
-      const pos = this.productPos(f, i, top);
-      const full = s.stock > cap / 2;
-      if (f.kind === 'freezer') {
+      const spots = this.slotSpots(f, i);
+      // Front spots are listed last and fill first, so the back empties as stock runs down.
+      const shown = s.stock <= 0 ? 0 : Math.max(1, Math.ceil((s.stock / cap) * spots.length));
+      const clip = this.slotClip(f, i, top);
+      if (clip) {
         ctx.save();
-        const [cx, cy, cw, ch] = f.vertical ? [px + 3, top + 3 + i * 30, 26, 29] : [px + 3 + i * 29, top + 3, 28, 24];
         ctx.beginPath();
-        ctx.rect(cx, cy, cw, ch);
+        ctx.rect(px + clip[0], clip[1], clip[2], clip[3]);
         ctx.clip();
       }
-      if (s.stock > 0) {
-        if (full && pos.back) drawProduct(ctx, p.index, pos.back[0], pos.back[1]);
-        drawProduct(ctx, p.index, pos.x, pos.y);
-      }
-      if (f.kind === 'freezer') ctx.restore();
+      for (const [dx, dy] of spots.slice(spots.length - shown)) drawProductSmall(ctx, p.index, px + dx, top + dy);
+      if (clip) ctx.restore();
       const ratio = s.stock / cap;
       const bx = f.vertical ? px + 26 : px + i * T + 6;
       const by = f.vertical ? top + sh - 64 + i * T + 4 : top + sh - 4;
@@ -199,31 +226,45 @@ export class WorldRenderer {
     }
   }
 
-  private productPos(f: FixtureState, i: number, top: number): { x: number; y: number; back?: [number, number] } {
-    const px = f.x * T;
+  /** Small-icon positions for one slot, relative to the sprite's left and top, ordered back to front. */
+  private slotSpots(f: FixtureState, i: number): [number, number][] {
+    const row = (x0: number, y: number, step = 7, n = 3): [number, number][] => Array.from({ length: n }, (_, k) => [x0 + k * step, y]);
     if (!f.vertical) {
-      const x = px + i * T;
+      const x0 = i * T;
       switch (f.kind) {
         case 'shelf':
-          return { x, y: top + 16, back: [x, top - 4] };
-        case 'produce':
-          return { x: x + 1, y: top + 2, back: [x - 3, top - 4] };
+          return [...row(x0 + 1, 11), ...row(x0 + 1, 31)];
         case 'fridge':
-          return { x, y: top + 33, back: [x, top + 7] };
+          return [...row(x0 + 2, 22), ...row(x0 + 2, 48)];
         case 'freezer':
-          return { x, y: top + 2, back: [x - 4, top - 2] };
+          return [...row(x0 + 2, 3), ...row(x0 + 4, 11)];
+        case 'produce':
+          return [...row(x0 + 1, 4), ...row(x0 + 4, 11, 8, 2), ...row(x0 + 8, 16, 8, 1)];
       }
     }
     switch (f.kind) {
-      case 'shelf':
-        return { x: px, y: top + 10 + i * 36, back: [px - 2, top + 4 + i * 36] };
-      case 'produce':
-        return { x: px + 1, y: top + 16 + i * 32, back: [px - 2, top + 11 + i * 32] };
-      case 'fridge':
-        return { x: px + 3, y: top + 18 + i * 46, back: [px + 3, top + 6 + i * 46] };
-      case 'freezer':
-        return { x: px, y: top + 2 + i * 30, back: [px - 3, top + i * 30] };
+      case 'shelf': {
+        const y0 = 2 + i * 38;
+        return [...row(1, y0, 14, 2), ...row(1, y0 + 9, 14, 2), ...row(1, y0 + 18, 14, 2)];
+      }
+      case 'produce': {
+        const y0 = 16 + i * 32;
+        return [...row(1, y0, 14, 2), ...row(1, y0 + 6, 14, 2), ...row(8, y0 + 11, 14, 1)];
+      }
+      case 'fridge': {
+        const y0 = 7 + i * 46;
+        return [[12, y0], [10, y0 + 13], [12, y0 + 26]];
+      }
+      case 'freezer': {
+        const y0 = 3 + i * 30;
+        return [...row(3, y0, 10, 2), ...row(5, y0 + 10, 10, 2)];
+      }
     }
+  }
+
+  private slotClip(f: FixtureState, i: number, top: number): [number, number, number, number] | null {
+    if (f.kind !== 'freezer') return null;
+    return f.vertical ? [3, top + 3 + i * 30, 26, 29] : [3 + i * 29, top + 3, 28, 24];
   }
 
   private drawBreadCase(ctx: CanvasRenderingContext2D, sim: Sim, x: number, y: number): void {

@@ -157,7 +157,7 @@ export class BaggingGame extends MiniGame {
     if (v.crushed) this.say(t('bag.crushed'), 'bad');
     else if (v.warm) this.say(t('bag.warm'), 'bad');
     const accuracy = n === 0 ? 1 : n === 1 ? 0.6 : 0.3;
-    this.finish({ accuracy, seconds: this.elapsed, manual: true }, accuracyLabel(accuracy));
+    this.finish({ accuracy, seconds: this.elapsed, manual: true, amount: this.items.length }, accuracyLabel(accuracy));
   }
 
   protected pointerDown(x: number, y: number): void {

@@ -75,7 +75,7 @@ export class CoffeeGame extends MiniGame {
     this.made.push(c.s);
     if (this.made.length === this.drink.steps.length) {
       const accuracy = this.mistakes === 0 ? 1 : this.mistakes === 1 ? 0.6 : 0.3;
-      this.finish({ accuracy, seconds: this.elapsed, manual: true }, accuracyLabel(accuracy));
+      this.finish({ accuracy, seconds: this.elapsed, manual: true, amount: this.drink.steps.length }, accuracyLabel(accuracy));
     }
   }
 

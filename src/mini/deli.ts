@@ -77,7 +77,7 @@ export class DeliGame extends MiniGame {
     const a = Math.abs(diff);
     let accuracy = a <= 0.03 ? 1 : a <= 0.06 ? 0.8 : a <= 0.12 ? 0.5 : 0.2;
     if (this.mistakes) accuracy *= 0.8;
-    this.finish({ accuracy, seconds: this.elapsed, manual: true }, accuracy >= 0.95 ? 'mini.perfect' : accuracy >= 0.5 ? 'mini.good' : 'mini.wrong');
+    this.finish({ accuracy, seconds: this.elapsed, manual: true, amount: this.weight }, accuracy >= 0.95 ? 'mini.perfect' : accuracy >= 0.5 ? 'mini.good' : 'mini.wrong');
   }
 
   protected update(dt: number): void {

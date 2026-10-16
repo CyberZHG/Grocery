@@ -3,7 +3,10 @@ import { NIGHT_SECONDS } from '../game/defs';
 import type { Game } from '../game/game';
 import type { DayStats } from '../game/state';
 import type { Prompt } from '../render/world';
+import { achievementsPanel } from './achievements';
 import { BuildMode } from './build';
+import { openShare } from './share';
+import { decodeSave, encodeSave } from '../game/savecode';
 import { clear, h } from './dom';
 import { expandPanel, regularsPanel, reportPanel, staffPanel } from './panels';
 
@@ -107,7 +110,16 @@ export class UI {
         }, [label]));
       }
     } else {
-      this.controls.append(h('button', { class: 'btn small primary', onclick: () => g.startDay() }, [t('hud.skip')]));
+      this.controls.append(
+        h('button', {
+          class: 'btn small night-pause', title: t('hud.pause'),
+          onclick: () => {
+            g.nightPaused = !g.nightPaused;
+            this.lastSig = '';
+          },
+        }, ['❚❚']),
+        h('button', { class: 'btn small primary', onclick: () => g.startDay() }, [t('hud.skip')]),
+      );
     }
     this.controls.append(h('button', { class: 'btn small icon', title: t('hud.menu'), onclick: () => this.showMenu() }, ['☰']));
     if (!this.buildMode) this.renderBar();
@@ -118,12 +130,20 @@ export class UI {
     const g = this.game;
     clear(this.bottom);
     const night = g.phase === 'night';
+    // At night, opening anything from the bottom bar pauses the countdown.
     const btn = (key: Key, fn: () => void, enabled = true) =>
-      h('button', { class: 'btn bar-btn', disabled: !enabled, onclick: fn }, [t(key)]);
+      h('button', {
+        class: 'btn bar-btn', disabled: !enabled,
+        onclick: () => {
+          if (g.phase === 'night') g.nightPaused = true;
+          fn();
+        },
+      }, [t(key)]);
     if (night) this.bottom.append(btn('bar.build', () => this.openBuild(null)));
     this.bottom.append(
       btn('bar.staff', () => this.openPanel('staff.title', () => staffPanel(g, this))),
       btn('bar.customers', () => this.openPanel('npc.title', () => regularsPanel(g))),
+      btn('bar.achievements', () => this.openPanel('ach.title', () => achievementsPanel(g.state))),
     );
     if (night) {
       this.bottom.append(btn('bar.expand', () => this.openPanel('expand.title', () => expandPanel(g, this))));
@@ -134,7 +154,7 @@ export class UI {
   tick(): void {
     const g = this.game;
     const night = g.phase === 'night';
-    const sig = [g.phase, g.state.day, g.timeLabel(), Math.round(g.state.money * 100), g.speed, g.userPaused, night ? Math.ceil(g.nightLeft) : 0, g.paused(), g.sim.closing].join('|');
+    const sig = [g.phase, g.state.day, g.timeLabel(), Math.round(g.state.money * 100), g.speed, g.userPaused, night ? Math.ceil(g.nightLeft) : 0, g.paused(), g.nightPaused, g.sim.closing].join('|');
     if (sig === this.lastSig) return;
     this.lastSig = sig;
     this.dayEl.textContent = t('hud.day', { n: g.state.day });
@@ -147,6 +167,12 @@ export class UI {
     this.moneyEl.classList.toggle('neg', g.state.money < 0);
     this.top.classList.toggle('is-night', night);
     (this.nightBar.firstChild as HTMLElement).style.width = `${night ? (g.nightLeft / NIGHT_SECONDS) * 100 : 0}%`;
+    const np = this.controls.querySelector<HTMLElement>('.night-pause');
+    if (np) {
+      np.classList.toggle('active', g.nightPaused);
+      np.textContent = g.nightPaused ? '▶' : '❚❚';
+      np.title = g.nightPaused ? t('hud.resume') : t('hud.pause');
+    }
     this.controls.querySelectorAll<HTMLElement>('.speed').forEach((b) => {
       const s = Number(b.dataset.speed);
       b.classList.toggle('active', s === 0 ? g.userPaused : !g.userPaused && g.speed === s);
@@ -245,6 +271,7 @@ export class UI {
   }
 
   private showMenu(): void {
+    const g = this.game;
     const langs = h('div', { class: 'row wrap' }, LOCALES.map((l) =>
       h('button', { class: `btn${l.code === locale() ? ' primary' : ''}`, onclick: () => { setLocale(l.code); this.showMenu(); } }, [l.label]),
     ));
@@ -252,9 +279,74 @@ export class UI {
       h('p', { class: 'muted' }, [t('menu.about')]),
       h('h3', {}, [t('menu.language')]),
       langs,
+      h('h3', {}, [t('menu.data')]),
+      h('div', { class: 'row wrap' }, [
+        h('button', { class: 'btn primary', onclick: () => void openShare(g, this) }, [t('menu.share')]),
+        h('button', { class: 'btn', onclick: () => void this.showExport() }, [t('menu.export')]),
+        h('button', { class: 'btn', onclick: () => this.showImport() }, [t('menu.import')]),
+      ]),
       h('button', { class: 'btn warn', onclick: () => this.confirm(t('menu.newConfirm'), () => this.game.newGame()) }, [t('menu.newGame')]),
     ]);
     this.modal(t('menu.title'), body);
+  }
+
+  private async showExport(): Promise<void> {
+    const code = await encodeSave(this.game.state);
+    const area = h('textarea', { class: 'code', readOnly: true, rows: 6 }, [code]) as HTMLTextAreaElement;
+    const copy = h('button', {
+      class: 'btn primary',
+      onclick: async () => {
+        try {
+          await navigator.clipboard.writeText(code);
+        } catch {
+          area.select();
+          document.execCommand('copy');
+        }
+        this.toast(t('save.copied'));
+      },
+    }, [t('save.copy')]);
+    const download = h('button', {
+      class: 'btn',
+      onclick: () => {
+        const url = URL.createObjectURL(new Blob([code], { type: 'text/plain' }));
+        const a = h('a', { href: url, download: `grocery-day${this.game.state.day}.txt` });
+        document.body.append(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      },
+    }, [t('save.download')]);
+    this.modal(t('save.exportTitle'), h('div', { class: 'stack' }, [h('p', { class: 'muted' }, [t('save.exportHint')]), area]), [download, copy]);
+  }
+
+  private showImport(): void {
+    const area = h('textarea', { class: 'code', rows: 6, placeholder: 'GROCERY1.…' }) as HTMLTextAreaElement;
+    const file = h('input', {
+      type: 'file', accept: '.txt,text/plain', class: 'file',
+      onchange: async (e: Event) => {
+        const f = (e.target as HTMLInputElement).files?.[0];
+        if (f) area.value = (await f.text()).trim();
+      },
+    });
+    const load = h('button', {
+      class: 'btn primary',
+      onclick: async () => {
+        const s = await decodeSave(area.value);
+        if (!s) {
+          this.toast(t('save.invalid'));
+          return;
+        }
+        this.confirm(t('save.confirm', { day: s.day, money: money(s.money) }), () => {
+          this.game.loadState(s);
+          this.toast(t('save.loaded'));
+        });
+      },
+    }, [t('save.load')]);
+    this.modal(t('save.importTitle'), h('div', { class: 'stack' }, [
+      h('p', { class: 'muted' }, [t('save.importHint')]),
+      area,
+      h('label', { class: 'row' }, [h('span', {}, [t('save.file')]), file]),
+    ]), [load]);
   }
 
   openBuild(select: number | null): void {
