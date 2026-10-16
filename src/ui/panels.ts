@@ -1,0 +1,203 @@
+import { money, npcName, staffName, t, type Key } from '../i18n';
+import { LEVELS, NPC_ROW0, NPCS, OWNER_ROW, PRODUCT_BY_ID, SKILLS, STAFF_ROW0, TRAIT_BY_ID, unlockedSkills, type Skill } from '../game/defs';
+import type { Game } from '../game/game';
+import { buildLayout, canPlace, type FixturePlacement } from '../game/layout';
+import { npcExpToNext, skillExpToNext, skillSpeed, type Leveled } from '../game/rules';
+import { saveGame, type DayStats, type Role, type StaffState } from '../game/state';
+import { charIcon, productIcon, type UI } from './app';
+import { h } from './dom';
+
+function bar(ratio: number, cls = ''): HTMLElement {
+  return h('div', { class: `meter ${cls}` }, [h('div', { class: 'fill', style: { width: `${Math.max(0, Math.min(1, ratio)) * 100}%` } })]);
+}
+
+function skillRows(skills: Record<Skill, Leveled>, level: number): HTMLElement {
+  const unlocked = new Set<Skill>(unlockedSkills(level));
+  return h('div', { class: 'skills' }, SKILLS.filter((s) => unlocked.has(s)).map((s) => {
+    const sk = skills[s];
+    return h('div', { class: 'skill' }, [
+      h('span', { class: 'sname' }, [t(`skill.${s}`)]),
+      h('span', { class: 'slv' }, [`${t('common.level', { n: sk.level })} ×${skillSpeed(sk.level).toFixed(2)}`]),
+      bar(sk.exp / skillExpToNext(sk.level)),
+    ]);
+  }));
+}
+
+const ROLES: Role[] = ['auto', 'cashier', 'stocker', 'service'];
+
+export function staffPanel(g: Game, ui: UI): HTMLElement {
+  const st = g.state;
+  const card = (row: number, name: string, extra: HTMLElement[], skills: Record<Skill, Leveled>, trait: string | null = null) =>
+    h('div', { class: 'card' }, [
+      h('div', { class: 'card-head' }, [charIcon(row), h('div', { class: 'card-title' }, [h('strong', {}, [name]), traitTag(trait), ...extra])]),
+      skillRows(skills, st.level),
+    ]);
+  const night = g.phase === 'night';
+  const out = h('div', { class: 'stack' }, [
+    card(OWNER_ROW, t('staff.owner'), [], st.owner),
+    h('h3', {}, [t('staff.hired')]),
+    h('p', { class: 'muted' }, [t('staff.payNote')]),
+  ]);
+  if (!st.staff.length) out.append(h('p', { class: 'muted' }, [t('staff.none')]));
+  const grid = h('div', { class: 'cards' });
+  for (const s of st.staff) {
+    const role = h('select', {
+      class: 'select',
+      onchange: (e: Event) => {
+        s.role = (e.target as HTMLSelectElement).value as Role;
+        saveGame(st);
+      },
+    }, ROLES.map((r) => h('option', { value: r, selected: s.role === r }, [t(`role.${r}`)])));
+    grid.append(card(STAFF_ROW0 + s.look, staffName(s.name), [
+      h('span', { class: 'muted' }, [t('common.perDay', { v: money(s.wage) })]),
+      h('label', { class: 'row' }, [h('span', {}, [t('staff.role')]), role]),
+      h('button', {
+        class: 'btn small warn', onclick: () => ui.confirm(t('staff.fireConfirm', { name: staffName(s.name) }), () => {
+          g.fire(s.id);
+          ui.openPanel('staff.title', () => staffPanel(g, ui));
+        }),
+      }, [t('staff.fire')]),
+    ], s.skills, s.trait));
+  }
+  out.append(grid);
+  out.append(h('h3', {}, [t('staff.candidates')]));
+  if (!night) out.append(h('p', { class: 'muted' }, [t('common.nightOnly')]));
+  else if (!st.candidates.length) out.append(h('p', { class: 'muted' }, [t('staff.noCandidates')]));
+  else {
+    const cg = h('div', { class: 'cards' });
+    for (const c of st.candidates) {
+      cg.append(card(STAFF_ROW0 + c.look, staffName(c.name), [
+        h('span', { class: 'muted' }, [t('common.perDay', { v: money(c.wage) })]),
+        h('button', { class: 'btn small primary', onclick: () => { g.hire(c as StaffState); ui.rerenderPanel?.(); } }, [t('staff.hire')]),
+      ], c.skills, c.trait));
+    }
+    out.append(cg);
+  }
+  if (st.former.length) {
+    out.append(h('h3', {}, [t('staff.former')]));
+    const fg = h('div', { class: 'cards' });
+    for (const f of st.former) {
+      fg.append(card(STAFF_ROW0 + f.look, staffName(f.name), [
+        h('span', { class: 'muted' }, [t('common.perDay', { v: money(f.wage) })]),
+        h('button', { class: 'btn small', disabled: !night, onclick: () => { g.rehire(f.id); ui.rerenderPanel?.(); } }, [t('staff.rehire')]),
+      ], f.skills, f.trait));
+    }
+    out.append(fg);
+  }
+  return out;
+}
+
+function traitTag(id: string | null): HTMLElement | null {
+  const tr = id ? TRAIT_BY_ID.get(id) : undefined;
+  if (!tr) return null;
+  return h('span', { class: 'trait' }, [`${t(`trait.${tr.id}` as Key)} · ${t('trait.bonus', { skill: t(`skill.${tr.skill}`), p: Math.round((tr.mult - 1) * 100) })}`]);
+}
+
+export function regularsPanel(g: Game): HTMLElement {
+  const roster = NPCS.slice(0, LEVELS[g.state.level].roster);
+  let sort: 'affinity' | 'level' = 'affinity';
+  const list = h('div', { class: 'cards' });
+  const render = () => {
+    list.replaceChildren();
+    const sorted = roster.slice().sort((a, b) => {
+      const sa = g.state.npcs[a.id];
+      const sb = g.state.npcs[b.id];
+      return sort === 'affinity' ? sb.affinity - sa.affinity || sb.level - sa.level : sb.level - sa.level || sb.exp - sa.exp;
+    });
+    for (const n of sorted) {
+      const s = g.state.npcs[n.id];
+      list.append(h('div', { class: `card npc${s.visits ? '' : ' dim'}` }, [
+        h('div', { class: 'card-head' }, [
+          charIcon(NPC_ROW0 + n.index),
+          h('div', { class: 'card-title' }, [
+            h('strong', {}, [npcName(n.id)]),
+            h('span', { class: 'muted' }, [`${t('common.level', { n: s.level })} · ${s.visits ? t('npc.visits', { n: s.visits }) : t('npc.notMet')}`]),
+          ]),
+        ]),
+        h('div', { class: 'kv' }, [h('span', {}, [t('npc.affinity')]), bar(s.affinity / 100, 'heart')]),
+        h('div', { class: 'kv' }, [h('span', {}, ['EXP']), bar(s.exp / npcExpToNext(s.level))]),
+        h('div', { class: 'kv' }, [h('span', {}, [t('npc.likes')]), h('span', {}, [n.likes.map((c) => t(`cat.${c}` as Key)).join(' · ')])]),
+        h('div', { class: 'kv' }, [h('span', {}, [t('npc.favorites')]), h('div', { class: 'row' }, n.favs.map((f) => productIcon(PRODUCT_BY_ID.get(f)!.index)))]),
+      ]));
+    }
+  };
+  render();
+  const sel = h('select', { class: 'select', onchange: (e: Event) => { sort = (e.target as HTMLSelectElement).value as typeof sort; render(); } }, [
+    h('option', { value: 'affinity' }, [t('npc.sortAffinity')]),
+    h('option', { value: 'level' }, [t('npc.sortLevel')]),
+  ]);
+  return h('div', { class: 'stack' }, [h('label', { class: 'row' }, [h('span', {}, [t('npc.sort')]), sel]), list]);
+}
+
+export function expandPanel(g: Game, ui: UI): HTMLElement {
+  const st = g.state;
+  const cur = LEVELS[st.level];
+  const next = LEVELS[st.level + 1];
+  const out = h('div', { class: 'stack' }, [
+    h('div', { class: 'kv' }, [h('span', {}, [t('expand.current')]), h('span', {}, [t('expand.size', { w: cur.w, h: cur.h })])]),
+  ]);
+  if (!next) {
+    out.append(h('p', {}, [t('expand.max')]));
+    return out;
+  }
+  const unlocks: string[] = [];
+  for (const s of next.stations) if (!cur.stations.includes(s)) unlocks.push(t(`station.${s}`));
+  if (next.bagging && !cur.bagging) unlocks.push(t('station.bagging'));
+  if (next.registers > cur.registers) unlocks.push(t('expand.registers', { n: next.registers }));
+  unlocks.push(t('expand.more', { n: next.roster - cur.roster }));
+  out.append(
+    h('div', { class: 'kv' }, [h('span', {}, [t('expand.next')]), h('span', {}, [t('expand.size', { w: next.w, h: next.h })])]),
+    h('div', { class: 'kv' }, [h('span', {}, [t('expand.unlocks')]), h('span', {}, [unlocks.join(' · ')])]),
+    h('div', { class: 'kv' }, [h('span', {}, [t('expand.rent', { v: '' }).trim()]), h('span', {}, [`${money(cur.rent)} → ${money(next.rent)}`])]),
+  );
+  const can = g.phase === 'night' && st.money >= next.cost;
+  out.append(h('button', {
+    class: 'btn primary', disabled: !can,
+    onclick: () => {
+      st.money -= next.cost;
+      st.level += 1;
+      const moved = relocate(g);
+      saveGame(st);
+      g.rebuild();
+      g.fit();
+      ui.closeModal();
+      ui.refresh();
+      if (moved) ui.toast(t('expand.moved'));
+    },
+  }, [t('expand.buy', { v: money(next.cost) })]));
+  if (g.phase !== 'night') out.append(h('p', { class: 'muted' }, [t('common.nightOnly')]));
+  return out;
+}
+
+/** After a layout change, fixtures that no longer fit go back to storage. */
+function relocate(g: Game): number {
+  const layout = buildLayout(g.state.level);
+  const kept: FixturePlacement[] = [];
+  let moved = 0;
+  for (const f of g.state.fixtures) {
+    if (!f.placed) continue;
+    if (canPlace(layout, kept, f)) kept.push(f);
+    else {
+      f.placed = false;
+      moved += 1;
+    }
+  }
+  return moved;
+}
+
+export function reportPanel(s: DayStats): HTMLElement {
+  const flow = s.revenue - s.restock - s.wages - s.rent;
+  const rows: [Key, string, string?][] = [
+    ['report.revenue', money(s.revenue)],
+    ['report.goods', money(s.goodsCost)],
+    ['report.restock', money(-s.restock)],
+    ['report.wages', money(-s.wages)],
+    ['report.rent', money(-s.rent)],
+    ['report.cashflow', money(flow), flow >= 0 ? 'pos' : 'neg'],
+    ['report.customers', String(s.customers)],
+    ['report.manual', String(s.manual)],
+    ['report.affinity', s.avgAffinity.toFixed(1)],
+    ['report.levelUps', String(s.levelUps)],
+  ];
+  return h('div', { class: 'report' }, rows.map(([k, v, cls]) => h('div', { class: `kv ${cls ?? ''}` }, [h('span', {}, [t(k)]), h('strong', {}, [v])])));
+}

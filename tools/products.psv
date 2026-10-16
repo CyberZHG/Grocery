@@ -1,0 +1,201 @@
+id|cat|tpl|price|a|b|c|en|zh
+apple_red|produce|round|1.00|d83a3a|4a9a3a|8a4a2a|Red Apple|红苹果
+apple_green|produce|round|1.00|9ad04a|4a9a3a|8a4a2a|Green Apple|青苹果
+banana|produce|banana|1.79|f2d64a|8a6a2a|5a8a2a|Bananas|香蕉
+orange|produce|round|1.25|f39a1e|4a9a3a|c06a10|Navel Orange|脐橙
+lemon|produce|citrus|0.79|f5e04a|4a9a3a|c8b030|Lemon|柠檬
+lime|produce|citrus|0.59|6fbf3a|3a7a2a|4a8f2a|Lime|青柠
+grapes_red|produce|grapes|3.99|8a2f6a|4a9a3a|b04a8a|Red Grapes|红葡萄
+strawberries|produce|berries|4.49|e03040|4a9a3a|f0f0f0|Strawberries|草莓
+blueberries|produce|berries|4.99|3a4fa0|6a7ad0|f0f0f0|Blueberries|蓝莓
+watermelon|produce|melon|6.99|3f8f3a|2a5a2a|e04a4a|Watermelon|西瓜
+avocado|produce|avocado|1.49|3a5a2a|2a3a1a|8ab04a|Hass Avocado|牛油果
+tomato|produce|round|0.99|e0402a|3a8a2a|a02a1a|Tomato|番茄
+potato|produce|potato|4.49|b58a55|8a6038|d8b07a|Russet Potatoes|褐皮土豆
+sweet_potato|produce|potato|1.29|b5503a|80382a|d87a5a|Sweet Potato|红薯
+onion_yellow|produce|onion|0.99|d9a050|a06a2a|f0d090|Yellow Onion|黄洋葱
+garlic|produce|garlic|0.69|eee8d8|c8bca0|ffffff|Garlic|大蒜
+carrots|produce|carrot|1.99|f07a20|4a9a3a|c05a10|Carrots|胡萝卜
+lettuce|produce|leafy|2.49|8fd05a|5aa03a|c8f090|Romaine Lettuce|罗马生菜
+spinach|produce|leafy|3.99|3f8f3a|2a6a2a|6ab05a|Baby Spinach|嫩菠菜
+broccoli|produce|broccoli|2.29|3f8f3a|2a6a2a|7ab04a|Broccoli|西兰花
+bell_pepper|produce|pepper|1.49|e03a2a|3a8a2a|a02a1a|Red Bell Pepper|红甜椒
+corn|produce|corn|0.79|f5d84a|6aa03a|c8a830|Sweet Corn|甜玉米
+pineapple|produce|pineapple|3.99|d8a83a|4a9a3a|a07a2a|Pineapple|菠萝
+mushrooms|produce|mushroom|2.99|e8dcc8|a08a6a|3a5aa0|White Mushrooms|白蘑菇
+milk_whole|dairy|jug|3.99|f8f8f8|d03030|3060c0|Whole Milk (1 gal)|全脂牛奶（1加仑）
+milk_2pct|dairy|jug|3.89|f8f8f8|3070d0|3060c0|2% Milk (1 gal)|2%低脂牛奶（1加仑）
+milk_chocolate|dairy|carton|2.99|7a4a2a|f0e0c8|c03030|Chocolate Milk|巧克力牛奶
+oat_milk|dairy|carton|4.49|e8d8b0|4a6a9a|8a6a3a|Oat Milk|燕麦奶
+eggs_dozen|dairy|eggs|3.49|c8b090|f8f0e0|e8d8b8|Large Eggs (12)|大号鸡蛋（12个）
+butter|dairy|butter|4.99|f8e8a0|3060c0|ffffff|Salted Butter|有盐黄油
+cheddar|dairy|cheese|4.29|f0a030|d02a2a|c07a10|Cheddar Cheese|切达奶酪
+mozzarella|dairy|cheese|3.99|f8f0d8|3a8a3a|d8d0b0|Shredded Mozzarella|马苏里拉奶酪碎
+american_cheese|dairy|cheese|3.49|f8c840|3060c0|d8a020|American Cheese Slices|美式奶酪片
+cream_cheese|dairy|butter|2.79|c8d0e0|2050a0|ffffff|Cream Cheese|奶油奶酪
+sour_cream|dairy|tub|2.49|f8f8f8|3070c0|a0b8e0|Sour Cream|酸奶油
+greek_yogurt|dairy|yogurt|1.39|f8f8f8|2a4a8a|a0b8e0|Greek Yogurt|希腊酸奶
+strawberry_yogurt|dairy|yogurt|0.99|f8f8f8|e05a7a|f8b0c0|Strawberry Yogurt|草莓酸奶
+heavy_cream|dairy|carton|3.99|f8f8f8|3a60b0|d0d8e8|Heavy Cream|淡奶油
+coffee_creamer|dairy|squeeze|4.49|f0e8d8|8a5a3a|d0b090|Coffee Creamer|咖啡奶精
+orange_juice|dairy|carton|4.99|f8a030|f8f0d0|4a9a3a|Orange Juice|橙汁
+cottage_cheese|dairy|tub|3.29|f8f8f8|3a9a5a|a0d0b0|Cottage Cheese|茅屋奶酪
+hummus|dairy|tub|3.99|d8b880|6a8a3a|b09050|Hummus|鹰嘴豆泥
+ground_beef|meat|meattray|5.99|c84a4a|f8f8f8|a03030|Ground Beef (1 lb)|牛肉末（1磅）
+ribeye|meat|steak|14.99|b83a3a|f8f8f8|f0d0c0|Ribeye Steak|肉眼牛排
+chicken_breast|meat|chicken|7.99|f0b8a8|f8f8f8|e8a090|Chicken Breast|鸡胸肉
+chicken_thighs|meat|chicken|5.99|e0a090|f8f8f8|c88070|Chicken Thighs|鸡腿肉
+chicken_wings|meat|wings|8.99|e8a888|f8f8f8|c88060|Chicken Wings|鸡翅
+pork_chops|meat|steak|6.99|e8a8a0|f8f8f8|f8e8e0|Pork Chops|猪排
+bacon|meat|bacon|6.49|c84040|f8e0d0|2a6a3a|Bacon|培根
+hot_dogs|meat|sausage|3.99|d87060|f0d040|c04030|Hot Dogs|热狗肠
+italian_sausage|meat|sausage|5.49|b85a4a|3a8a3a|903a2a|Italian Sausage|意式香肠
+turkey_slices|meat|deli|4.99|e8c8a8|3a7a3a|f8f0e0|Sliced Turkey|火鸡肉片
+ham_slices|meat|deli|4.49|f0a0a0|c03030|f8e0e0|Sliced Ham|火腿片
+salami|meat|deli|5.49|b84040|202020|f0c0b0|Salami|萨拉米香肠
+salmon|meat|fish|11.99|f08a5a|f8f8f8|f8d0b0|Salmon Fillet|三文鱼排
+shrimp|meat|shrimp|9.99|f0906a|f8f8f8|f8c0a0|Shrimp|虾仁
+tofu|meat|tofu|2.49|f8f4e8|3a7ac0|e0dcd0|Firm Tofu|老豆腐
+rotisserie_chicken|meat|roast|7.99|c8803a|202020|f0c070|Rotisserie Chicken|烤全鸡
+pepperoni_pizza|frozen|pizzabox|6.99|d03030|f0c040|f8f8f8|Pepperoni Pizza|意式辣香肠披萨
+cheese_pizza|frozen|pizzabox|6.49|3060b0|f0c040|f8f8f8|Cheese Pizza|芝士披萨
+ice_cream_vanilla|frozen|icecream|5.49|f8f0d0|8a5a3a|d8c8a0|Vanilla Ice Cream|香草冰淇淋
+ice_cream_choc|frozen|icecream|5.49|6a3a20|f8f0d0|a06a40|Chocolate Ice Cream|巧克力冰淇淋
+ice_cream_mint|frozen|icecream|5.49|a0e0c0|4a2a1a|70c0a0|Mint Chip Ice Cream|薄荷巧克力冰淇淋
+frozen_peas|frozen|frozenbag|2.29|5ab04a|f8f8f8|3a8a3a|Frozen Peas|冷冻豌豆
+frozen_corn|frozen|frozenbag|2.29|f0d040|3a8a3a|c8a820|Frozen Corn|冷冻玉米
+mixed_veg|frozen|frozenbag|2.49|f08030|5ab04a|f0d040|Mixed Vegetables|冷冻什锦蔬菜
+french_fries|frozen|frozenbag|3.99|d03030|f0d060|f8f8f8|French Fries|冷冻薯条
+chicken_nuggets|frozen|frozenbag|7.99|f0a030|c87020|f8f8f8|Chicken Nuggets|冷冻鸡块
+frozen_waffles|frozen|frozenbox|3.49|f0c040|c03030|c88a30|Frozen Waffles|冷冻华夫饼
+frozen_dinner|frozen|frozenbox|3.99|3a3a8a|f0a030|8a5a3a|Frozen Dinner|冷冻速食餐
+burritos|frozen|frozenbox|4.99|e06a20|f0e0b0|5a9a3a|Frozen Burritos|冷冻墨西哥卷饼
+dumplings|frozen|frozenbag|6.99|f8f8f8|d03030|e8e0d0|Frozen Dumplings|冷冻饺子
+ice_pops|frozen|frozenbox|4.49|e04080|40a0e0|f0d040|Ice Pops|冰棒
+frozen_berries|frozen|frozenbag|4.99|6a2a6a|e03040|3a4fa0|Frozen Berries|冷冻莓果
+fish_sticks|frozen|frozenbox|5.49|2a6ab0|f0c060|f8f8f8|Fish Sticks|冷冻鱼柳条
+ice_bag|frozen|icebag|2.99|c8e8f8|3a7ac0|ffffff|Bag of Ice|袋装冰块
+white_bread|bakery|loaf|2.99|f0d8a0|3070d0|e03030|White Bread|白吐司
+wheat_bread|bakery|loaf|3.49|a8703a|3a8a3a|f0d040|Whole Wheat Bread|全麦面包
+sourdough|bakery|boule|4.99|d8a060|a86a30|f0d8a8|Sourdough Bread|酸面包
+hamburger_buns|bakery|buns|2.99|d8984a|f8f8f8|e03030|Hamburger Buns|汉堡面包
+hot_dog_buns|bakery|hotdogbuns|2.79|d8984a|f8f8f8|3070d0|Hot Dog Buns|热狗面包
+bagels|bakery|bagels|3.99|d8a860|f8f8f8|a87030|Plain Bagels|原味贝果
+english_muffins|bakery|box|3.49|f8f0d8|3070d0|d8a860|English Muffins|英式松饼
+flour_tortillas|bakery|tortilla|2.99|f0e0b8|e03030|c8a878|Flour Tortillas|面粉薄饼
+corn_tortillas|bakery|tortilla|2.49|f0d070|3a8a3a|c8a040|Corn Tortillas|玉米薄饼
+donuts|bakery|pastrybox|5.99|f8a0c0|d89050|f8f0f0|Glazed Donuts|糖霜甜甜圈
+muffins|bakery|pastrybox|4.99|f8f8f8|8a5a3a|4a5ab0|Blueberry Muffins|蓝莓玛芬
+croissants|bakery|pastrybox|4.99|f8f0d8|e0a050|b07030|Croissants|牛角包
+potato_chips|snacks|chipbag|4.29|f0d040|d03030|f8e8a0|Potato Chips|原味薯片
+bbq_chips|snacks|chipbag|4.29|8a3a20|f0a030|d8a060|BBQ Chips|烧烤味薯片
+tortilla_chips|snacks|chipbag|4.49|3a8a3a|f0d040|d03030|Tortilla Chips|玉米片
+cheese_puffs|snacks|chipbag|3.99|f08020|3070d0|f8c040|Cheese Puffs|芝士泡芙
+pretzels|snacks|chipbag|3.49|2a5ab0|a0602a|f8f8f8|Pretzels|椒盐卷饼
+popcorn|snacks|popcorn|4.49|d03030|f8f8f8|f0d860|Microwave Popcorn|微波爆米花
+crackers|snacks|box|3.29|d03030|f8f8f8|e8c070|Saltine Crackers|苏打饼干
+cheese_crackers|snacks|box|3.99|f06020|f8d040|c03020|Cheese Crackers|芝士饼干
+sandwich_cookies|snacks|cookies|4.99|2a4ab0|3a2a20|f8f8f8|Sandwich Cookies|夹心饼干
+choc_chip_cookies|snacks|cookies|4.29|3a6ab0|c8904a|5a3a20|Chocolate Chip Cookies|巧克力曲奇
+granola_bars|snacks|box|4.49|5a9a3a|c89050|f8f0d0|Granola Bars|燕麦棒
+peanuts|snacks|jar|3.99|c89050|3070d0|f0c080|Roasted Peanuts|烤花生
+almonds|snacks|nutbag|7.99|b07848|3a8a3a|e0b080|Almonds|杏仁
+trail_mix|snacks|nutbag|5.99|8a5a2a|f08030|e0c080|Trail Mix|什锦坚果
+beef_jerky|snacks|chipbag|7.99|3a2a20|c03030|a06030|Beef Jerky|牛肉干
+salsa|snacks|jar|3.99|d04020|f0d040|3a8a3a|Salsa|莎莎酱
+rice_cakes|snacks|ricecakes|3.29|f8f0e0|3a8a3a|e0d0b0|Rice Cakes|米饼
+fruit_snacks|snacks|box|3.49|8a3ab0|f04060|f0d040|Fruit Snacks|水果软糖
+chocolate_bar|candy|candybar|1.79|6a3a20|f8f0e0|3a1a10|Milk Chocolate Bar|牛奶巧克力
+dark_chocolate|candy|candybar|2.49|2a1a10|c8a050|1a0a08|Dark Chocolate Bar|黑巧克力
+peanut_butter_cups|candy|candybar|1.69|f07a20|f8d040|5a3020|Peanut Butter Cups|花生酱巧克力杯
+gummy_bears|candy|candybag|2.99|f8f8f8|e03040|f0d040|Gummy Bears|小熊软糖
+licorice|candy|licorice|2.49|d02a2a|f8f8f8|a01a1a|Red Licorice|红甘草糖
+mints|candy|mints|1.99|e8f0f8|3a9a6a|a0b0c0|Mints|薄荷糖
+chewing_gum|candy|gum|1.49|40a0e0|f8f8f8|2a70b0|Chewing Gum|口香糖
+lollipops|candy|lollipop|3.49|f8f8f8|e04080|40b0e0|Lollipops|棒棒糖
+caramels|candy|candybag|3.29|d8a050|8a5020|f8f0d8|Caramels|焦糖糖果
+jelly_beans|candy|candybag|2.99|f8f8f8|8a3ab0|40c060|Jelly Beans|彩虹糖豆
+marshmallows|candy|candybag|2.29|f8f8f8|3070d0|f0e8f0|Marshmallows|棉花糖
+sour_candy|candy|candybag|2.99|7ad03a|f0d040|e03040|Sour Candy|酸味软糖
+cola|beverages|can|1.25|d02a2a|f8f8f8|a01a1a|Cola|可乐
+diet_cola|beverages|can|1.25|c8c8d0|d02a2a|9a9aa8|Diet Cola|健怡可乐
+lemon_lime_soda|beverages|can|1.25|3aa03a|f0e040|2a702a|Lemon-Lime Soda|柠檬汽水
+root_beer|beverages|can|1.25|6a3a20|f0e0c0|4a2a10|Root Beer|根汁汽水
+ginger_ale|beverages|can|1.25|3a8a4a|e8d8a0|2a6a3a|Ginger Ale|姜汁汽水
+cola_2l|beverages|bottle2l|2.79|5a2a1a|d02a2a|a8d8e8|Cola (2 L)|可乐（2升）
+orange_soda_2l|beverages|bottle2l|2.49|f08020|3070d0|a8d8e8|Orange Soda (2 L)|橙味汽水（2升）
+cola_12pack|beverages|canpack|7.99|d02a2a|f8f8f8|a01a1a|Cola 12-Pack|可乐（12罐装）
+sparkling_water|beverages|can|1.19|a0d8f0|f8f8f8|6aa8d0|Sparkling Water|气泡水
+spring_water|beverages|water|1.29|b8e0f8|3a80d0|f8f8f8|Spring Water|矿泉水
+water_case|beverages|watercase|5.99|b8e0f8|3a80d0|f8f8f8|Spring Water 24-Pack|矿泉水（24瓶装）
+sports_drink_blue|beverages|sports|1.99|3a70e0|f8f8f8|f08020|Sports Drink (Blue)|运动饮料（蓝）
+sports_drink_orange|beverages|sports|1.99|f08020|f8f8f8|3a70e0|Sports Drink (Orange)|运动饮料（橙）
+energy_drink|beverages|tallcan|2.99|202028|60e040|404050|Energy Drink|能量饮料
+iced_tea|beverages|sports|1.79|a0501a|f8e8a0|3a8a3a|Iced Tea|冰红茶
+apple_juice|beverages|juice|3.49|e0a030|d03030|f8f0d0|Apple Juice|苹果汁
+lemonade|beverages|juice|3.29|f8e870|f0d040|f8f8f8|Lemonade|柠檬水
+coconut_water|beverages|carton|2.99|f8f8f8|5a9a3a|8a6a3a|Coconut Water|椰子水
+ground_coffee|beverages|coffeebag|8.99|3a2a20|d03030|c8a070|Ground Coffee|研磨咖啡
+coffee_pods|beverages|box|9.99|5a3a20|f0c060|3a2010|Coffee Pods|咖啡胶囊
+black_tea|beverages|teabox|3.99|c02a2a|f0d040|f8f8f8|Black Tea Bags|红茶包
+green_tea|beverages|teabox|3.99|3a8a3a|f8f8f8|a0d080|Green Tea Bags|绿茶包
+corn_flakes|breakfast|cereal|4.29|f0f0f0|e03030|f0c040|Corn Flakes|玉米片麦片
+frosted_flakes|breakfast|cereal|4.79|3070d0|f08020|f8f8f8|Frosted Flakes|糖霜麦片
+oat_rings|breakfast|cereal|4.99|f0d040|3a3a8a|c88a30|Toasted Oat Rings|燕麦圈
+fruity_cereal|breakfast|cereal|4.79|e04080|40b0e0|f0d040|Fruity Cereal|水果麦片
+granola|breakfast|nutbag|5.49|a0703a|3a8a3a|e8c890|Granola|格兰诺拉麦片
+oatmeal|breakfast|canister|4.49|3060b0|d03030|f0e0b0|Old-Fashioned Oats|燕麦片
+instant_oatmeal|breakfast|box|3.99|c08040|3060b0|f0e0b0|Instant Oatmeal|即食燕麦
+pancake_mix|breakfast|box|3.29|f0c040|3060b0|d03030|Pancake Mix|松饼粉
+maple_syrup|breakfast|syrup|7.99|a0501a|f8f0e0|3a6a2a|Maple Syrup|枫糖浆
+pancake_syrup|breakfast|syrup|3.49|7a3a1a|f0c040|d03030|Pancake Syrup|松饼糖浆
+toaster_pastries|breakfast|box|3.79|3a80d0|f8a0c0|f8f8f8|Toaster Pastries|烤面包馅饼
+peanut_butter|breakfast|jar|3.49|c08040|d03030|f8f0e0|Peanut Butter|花生酱
+strawberry_jam|breakfast|jar|3.29|c02040|f8f0e0|e8d8b0|Strawberry Jam|草莓果酱
+honey|breakfast|honey|5.99|f0a020|c87a10|f8d870|Honey|蜂蜜
+spaghetti|pantry|pastabox|1.69|3060c0|f0d890|f8f8f8|Spaghetti|意大利面
+penne|pantry|pastabox|1.69|3a8a3a|f0d890|f8f8f8|Penne|通心粉
+mac_cheese|pantry|box|1.29|3070d0|f0a020|f8f8f8|Mac & Cheese|芝士通心粉
+instant_ramen|pantry|ramen|0.69|e03030|f0c040|f8f8f8|Instant Ramen|方便面
+white_rice|pantry|ricebag|4.99|f8f8f8|3070d0|e0e0e0|Long Grain Rice|长粒米
+jasmine_rice|pantry|ricebag|8.99|f8f8f8|3a8a3a|d03030|Jasmine Rice|茉莉香米
+pasta_sauce|pantry|jar|3.49|c03020|3a8a3a|f8f0d0|Marinara Sauce|番茄意面酱
+chicken_soup|pantry|can|1.99|d03030|f8f8f8|f0c040|Chicken Noodle Soup|鸡肉面汤
+tomato_soup|pantry|can|1.49|d03030|f8f8f8|e05030|Tomato Soup|番茄汤
+black_beans|pantry|can|1.19|2a2a2a|f0d040|5a5a5a|Black Beans|黑豆罐头
+diced_tomatoes|pantry|can|1.29|e04030|3a8a3a|f8f8f8|Diced Tomatoes|番茄丁罐头
+canned_tuna|pantry|tuna|1.49|3060c0|f0d040|c8c8d0|Canned Tuna|金枪鱼罐头
+canned_corn|pantry|can|1.19|3a8a3a|f0d040|f8f8f8|Canned Corn|玉米罐头
+flour|pantry|flour|3.99|f8f8f8|d03030|e8e0d0|All-Purpose Flour|中筋面粉
+sugar|pantry|sugar|3.79|f8f8f8|3070d0|e8e8f0|Granulated Sugar|白砂糖
+olive_oil|pantry|oil|9.99|6a8a2a|f8f0d0|3a5a1a|Olive Oil|橄榄油
+vegetable_oil|pantry|oil|4.49|f0d040|d03030|f8f0b0|Vegetable Oil|植物油
+salt|pantry|canister|1.29|3070d0|f8f8f8|f0d040|Table Salt|食盐
+black_pepper|pantry|spice|3.99|3a3a3a|d03030|8a8a8a|Black Pepper|黑胡椒粉
+ketchup|pantry|squeeze|3.29|d02a2a|f8f8f8|3a8a3a|Ketchup|番茄酱
+mustard|pantry|squeeze|1.99|f0d020|d03030|f8f8f8|Yellow Mustard|黄芥末酱
+mayonnaise|pantry|jar|4.49|f8f8f0|3070d0|f0d040|Mayonnaise|蛋黄酱
+soy_sauce|pantry|smallbottle|2.99|3a1a10|d03030|f8f8f8|Soy Sauce|酱油
+hot_sauce|pantry|smallbottle|2.49|d02a1a|3a8a3a|f8f0d0|Hot Sauce|辣椒酱
+paper_towels|household|papertowel|5.99|f8f8f8|3a8ad0|e0e8f0|Paper Towels|厨房纸巾
+toilet_paper|household|tp|9.99|f8f8f8|3a8ad0|e0e8f0|Toilet Paper (12)|卫生纸（12卷）
+dish_soap|household|dishsoap|2.99|3ab0e0|f8f8f8|2a80b0|Dish Soap|洗洁精
+laundry_detergent|household|detergent|11.99|f08020|3070d0|f8f8f8|Laundry Detergent|洗衣液
+cleaner|household|spray|3.99|f8f8f8|3ab05a|f0d040|All-Purpose Cleaner|多用途清洁剂
+trash_bags|household|box|7.99|f0d040|3a3a3a|d03030|Trash Bags|垃圾袋
+aluminum_foil|household|roll|4.99|c8c8d0|3070d0|f8f8f8|Aluminum Foil|铝箔纸
+plastic_wrap|household|roll|3.49|e8f0f8|d03030|f8f8f8|Plastic Wrap|保鲜膜
+sponges|household|sponge|2.99|f0d040|3ab05a|f8f8f8|Sponges|海绵擦
+aa_batteries|household|battery|6.99|3a3a3a|f0a020|c8c8d0|AA Batteries|AA电池
+light_bulbs|household|bulb|5.99|f8f0c0|3070d0|c8c8c8|LED Light Bulbs|LED灯泡
+dog_food|household|petbag|12.99|d03030|c08040|f8f8f8|Dry Dog Food|干狗粮
+toothpaste|personal|toothpaste|3.49|f8f8f8|d03030|3070d0|Toothpaste|牙膏
+toothbrush|personal|toothbrush|2.99|40a0e0|f8f8f8|e8f0f8|Toothbrush|牙刷
+shampoo|personal|shampoo|5.99|8a50c0|f8f8f8|c0a0e0|Shampoo|洗发水
+body_wash|personal|shampoo|5.49|3ab0a0|f8f8f8|a0e0d0|Body Wash|沐浴露
+bar_soap|personal|soap|3.99|f8f8f8|3a80d0|f0e8f8|Bar Soap|香皂
+deodorant|personal|deodorant|4.99|3a5ab0|f8f8f8|c8c8d0|Deodorant|止汗剂
+tissues|personal|tissue|2.49|7ac0e0|f8f8f8|f8a0c0|Facial Tissues|面巾纸
+pain_reliever|personal|pills|6.99|f8f8f8|d03030|3060c0|Pain Reliever|止痛药
+vitamins|personal|pills|9.99|f0a020|f8f8f8|3a8a3a|Multivitamins|复合维生素
+cat_food|personal|tuna|0.99|8a50c0|f0d040|c8c8d0|Wet Cat Food|猫罐头

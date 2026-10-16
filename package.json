@@ -1,0 +1,21 @@
+{
+  "name": "grocery",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "sprites": "python3 tools/gen_sprites.py"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
+  },
+  "dependencies": {
+    "@fontsource/pixelify-sans": "5.2.7"
+  }
+}
