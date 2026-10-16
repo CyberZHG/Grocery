@@ -1,4 +1,5 @@
-import { BREADS, NPCS, SKILLS, START_MONEY, type Bread, type FixtureKind, type Skill } from './defs';
+import { BREADS, NPCS, SKILLS, START_MONEY, type Bread, type Category, type FixtureKind, type Skill } from './defs';
+import { freshGrowth, type CatState, type EquipKind } from './growth';
 import { freshProducts, type ProductProgress } from './progress';
 import type { Leveled } from './rules';
 
@@ -31,11 +32,16 @@ export interface StaffState {
 }
 
 export interface NpcState {
-  affinity: number;
+  /** affinity level and exp toward the next affinity level */
+  fond: Leveled;
   level: number;
   exp: number;
   visits: number;
   spent: number;
+}
+
+export function freshNpc(): NpcState {
+  return { fond: { level: 1, exp: 0 }, level: 1, exp: 0, visits: 0, spent: 0 };
 }
 
 export interface DayStats {
@@ -49,6 +55,9 @@ export interface DayStats {
   manual: number;
   levelUps: number;
   avgAffinity: number;
+  reputation?: number;
+  weather?: string;
+  holiday?: string | null;
 }
 
 export type MiniKind = 'checkout' | 'oden' | 'deli' | 'bakery' | 'coffee' | 'bagging';
@@ -88,6 +97,10 @@ export interface GameState {
   history: DayStats[];
   lifetime: Lifetime;
   achievements: Record<string, number>;
+  reputation: Leveled;
+  suppliers: Record<Category, Leveled>;
+  equipment: Record<EquipKind, Leveled>;
+  cat: CatState;
 }
 
 export const SAVE_VERSION = 1;
@@ -113,7 +126,7 @@ export function newGame(seed = Date.now() % 1e9): GameState {
     fixture(6, 'freezer', 8, 5, false, 'pepperoni_pizza', 'ice_cream_vanilla'),
   ];
   const npcs: Record<string, NpcState> = {};
-  for (const n of NPCS) npcs[n.id] = { affinity: 30, level: 1, exp: 0, visits: 0, spent: 0 };
+  for (const n of NPCS) npcs[n.id] = freshNpc();
   const bakery = {} as GameState['bakery'];
   for (const b of BREADS) bakery[b] = { good: 0, golden: 0 };
   return {
@@ -135,6 +148,7 @@ export function newGame(seed = Date.now() % 1e9): GameState {
     history: [],
     lifetime: freshLifetime(),
     achievements: {},
+    ...freshGrowth(),
   };
 }
 
@@ -165,7 +179,11 @@ export function migrate(data: unknown): GameState | null {
     s.staff ??= [];
     s.candidates ??= [];
     s.history ??= [];
-    for (const n of NPCS) s.npcs[n.id] ??= { affinity: 30, level: 1, exp: 0, visits: 0, spent: 0 };
+    for (const n of NPCS) {
+      const st = (s.npcs[n.id] ??= freshNpc()) as NpcState & { affinity?: number };
+      if (!st.fond) st.fond = { level: 1 + Math.floor(Math.max(0, (st.affinity ?? 30) - 30) / 5), exp: 0 };
+      delete st.affinity;
+    }
     s.former ??= [];
     s.nightRestock ??= 0;
     s.products = { ...freshProducts(), ...(s.products ?? {}) };
@@ -173,6 +191,11 @@ export function migrate(data: unknown): GameState | null {
     const life = freshLifetime();
     s.lifetime = { ...life, ...(s.lifetime ?? {}), manual: { ...life.manual, ...(s.lifetime?.manual ?? {}) }, amount: { ...life.amount, ...(s.lifetime?.amount ?? {}) } };
     s.achievements ??= {};
+    const g = freshGrowth();
+    s.reputation ??= g.reputation;
+    s.suppliers = { ...g.suppliers, ...(s.suppliers ?? {}) };
+    s.equipment = { ...g.equipment, ...(s.equipment ?? {}) };
+    s.cat = { ...g.cat, ...(s.cat ?? {}) };
     return s;
   } catch {
     return null;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../src/core/rng';
-import { addExp, budgetMult, MAX_LEVEL, changeDue, makeCashPayment, roundCash, serviceReward, skillExpToNext, skillSpeed, sum } from '../src/game/rules';
+import { addExp, npcExpToNext, affinityValue, budgetMult, changeAffinity, MAX_LEVEL, changeDue, makeCashPayment, roundCash, serviceReward, skillExpToNext, skillSpeed, sum } from '../src/game/rules';
 
 describe('skill speed', () => {
   it('grows with diminishing returns', () => {
@@ -10,6 +10,12 @@ describe('skill speed', () => {
     expect(d2).toBeLessThan(d1 / 3);
     expect(skillSpeed(50)).toBeLessThan(2);
     expect(skillSpeed(999)).toBeLessThan(2.1);
+  });
+
+  it('never lowers a level or exp', () => {
+    const s = { level: 4, exp: 3 };
+    expect(addExp(s, -50, npcExpToNext)).toBe(0);
+    expect(s).toEqual({ level: 4, exp: 3 });
   });
 
   it('caps at level 999', () => {
@@ -26,6 +32,24 @@ describe('skill speed', () => {
     expect(gained).toBe(2);
     expect(s.level).toBe(3);
     expect(s.exp).toBe(1);
+  });
+});
+
+describe('affinity levels', () => {
+  it('starts at the old baseline and saturates', () => {
+    expect(affinityValue(1)).toBeCloseTo(30);
+    expect(affinityValue(10)).toBeGreaterThan(60);
+    expect(affinityValue(999)).toBeLessThan(90);
+  });
+
+  it('gains levels and never loses them', () => {
+    const f = { level: 1, exp: 0 };
+    changeAffinity(f, 20);
+    const lv = f.level;
+    expect(lv).toBeGreaterThan(2);
+    changeAffinity(f, -1000);
+    expect(f.level).toBe(lv);
+    expect(f.exp).toBe(0);
   });
 });
 

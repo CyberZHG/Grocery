@@ -3,7 +3,9 @@ import { NIGHT_SECONDS } from '../game/defs';
 import type { Game } from '../game/game';
 import type { DayStats } from '../game/state';
 import type { Prompt } from '../render/world';
-import { achievementsPanel } from './achievements';
+import { achievementsPanel, spriteIcon } from './achievements';
+import { storePanel } from './store';
+import { dateOf, holidayOf, weatherOf } from '../game/calendar';
 import { BuildMode } from './build';
 import { openShare } from './share';
 import { decodeSave, encodeSave } from '../game/savecode';
@@ -47,6 +49,8 @@ export class UI {
   private dayEl: HTMLElement;
   private timeEl: HTMLElement;
   private moneyEl: HTMLElement;
+  private weatherEl: HTMLElement;
+  private weatherSig = '';
   private controls: HTMLElement;
   private nightBar: HTMLElement;
   private modalEl: HTMLElement | null = null;
@@ -60,10 +64,11 @@ export class UI {
     this.dayEl = h('div', { class: 'hud-day' });
     this.timeEl = h('div', { class: 'hud-time' });
     this.moneyEl = h('div', { class: 'hud-money' });
+    this.weatherEl = h('div', { class: 'hud-weather' });
     this.controls = h('div', { class: 'hud-controls' });
     this.nightBar = h('div', { class: 'night-bar' }, [h('div', { class: 'fill' })]);
     this.top = h('div', { class: 'hud' }, [
-      h('div', { class: 'hud-left' }, [this.dayEl, this.timeEl]),
+      h('div', { class: 'hud-left' }, [this.dayEl, this.timeEl, this.weatherEl]),
       this.moneyEl,
       this.controls,
       this.nightBar,
@@ -143,6 +148,7 @@ export class UI {
     this.bottom.append(
       btn('bar.staff', () => this.openPanel('staff.title', () => staffPanel(g, this))),
       btn('bar.customers', () => this.openPanel('npc.title', () => regularsPanel(g))),
+      btn('bar.store', () => this.openPanel('store.title', () => storePanel(g, this))),
       btn('bar.achievements', () => this.openPanel('ach.title', () => achievementsPanel(g.state))),
     );
     if (night) {
@@ -158,6 +164,7 @@ export class UI {
     if (sig === this.lastSig) return;
     this.lastSig = sig;
     this.dayEl.textContent = t('hud.day', { n: g.state.day });
+    this.renderWeather(night);
     if (night) {
       this.timeEl.textContent = g.paused() ? t('hud.paused') : t('hud.opensIn', { s: Math.max(0, Math.ceil(g.nightLeft)) });
     } else {
@@ -177,6 +184,27 @@ export class UI {
       const s = Number(b.dataset.speed);
       b.classList.toggle('active', s === 0 ? g.userPaused : !g.userPaused && g.speed === s);
     });
+  }
+
+  /** Date and weather; at night it previews tomorrow, when the store opens next. */
+  private renderWeather(night: boolean): void {
+    const g = this.game;
+    const day = g.state.day;
+    const w = weatherOf(g.state.seed, day);
+    const hol = holidayOf(day);
+    const d = dateOf(day);
+    const sig = `${day}|${night}|${locale()}`;
+    if (sig === this.weatherSig) return;
+    this.weatherSig = sig;
+    const date = t('date.short', { m: t(`month.${d.month}` as Key), d: d.dom });
+    clear(this.weatherEl);
+    this.weatherEl.append(
+      h('span', { class: 'muted' }, [night ? `${t('hud.tomorrow')} ${date}` : date]),
+      spriteIcon(`w_${w}`),
+      h('span', {}, [t(`weather.${w}` as Key)]),
+    );
+    if (hol) this.weatherEl.append(h('span', { class: 'holiday' }, [t(`holiday.${hol}` as Key)]));
+    this.weatherEl.title = t(`weather.${w}` as Key);
   }
 
   /** DOM buttons above service bubbles so the manual option is visible and readable in any language. */

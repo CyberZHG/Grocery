@@ -195,6 +195,7 @@ def atlas():
         'register': outlined(GW.register()), 'oden': GW.oden_counter(), 'deli': outlined(GW.deli_counter()),
         'oven': outlined(GW.oven()), 'bread_case': outlined(GW.bread_case()), 'coffee': outlined(GW.coffee_bar()),
         'bagging': outlined(GW.bagging()), 'plant': GW.plant(),
+        'sign': GW.sign(), 'star_on': GW.star(True), 'star_off': GW.star(False), 'treat': GW.treat(),
         'basket': GW.basket(), 'trophy': GW.trophy(), 'carton': GW.carton(), 'shadow': GW.shadow(), 'select': GW.selection(),
         'b_cash': GW.bubble(GW.ic_cash, hexc('f0c040')), 'b_oden': GW.bubble(GW.ic_oden, hexc('f0c040')),
         'b_deli': GW.bubble(GW.ic_deli, hexc('f0c040')), 'b_coffee': GW.bubble(GW.ic_coffee, hexc('f0c040')),
@@ -206,6 +207,13 @@ def atlas():
         'oven_tray': GM.oven_tray(), 'coffee_cup': GM.coffee_cup(),
         'bag_paper': GM.bag_bg('paper'), 'bag_cold': GM.bag_bg('cold'), 'font': GM.font_sheet(),
     }
+    for name, kind in (('register', 'register'), ('oden', 'oden'), ('deli', 'deli'), ('oven', 'oven'), ('coffee', 'coffee'), ('bagging', 'bagging')):
+        for tier in (1, 2):
+            items[f'{name}_t{tier}'] = GW.upgraded(kind, items[name], tier)
+    for k in ('sunny', 'cloudy', 'rain', 'snow', 'hot'):
+        items[f'w_{k}'] = GW.weather_icon(k)
+    for f in ('sit', 'walk1', 'walk2', 'sleep'):
+        items[f'cat_{f}'] = GW.cat(f)
     for v in (1, 5, 10, 20, 50, 100):
         items[f'bill{v}'] = GM.bill(v)
     for v in (1, 5, 10, 25):

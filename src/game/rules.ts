@@ -15,6 +15,23 @@ export function npcExpToNext(level: number): number {
   return 40 + 30 * (level - 1);
 }
 
+export function affinityExpToNext(level: number): number {
+  return 10 + 5 * (level - 1);
+}
+
+/** Effective affinity on the old 0-100 scale: 30 at Lv 1, saturating near 84 at Lv 999. */
+export function affinityValue(level: number): number {
+  return 30 + 70 * (1 - 1 / (1 + Math.log(Math.max(1, level)) / 2));
+}
+
+/** Pleasant events add affinity exp; unpleasant ones only drain exp within the current level, never a level. */
+export function changeAffinity(t: Leveled, delta: number): number {
+  const amount = delta * 3;
+  if (amount >= 0) return addExp(t, amount, affinityExpToNext);
+  t.exp = Math.max(0, t.exp + amount);
+  return 0;
+}
+
 export function budgetMult(level: number): number {
   return 1 + 0.5 * Math.log(Math.max(1, level));
 }
@@ -27,7 +44,8 @@ export interface Leveled {
 /** Returns number of levels gained. */
 export function addExp(t: Leveled, amount: number, toNext: (lv: number) => number): number {
   let gained = 0;
-  if (t.level >= MAX_LEVEL) return 0;
+  // Levels and exp only ever go up through this path.
+  if (t.level >= MAX_LEVEL || !(amount > 0)) return 0;
   t.exp += amount;
   while (t.level < MAX_LEVEL && t.exp >= toNext(t.level)) {
     t.exp -= toNext(t.level);

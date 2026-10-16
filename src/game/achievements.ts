@@ -2,7 +2,7 @@ import { LEVELS } from './defs';
 import type { GameState, MiniKind } from './state';
 
 export type AchCategory =
-  | 'expand' | 'revenue' | 'savings' | 'days' | 'customers' | 'friends' | 'unlocks' | 'hires'
+  | 'expand' | 'revenue' | 'savings' | 'days' | 'customers' | 'friends' | 'unlocks' | 'hires' | 'reputation' | 'catLevel'
   | 'checkout' | 'change' | 'oden' | 'odenItems' | 'deli' | 'deliPounds'
   | 'bakery' | 'trays' | 'coffee' | 'coffeeSteps' | 'bagging' | 'bagItems';
 
@@ -33,9 +33,11 @@ const CATEGORIES: CategoryDef[] = [
   { cat: 'savings', tiers: [5000, 25000, 100000], format: 'money', value: (s) => s.money },
   { cat: 'days', tiers: [3, 7, 30, 100, 365], format: 'count', value: (s) => s.day - 1 },
   { cat: 'customers', tiers: [100, 1000, 5000, 20000], format: 'count', value: (s) => s.lifetime.customers },
-  { cat: 'friends', tiers: [1, 10, 50], format: 'count', value: (s) => Object.values(s.npcs).filter((n) => n.affinity >= 80).length },
+  { cat: 'friends', tiers: [1, 10, 50], format: 'count', value: (s) => Object.values(s.npcs).filter((n) => n.fond.level >= 10).length },
   { cat: 'unlocks', tiers: [5, 20, 50, 100], format: 'count', value: (s) => s.lifetime.unlocks },
   { cat: 'hires', tiers: [1, 3, 6], format: 'count', value: (s) => s.lifetime.hires },
+  { cat: 'reputation', tiers: [5, 10, 25, 50], format: 'count', value: (s) => s.reputation.level },
+  { cat: 'catLevel', tiers: [3, 10, 25], format: 'count', value: (s) => s.cat.level },
   { cat: 'checkout', tiers: [1, 10, 50, 100], format: 'count', value: manual('checkout') },
   { cat: 'change', tiers: [1000, 10000, 30000, 50000], format: 'cents', value: amount('checkout') },
   { cat: 'oden', tiers: [1, 10, 50, 100], format: 'count', value: manual('oden') },

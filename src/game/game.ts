@@ -1,5 +1,7 @@
 import { Rng } from '../core/rng';
-import { npcName, productName, staffName, t } from '../i18n';
+import { money, npcName, productName, staffName, t, type Key } from '../i18n';
+import { highlights, holidayOf, upcomingHoliday, weatherOf } from './calendar';
+import { growthName } from '../ui/store';
 import { BakeryGame } from '../mini/bakery';
 import { BaggingGame } from '../mini/bagging';
 import { CheckoutGame } from '../mini/checkout';
@@ -61,6 +63,8 @@ export class Game {
     this.sim = new Sim(this.state);
     this.sim.on((e) => {
       if (e.type === 'closed') this.endDay();
+      else if (e.type === 'growth') this.ui.toast(t('toast.growth', { name: growthName(e.what), n: e.level }));
+      else if (e.type === 'gift') this.ui.toast(t('toast.gift', { name: productName(e.id), n: e.units, v: money(e.value) }));
       else if (e.type === 'productLevel') this.ui.toast(t('toast.productLevel', { name: productName(e.id), n: e.level }));
       else if (e.type === 'unlock') this.ui.toast(t('toast.unlock', { name: productName(e.id) }));
       else if (e.type === 'npcLevel') this.ui.toast(t('toast.npcLevel', { name: npcName(e.npc), n: e.level }));
@@ -79,6 +83,7 @@ export class Game {
     this.state.nightRestock += this.sim.restockAll();
     if (!this.state.candidates.length) this.state.candidates = this.makeCandidates();
     this.checkAchievements();
+    this.forecast();
     saveGame(this.state);
     this.ui.refresh();
     if (showReport && this.state.history.length) this.ui.showReport(this.state.history[this.state.history.length - 1]);
@@ -360,12 +365,16 @@ export class Game {
     }
     if (!hit) return;
     const a = hit.action;
+    if (a.type === 'cat') {
+      if (!this.sim.petCat()) this.ui.toast(t('toast.catEnough'));
+      return;
+    }
     if (this.phase === 'day') {
       if (a.type === 'line' || a.type === 'oven') this.serve(a);
       else if (a.type === 'customer') {
         const c = a.customer;
         const st = this.state.npcs[c.npc.id];
-        this.ui.toast(`${npcName(c.npc.id)} · ${t('common.level', { n: st.level })} · ${t('npc.affinity')} ${Math.round(st.affinity)}`);
+        this.ui.toast(`${npcName(c.npc.id)} · ${t('common.level', { n: st.level })} · ${t('npc.affinity')} ${t('common.level', { n: st.fond.level })}`);
       } else if (a.type === 'slot') {
         const f = this.sim.fixture(a.fixture);
         if (f && f.slots[a.slot].product && f.slots[a.slot].stock < FIXTURES[f.kind].capacity) {
@@ -421,6 +430,20 @@ export class Game {
       const kind: MiniKind = line.kind === 'register' ? 'checkout' : line.kind === 'bagging' ? 'bagging' : c.order?.kind ?? 'oden';
       this.recordMini(kind, r.amount ?? 0);
     }
+  }
+
+  /** Night tip about tomorrow's weather and an upcoming holiday, so the player can restock ahead. */
+  private forecast(): void {
+    const day = this.state.day;
+    const w = weatherOf(this.state.seed, day);
+    const cats = highlights(this.state.seed, day).map((c) => t(`cat.${c}` as Key));
+    const hol = holidayOf(day);
+    let text = t('forecast.tomorrow', { w: t(`weather.${w}` as Key) });
+    if (hol) text += ` · ${t(`holiday.${hol}` as Key)}`;
+    if (cats.length) text += ` · ${t('forecast.demand', { list: cats.join(t('common.sep')) })}`;
+    this.ui.toast(text);
+    const soon = upcomingHoliday(day, 3);
+    if (soon && soon.inDays > 0 && !hol) this.ui.toast(t('forecast.holiday', { n: soon.inDays + 1, name: t(`holiday.${soon.id}` as Key) }));
   }
 
   private recordMini(kind: MiniKind, amount: number): void {

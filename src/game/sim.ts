@@ -3,13 +3,17 @@ import { Mover, type Dir } from './agent';
 import {
   BREAD_COST_RATIO, BREAD_PRICE, BREADS, COFFEE_COST_RATIO, DAY_END, DAY_START, DRINKS, FIXTURES, LAST_ENTRY,
   LEVELS, MEAT_COST_RATIO, MEAT_PRICE_LB, MEATS, NPC_ROW0, NPCS, ODEN_COST_RATIO, ODEN_ITEMS, ODEN_PRICE,
-  OWNER_ROW, PRODUCT_BY_ID, STAFF_ROW0, TRAIT_BY_ID, type Bread, type BreadQuality, type DrinkDef, type Meat, type NpcDef,
+  OWNER_ROW, PRODUCT_BY_ID, STAFF_ROW0, TRAIT_BY_ID, type Bread, type Category, type BreadQuality, type DrinkDef, type Meat, type NpcDef,
   type OdenItem, type Skill, type StationKind,
 } from './defs';
+import { demandMult, holidayOf, stationMult, trafficMult, weatherOf } from './calendar';
+import {
+  catAppeal, catLover, costOf, equipSpeed, gainCat, gainEquipment, gainReputation, gainSupplier, giftChance, PETS_PER_DAY, repTraffic, type EquipKind,
+} from './growth';
 import { priceMult, productExpToNext, UNLOCK_ORDER, unlockedCount } from './progress';
 import { accessTiles, buildLayout, entryTile, Grid, spawnTile, type Layout, type P, type StationSpot } from './layout';
 import {
-  addExp, budgetMult, makeCashPayment, npcExpToNext, roundCash, serviceReward, skillExpToNext, skillSpeed, waitPenalty,
+  addExp, affinityValue, budgetMult, changeAffinity, makeCashPayment, npcExpToNext, roundCash, serviceReward, skillExpToNext, skillSpeed, waitPenalty,
   type CashPayment, type Leveled, type ServiceResult,
 } from './rules';
 import type { DayStats, FixtureState, GameState, Role } from './state';
@@ -58,6 +62,7 @@ export class Customer {
   bubble: Bubble | null = null;
   needsBag = false;
   hurry = false;
+  manualServed = false;
 
   constructor(readonly id: number, readonly npc: NpcDef, p: P, budget: number) {
     this.mover = new Mover(p);
@@ -130,6 +135,17 @@ export class Worker {
   }
 }
 
+export class CatAgent {
+  mover: Mover;
+  mode: 'walk' | 'sit' | 'sleep' = 'sleep';
+  timer = 0;
+  bubble: Bubble | null = null;
+
+  constructor(p: P) {
+    this.mover = new Mover(p);
+  }
+}
+
 export type OvenState = { phase: 'idle' } | { phase: 'loading'; bread: Bread } | { phase: 'baking'; bread: Bread; t: number } | { phase: 'ready'; bread: Bread; t: number };
 export const BAKE_MIN = 18;
 /** Manual window in real seconds at 1x; shorter when fast-forwarding. */
@@ -143,6 +159,8 @@ export type SimEvent =
   | { type: 'staffLevel'; staff: number; skill: Skill; level: number }
   | { type: 'money'; amount: number; x: number; y: number }
   | { type: 'productLevel'; id: string; level: number }
+  | { type: 'growth'; what: 'reputation' | 'cat' | EquipKind | Category; level: number }
+  | { type: 'gift'; id: string; units: number; value: number }
   | { type: 'unlock'; id: string }
   | { type: 'closed' };
 
@@ -168,10 +186,12 @@ export class Sim {
   arrivals: { t: number; npc: NpcDef }[] = [];
   stats: DayStats;
   priority = new Set<string>();
+  playerPriority = new Set<string>();
   floaters: Floater[] = [];
   closing = false;
   done = false;
   listeners: ((e: SimEvent) => void)[] = [];
+  cat: CatAgent;
   private nextCust = 1;
 
   constructor(readonly state: GameState) {
@@ -182,6 +202,65 @@ export class Sim {
       day: state.day, revenue: 0, goodsCost: 0, wages: 0, rent: 0, restock: 0, customers: 0, manual: 0, levelUps: 0, avgAffinity: 0,
     };
     this.buildLines();
+    this.cat = new CatAgent(this.catSpot());
+  }
+
+  /** Random open floor tile in the store interior. */
+  private catSpot(): P {
+    for (let i = 0; i < 40; i++) {
+      const p = { x: this.rng.int(0, this.layout.w - 1), y: this.rng.int(1, this.layout.h - 3) };
+      if (this.grid.walkable(p.x, p.y)) return p;
+    }
+    return { x: 2, y: 1 };
+  }
+
+  private updateCat(dt: number): void {
+    const c = this.cat;
+    const st = this.state.cat;
+    c.mover.step(dt, 0.5);
+    if (c.bubble && c.bubble.until < this.clock) c.bubble = null;
+    st.mood += (50 - st.mood) * 0.0008 * dt;
+    if (gainCat(this.state, dt * 0.02)) this.emit({ type: 'growth', what: 'cat', level: st.level });
+    if (c.mode === 'walk') {
+      if (c.mover.path.length === 0) {
+        c.mode = this.rng.chance(0.4) ? 'sleep' : 'sit';
+        c.timer = c.mode === 'sleep' ? this.rng.range(40, 120) : this.rng.range(15, 50);
+      }
+      return;
+    }
+    c.timer -= dt;
+    if (c.timer <= 0) {
+      c.mode = 'walk';
+      c.mover.goTo(this.grid, this.catSpot());
+    }
+  }
+
+  /** Player petting; limited per day so it stays a small daily ritual. */
+  petCat(): boolean {
+    const st = this.state.cat;
+    if (st.petDay !== this.state.day) {
+      st.petDay = this.state.day;
+      st.pets = 0;
+    }
+    this.cat.bubble = { icon: 'b_heart', until: this.clock + 2 };
+    if (this.cat.mode === 'sleep') {
+      this.cat.mode = 'sit';
+      this.cat.timer = 20;
+    }
+    if (st.pets >= PETS_PER_DAY) return false;
+    st.pets += 1;
+    st.mood = Math.min(100, st.mood + 10);
+    if (gainCat(this.state, 4)) this.emit({ type: 'growth', what: 'cat', level: st.level });
+    return true;
+  }
+
+  feedCat(): boolean {
+    const st = this.state.cat;
+    if (st.fedDay === this.state.day) return false;
+    st.fedDay = this.state.day;
+    st.mood = Math.min(100, st.mood + 25);
+    if (gainCat(this.state, 10)) this.emit({ type: 'growth', what: 'cat', level: st.level });
+    return true;
   }
 
   on(fn: (e: SimEvent) => void): void {
@@ -221,11 +300,16 @@ export class Sim {
     this.restockAll();
     const roster = NPCS.slice(0, LEVELS[this.state.level].roster);
     const appeal = Math.min(0.15, this.placed().length * 0.006);
+    const rep = repTraffic(this.state.reputation.level);
+    const traffic = trafficMult(this.state.seed, this.state.day);
+    this.supplierGifts();
     for (const npc of roster) {
       const st = this.state.npcs[npc.id];
-      const p = 0.22 + st.affinity / 220 + appeal;
+      const aff = affinityValue(st.fond.level);
+      const cat = catLover(npc.index) ? catAppeal(this.state.cat.level, this.state.cat.mood) : 0;
+      const p = (0.22 + aff / 220 + appeal + rep + cat) * traffic;
       if (this.rng.chance(p)) this.arrivals.push({ t: this.arrivalTime(), npc });
-      if (st.affinity > 70 && this.rng.chance((st.affinity - 70) / 100)) this.arrivals.push({ t: this.arrivalTime(), npc });
+      if (aff > 70 && this.rng.chance((aff - 70) / 100)) this.arrivals.push({ t: this.arrivalTime(), npc });
     }
     this.arrivals.sort((a, b) => a.t - b.t);
     const spots = [this.layout.registers[0].cashier, { x: 2, y: 1 }, { x: 4, y: 1 }, { x: 6, y: 1 }];
@@ -251,13 +335,15 @@ export class Sim {
       for (const s of f.slots) {
         if (!s.product) continue;
         const p = PRODUCT_BY_ID.get(s.product)!;
+        const unit = costOf(this.state, p);
         const need = cap - s.stock;
-        const afford = Math.min(need, Math.floor(this.state.money / p.cost));
+        const afford = Math.min(need, Math.floor(this.state.money / unit));
         if (afford <= 0) continue;
-        const c = afford * p.cost;
+        const c = afford * unit;
         this.state.money -= c;
         spent += c;
         s.stock += afford;
+        this.supplierExp(p.id, afford);
       }
     }
     this.stats.restock += spent;
@@ -280,6 +366,7 @@ export class Sim {
     for (const c of this.customers) this.updateCustomer(c, dtMin);
     this.customers = this.customers.filter((c) => !(c.state === 'leave' && c.mover.path.length === 0 && c.mover.y >= this.layout.h + 1));
     this.updateOven(dtMin);
+    this.updateCat(dtMin);
     this.assignTasks();
     for (const w of this.workers) this.updateWorker(w, dtMin);
     for (const line of this.allLines()) this.updateLine(line, dtMin);
@@ -313,7 +400,7 @@ export class Sim {
 
   private planTargets(c: Customer): Target[] {
     const npc = c.npc;
-    const aff = this.state.npcs[npc.id].affinity;
+    const aff = affinityValue(this.state.npcs[npc.id].fond.level);
     const picks: { tg: Target; price: number; w: number }[] = [];
     for (const f of this.placed()) {
       f.slots.forEach((s, i) => {
@@ -321,7 +408,7 @@ export class Sim {
         const p = PRODUCT_BY_ID.get(s.product)!;
         const fav = npc.favs.includes(p.id);
         const like = npc.likes.includes(p.cat);
-        const prob = 0.08 + (like ? 0.28 : 0) + (fav ? 0.75 : 0) + aff * 0.004;
+        const prob = Math.min(0.95, (0.08 + (like ? 0.28 : 0) + (fav ? 0.75 : 0) + aff * 0.004) * demandMult(this.state.seed, this.state.day, p.id));
         if (this.rng.chance(prob)) picks.push({ tg: { t: 'slot', fixture: f.id, slot: i }, price: this.priceOf(p.id), w: fav ? 3 : like ? 2 : 1 });
       });
     }
@@ -342,7 +429,7 @@ export class Sim {
       }
     }
     for (const s of this.layout.stations) {
-      const want = npc.stations[s.kind] * (0.5 + aff / 100);
+      const want = npc.stations[s.kind] * (0.5 + aff / 100) * stationMult(this.state.seed, this.state.day, s.kind);
       if (this.rng.chance(want)) out.push(s.kind === 'bakery' ? { t: 'bakery' } : { t: 'station', kind: s.kind });
     }
     return this.orderTargets(out);
@@ -477,7 +564,7 @@ export class Sim {
     if (this.rng.chance(fav ? 0.5 : 0.18) && s.stock >= 2 && price * 2 <= remaining) qty = 2;
     s.stock -= qty;
     c.spent += price * qty;
-    c.basket.push({ kind: 'product', id: p.id, price, cost: p.cost, qty });
+    c.basket.push({ kind: 'product', id: p.id, price, cost: costOf(this.state, p), qty });
     this.productSold(p.id, qty);
     if (fav) {
       c.affinityDelta += 1.5;
@@ -642,7 +729,10 @@ export class Sim {
     if (wp.affinity < 0) c.bubble = { icon: 'b_wait', until: this.clock + 3 };
     const bought = c.basket.length > 0;
     const exp = bought ? (5 + c.spent * 0.6) * c.mult * wp.mult : 1;
-    st.affinity = Math.max(0, Math.min(100, st.affinity + c.affinityDelta + wp.affinity + (bought ? 1 : -0.5)));
+    const mood = c.affinityDelta + wp.affinity + (bought ? 1 : -0.5);
+    changeAffinity(st.fond, mood);
+    const repUps = gainReputation(this.state, Math.max(0, 1 + mood) * (c.manualServed ? 2 : 1));
+    if (repUps) this.emit({ type: 'growth', what: 'reputation', level: this.state.reputation.level });
     st.visits += 1;
     const ups = addExp(st, exp, npcExpToNext);
     if (ups > 0) {
@@ -683,10 +773,11 @@ export class Sim {
     if (line.progress >= line.duration) {
       const skill = this.lineSkill(line);
       this.gainSkill(w, skill, line.kind === 'register' ? 2 + front.itemCount() * 0.3 : 3);
+      this.equipExp(this.lineEquip(line), 1);
       this.finishService(line, { accuracy: 1, seconds: 0, manual: false });
       if (line.kind === 'bagging' && this.rng.chance(0.18 / w.speed('bagging'))) {
         const st = this.state.npcs[front.npc.id];
-        st.affinity = Math.max(0, st.affinity - 1);
+        changeAffinity(st.fond, -1);
       }
     }
   }
@@ -697,8 +788,12 @@ export class Sim {
     return line.station as Skill;
   }
 
+  lineEquip(line: Line): EquipKind {
+    return line.kind === 'register' ? 'register' : line.kind === 'bagging' ? 'bagging' : (line.station as EquipKind);
+  }
+
   private autoDuration(line: Line, c: Customer, w: Worker): number {
-    const sp = w.speed(this.lineSkill(line));
+    const sp = w.speed(this.lineSkill(line)) * equipSpeed(this.state.equipment[this.lineEquip(line)].level);
     if (line.kind === 'register') {
       const items = c.itemCount();
       const bagInline = this.bagging ? 0 : 0.12 * items;
@@ -909,7 +1004,10 @@ export class Sim {
       const need = 2 / w.speed('bakery');
       if (t.timer >= need) {
         if (t.phase === 'load' && this.oven.phase === 'idle') this.startBake();
-        if (t.phase === 'unload' && this.oven.phase === 'ready') this.unloadOven(['good', 'good', 'good', 'good']);
+        if (t.phase === 'unload' && this.oven.phase === 'ready') {
+          this.unloadOven(['good', 'good', 'good', 'good']);
+          this.equipExp('oven', 1);
+        }
         this.gainSkill(w, 'bakery', 3);
         w.task = { type: 'none' };
       }
@@ -952,14 +1050,18 @@ export class Sim {
     t.timer += dt;
     if (t.timer >= (0.8 + 0.12 * units) / w.speed('restock')) {
       const p = PRODUCT_BY_ID.get(s.product!)!;
-      const n = Math.min(units, Math.floor(this.state.money / p.cost));
+      const unit = costOf(this.state, p);
+      const n = Math.min(units, Math.floor(this.state.money / unit));
+      const key = `${f.id}:${t.slot}`;
       if (n > 0) {
         s.stock += n;
-        const c = n * p.cost;
+        const c = n * unit;
         this.state.money -= c;
         this.stats.restock += c;
+        this.supplierExp(p.id, n * (this.playerPriority.has(key) ? 2 : 1));
       }
-      this.priority.delete(`${f.id}:${t.slot}`);
+      this.priority.delete(key);
+      this.playerPriority.delete(key);
       this.gainSkill(w, 'restock', 1 + n * 0.25);
       w.carrying = false;
       w.task = { type: 'none' };
@@ -980,10 +1082,14 @@ export class Sim {
   manualLine(line: Line, result: ServiceResult): void {
     const owner = this.workers[0];
     this.gainSkill(owner, this.lineSkill(line), 2);
+    this.equipExp(this.lineEquip(line), 3);
+    const c = line.front();
+    if (c) c.manualServed = true;
     this.finishService(line, result);
   }
 
   manualOven(qualities: (BreadQuality | 'burnt' | 'raw')[]): void {
+    this.equipExp('oven', 3);
     for (const w of this.workers) if (w.task.type === 'oven') w.task = { type: 'none' };
     this.stats.manual += 1;
     this.unloadOven(qualities);
@@ -991,6 +1097,36 @@ export class Sim {
 
   prioritize(fixture: number, slot: number): void {
     this.priority.add(`${fixture}:${slot}`);
+    this.playerPriority.add(`${fixture}:${slot}`);
+  }
+
+  private supplierExp(productId: string, units: number): void {
+    if (gainSupplier(this.state, productId, units)) {
+      const cat = PRODUCT_BY_ID.get(productId)!.cat;
+      this.emit({ type: 'growth', what: cat, level: this.state.suppliers[cat].level });
+    }
+  }
+
+  private equipExp(kind: EquipKind, amount: number): void {
+    if (gainEquipment(this.state, kind, amount)) this.emit({ type: 'growth', what: kind, level: this.state.equipment[kind].level });
+  }
+
+  /** Suppliers occasionally send free goods; credited as a rebate since shelves start full. */
+  private supplierGifts(): void {
+    const seen = new Set<string>();
+    for (const f of this.placed()) {
+      for (const s of f.slots) {
+        if (!s.product || seen.has(s.product)) continue;
+        seen.add(s.product);
+        const p = PRODUCT_BY_ID.get(s.product)!;
+        if (!this.rng.chance(giftChance(this.state.suppliers[p.cat].level) / 4)) continue;
+        const units = this.rng.int(2, 4);
+        const value = units * costOf(this.state, p);
+        this.state.money += value;
+        this.stats.restock -= value;
+        this.emit({ type: 'gift', id: p.id, units, value });
+      }
+    }
   }
 
   endDayCosts(): void {
@@ -1000,6 +1136,9 @@ export class Sim {
     this.stats.wages = wages;
     this.stats.rent = rent;
     const vals = Object.values(this.state.npcs).slice(0, LEVELS[this.state.level].roster);
-    this.stats.avgAffinity = vals.reduce((a, b) => a + b.affinity, 0) / Math.max(1, vals.length);
+    this.stats.avgAffinity = vals.reduce((a, b) => a + b.fond.level, 0) / Math.max(1, vals.length);
+    this.stats.reputation = this.state.reputation.level;
+    this.stats.weather = weatherOf(this.state.seed, this.state.day);
+    this.stats.holiday = holidayOf(this.state.day);
   }
 }

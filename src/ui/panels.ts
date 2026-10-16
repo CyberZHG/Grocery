@@ -2,7 +2,7 @@ import { money, npcName, staffName, t, type Key } from '../i18n';
 import { LEVELS, NPC_ROW0, NPCS, OWNER_ROW, PRODUCT_BY_ID, SKILLS, STAFF_ROW0, TRAIT_BY_ID, unlockedSkills, type Skill } from '../game/defs';
 import type { Game } from '../game/game';
 import { buildLayout, canPlace, type FixturePlacement } from '../game/layout';
-import { npcExpToNext, skillExpToNext, skillSpeed, type Leveled } from '../game/rules';
+import { affinityExpToNext, npcExpToNext, skillExpToNext, skillSpeed, type Leveled } from '../game/rules';
 import { saveGame, type DayStats, type Role, type StaffState } from '../game/state';
 import { charIcon, productIcon, type UI } from './app';
 import { h } from './dom';
@@ -102,7 +102,7 @@ export function regularsPanel(g: Game): HTMLElement {
     const sorted = roster.slice().sort((a, b) => {
       const sa = g.state.npcs[a.id];
       const sb = g.state.npcs[b.id];
-      return sort === 'affinity' ? sb.affinity - sa.affinity || sb.level - sa.level : sb.level - sa.level || sb.exp - sa.exp;
+      return sort === 'affinity' ? sb.fond.level - sa.fond.level || sb.fond.exp - sa.fond.exp || sb.level - sa.level : sb.level - sa.level || sb.exp - sa.exp;
     });
     for (const n of sorted) {
       const s = g.state.npcs[n.id];
@@ -111,11 +111,11 @@ export function regularsPanel(g: Game): HTMLElement {
           charIcon(NPC_ROW0 + n.index),
           h('div', { class: 'card-title' }, [
             h('strong', {}, [npcName(n.id)]),
-            h('span', { class: 'muted' }, [`${t('common.level', { n: s.level })} · ${s.visits ? t('npc.visits', { n: s.visits }) : t('npc.notMet')}`]),
+            h('span', { class: 'muted' }, [s.visits ? t('npc.visits', { n: s.visits }) : t('npc.notMet')]),
           ]),
         ]),
-        h('div', { class: 'kv' }, [h('span', {}, [t('npc.affinity')]), bar(s.affinity / 100, 'heart')]),
-        h('div', { class: 'kv' }, [h('span', {}, ['EXP']), bar(s.exp / npcExpToNext(s.level))]),
+        h('div', { class: 'kv' }, [h('span', {}, [`${t('npc.affinity')} ${t('common.level', { n: s.fond.level })}`]), bar(s.fond.exp / affinityExpToNext(s.fond.level), 'heart')]),
+        h('div', { class: 'kv' }, [h('span', {}, [`${t('npc.shopper')} ${t('common.level', { n: s.level })}`]), bar(s.exp / npcExpToNext(s.level))]),
         h('div', { class: 'kv' }, [h('span', {}, [t('npc.likes')]), h('span', {}, [n.likes.map((c) => t(`cat.${c}` as Key)).join(' · ')])]),
         h('div', { class: 'kv' }, [h('span', {}, [t('npc.favorites')]), h('div', { class: 'row' }, n.favs.map((f) => productIcon(PRODUCT_BY_ID.get(f)!.index)))]),
       ]));
@@ -124,7 +124,7 @@ export function regularsPanel(g: Game): HTMLElement {
   render();
   const sel = h('select', { class: 'select', onchange: (e: Event) => { sort = (e.target as HTMLSelectElement).value as typeof sort; render(); } }, [
     h('option', { value: 'affinity' }, [t('npc.sortAffinity')]),
-    h('option', { value: 'level' }, [t('npc.sortLevel')]),
+    h('option', { value: 'level' }, [t('npc.shopper')]),
   ]);
   return h('div', { class: 'stack' }, [h('label', { class: 'row' }, [h('span', {}, [t('npc.sort')]), sel]), list]);
 }
@@ -197,7 +197,7 @@ export function reportPanel(s: DayStats): HTMLElement {
     ['report.cashflow', money(flow), flow >= 0 ? 'pos' : 'neg'],
     ['report.customers', String(s.customers)],
     ['report.manual', String(s.manual)],
-    ['report.affinity', s.avgAffinity.toFixed(1)],
+    ['report.affinity', `${t('common.level', { n: s.avgAffinity.toFixed(1) })}`],
     ['report.levelUps', String(s.levelUps)],
   ];
   return h('div', { class: 'report' }, rows.map(([k, v, cls]) => h('div', { class: `kv ${cls ?? ''}` }, [h('span', {}, [t(k)]), h('strong', {}, [v])])));

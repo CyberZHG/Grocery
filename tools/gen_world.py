@@ -580,6 +580,159 @@ def trophy():
     return cv
 
 
+# ---------- growth visuals ----------
+
+GOLD = hexc('e8b840')
+
+
+def upgraded(kind, base, tier):
+    """Equipment looks newer at higher levels: tier 1 adds brass trim, tier 2 a kind-specific gadget."""
+    cv = Canvas(base.w, base.h)
+    cv.blit(base, 0, 0)
+    if tier <= 0:
+        return cv
+    if kind == 'oven':
+        cv.rect(2, 2, 61, 3, GOLD)
+        cv.rect(26, 64, 37, 67, GOLD)
+    else:
+        for x in range(0, base.w):
+            if cv.get(x, 8) is not None:
+                cv.px(x, 8, GOLD)
+        cv.rect(base.w - 12, 45, base.w - 5, 49, GOLD)
+        cv.px(base.w - 10, 47, W(GOLD, -3)); cv.px(base.w - 7, 47, W(GOLD, -3))
+    if tier >= 2:
+        if kind == 'register':
+            cv.rect(24, 2, 32, 12, hexc('2a2a34'))
+            cv.rect(25, 3, 31, 7, hexc('5ad0f0'))
+            cv.rect(26, 9, 30, 10, hexc('8a8e98'))
+            cv.rect(2, 4, 10, 11, hexc('e8ecf0'))
+            cv.rect(4, 0, 8, 4, WHITE)
+        elif kind == 'oden':
+            cv.rect(2, 0, 4, 12, hexc('6a4a30'))
+            cv.rect(5, 0, 13, 9, hexc('d84848'))
+            cv.rect(6, 2, 12, 2, WHITE); cv.rect(6, 5, 12, 5, WHITE)
+            cv.rect(46, 4, 61, 7, hexc('c8ccd4'))
+        elif kind == 'deli':
+            cv.rect(2, 6, 14, 20, hexc('e8ecf0'))
+            cv.rect(4, 8, 12, 12, hexc('2a3a2a'))
+            cv.rect(5, 9, 11, 10, hexc('7ae07a'))
+        elif kind == 'coffee':
+            cv.rect(34, 2, 38, 20, hexc('c8ccd4'))
+            cv.rect(35, 9, 37, 12, hexc('2a2a30'))
+            cv.rect(9, 3, 31, 5, hexc('5ad0f0'))
+        elif kind == 'bagging':
+            cv.rect(29, 0, 34, 14, hexc('8a8e98'))
+            cv.ellipse(31.5, 3, 3, 3, hexc('e8dcc8'))
+        elif kind == 'oven':
+            cv.rect(20, 4, 43, 7, hexc('2a2a30'))
+            cv.rect(22, 5, 30, 6, hexc('f08030'))
+            cv.rect(34, 5, 41, 6, hexc('7ae07a'))
+    cv.outline(0.45) if kind == 'oden' else None
+    return cv
+
+
+def sign():
+    cv = Canvas(48, 20)
+    wood = hexc('5a3a28')
+    cv.rrect(0, 0, 47, 19, wood, 2)
+    cv.rrect(2, 2, 45, 17, hexc('2a2430'), 1)
+    cv.rect(23, 18, 24, 19, wood)
+    cv.outline(0.5)
+    return cv
+
+
+def star(filled):
+    cv = Canvas(7, 7)
+    c = hexc('f0c040') if filled else hexc('5a5266')
+    for (x, y) in ((3, 0), (3, 1), (2, 2), (3, 2), (4, 2), (0, 3), (1, 3), (2, 3), (3, 3), (4, 3), (5, 3), (6, 3),
+                   (1, 4), (2, 4), (3, 4), (4, 4), (5, 4), (1, 5), (2, 5), (4, 5), (5, 5), (1, 6), (5, 6)):
+        cv.px(x, y, c)
+    if filled:
+        cv.px(3, 2, W(c, 3))
+    return cv
+
+
+def weather_icon(kind):
+    cv = Canvas(16, 16)
+    sun = hexc('f0c040')
+    cloud = hexc('e8ecf4')
+    if kind in ('sunny', 'hot'):
+        cv.ellipse(8, 8, 4, 4, sun if kind == 'sunny' else hexc('f08030'))
+        for a in range(0, 360, 45):
+            import math as _m
+            t = _m.radians(a)
+            cv.px(8 + 6.5 * _m.cos(t) - 0.5, 8 + 6.5 * _m.sin(t) - 0.5, sun if kind == 'sunny' else hexc('f05030'))
+        cv.px(6, 6, W(sun, 3))
+    else:
+        dark = kind in ('rain', 'snow')
+        c = W(cloud, -2) if dark else cloud
+        cv.ellipse(6, 8, 4, 3.5, c)
+        cv.ellipse(10, 7, 4.5, 4, c)
+        cv.rect(3, 8, 13, 10, c)
+        if kind == 'cloudy':
+            cv.ellipse(12, 4, 2.5, 2.5, sun)
+            cv.ellipse(6, 8, 4, 3.5, cloud)
+            cv.ellipse(10, 7, 4.5, 4, cloud)
+        if kind == 'rain':
+            for x in (4, 8, 12):
+                cv.px(x, 12, hexc('5aa8e0')); cv.px(x - 1, 13, hexc('5aa8e0'))
+        if kind == 'snow':
+            for x in (4, 8, 12):
+                cv.px(x, 13, WHITE); cv.px(x - 1, 14, WHITE); cv.px(x + 1, 14, WHITE)
+    cv.outline(0.5)
+    return cv
+
+
+def cat(frame):
+    """Orange tabby, side view facing right. frames: sit, walk1, walk2, sleep."""
+    cv = Canvas(24, 18)
+    fur = hexc('e89040')
+    dark = W(fur, -2)
+    light = hexc('f8e0c0')
+    if frame == 'sleep':
+        cv.ellipse(12, 12, 9, 5, fur)
+        cv.ellipse(18, 11, 4, 3.5, fur)
+        cv.poly([(16, 8), (17, 5), (19, 8)], fur)
+        cv.poly([(19, 8), (21, 5), (22, 9)], fur)
+        cv.line(4, 14, 14, 16, dark, 2)
+        for x in (8, 11, 14):
+            cv.vline(x, 8, 9, dark)
+        cv.hline(17, 19, 11, hexc('3a2a20'))
+        cv.hline(20, 21, 11, hexc('3a2a20'))
+        cv.ellipse(12, 15, 6, 1.5, light)
+    else:
+        body_y = 11 if frame == 'sit' else 10
+        if frame == 'sit':
+            cv.ellipse(10, 11, 6, 5, fur)
+            cv.ellipse(9, 15, 5, 2, fur)
+            cv.line(4, 14, 1, 8, fur, 2)
+        else:
+            cv.ellipse(11, body_y, 7, 3.5, fur)
+            step = 1 if frame == 'walk1' else -1
+            for (x, d) in ((6, step), (9, -step), (14, step), (16, -step)):
+                cv.vline(x + d, body_y + 2, 16, fur if d > 0 else dark)
+            cv.line(4, body_y - 1, 1, body_y - 6, fur, 2)
+        hx, hy = (16, 6) if frame == 'sit' else (18, 7)
+        cv.ellipse(hx, hy, 4, 3.5, fur)
+        cv.poly([(hx - 3, hy - 2), (hx - 2, hy - 6), (hx, hy - 3)], fur)
+        cv.poly([(hx + 1, hy - 3), (hx + 3, hy - 6), (hx + 4, hy - 1)], fur)
+        cv.px(hx + 1, hy, hexc('2a2030'))
+        cv.px(hx + 3, hy + 1, hexc('e08080'))
+        cv.ellipse(hx + 1, hy + 2, 2, 1, light)
+        for x in range(hx - 9, hx - 2, 3):
+            cv.vline(x, body_y - 2, body_y - 1, dark)
+    cv.outline(0.5)
+    return cv
+
+
+def treat():
+    cv = Canvas(12, 10)
+    cv.ellipse(6, 6, 5, 3, hexc('d8d0c0'))
+    cv.ellipse(6, 5, 3.5, 1.6, hexc('e86a5a'))
+    cv.outline(0.5)
+    return cv
+
+
 def shadow():
     cv = Canvas(24, 8)
     cv.ellipse(12, 4, 11, 3.5, (30, 20, 40, 70))
