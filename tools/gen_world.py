@@ -413,16 +413,42 @@ def oden_counter():
 def deli_counter():
     cv = Canvas(64, 56)
     counter_base(cv, top=hexc('e8ecf0'), front=hexc('5a6a7a'))
-    cv.rect(2, 26, 61, 46, hexc('9ec8d8'))
-    for i, c in enumerate((hexc('e8a0a0'), hexc('c84848'), hexc('e8c8a0'), hexc('f0c040'))):
-        cv.rrect(5 + i * 14, 34, 15 + i * 14, 43, c, 2)
-        cv.shade_ball(10 + i * 14, 38, 6, 5, 0.6, dither=False)
-    cv.line(6, 44, 30, 27, (255, 255, 255, 150))
-    cv.rect(36, 2, 58, 20, STEEL)
-    cv.ellipse(46, 11, 8, 8, hexc('d8dce4'))
-    cv.ellipse(46, 11, 2, 2, STEEL)
-    cv.rect(50, 14, 58, 20, W(STEEL, -1))
-    cv.shade_box(36, 2, 58, 20, 0.5)
+    cv.rect(4, 14, 24, 21, hexc('c8a070'))
+    cv.hline(4, 24, 14, hexc('e0bc88'))
+    for i in range(4):
+        cv.ellipse(9 + i * 4, 17, 3, 2, hexc('f0a8b0') if i % 2 else hexc('e898a0'))
+    cv.rect(36, 13, 60, 22, STEEL)
+    cv.hline(36, 60, 13, W(STEEL, 2))
+    cv.ellipse(44, 9, 8, 8, hexc('c8ccd4'))
+    cv.ellipse(44, 9, 7, 7, hexc('e8ecf0'))
+    cv.ellipse(44, 9, 2, 2, W(STEEL, -2))
+    cv.line(39, 5, 42, 8, WHITE)
+    cv.rect(50, 8, 60, 15, hexc('e8a0a8'))
+    cv.ellipse(50, 11.5, 2, 3.5, hexc('f4c0c4'))
+    cv.shade_cyl(50, 8, 60, 15, 0.6)
+    glass = hexc('b8dce8')
+    cv.rect(2, 26, 61, 47, glass)
+    cv.shade_vgrad(2, 26, 61, 47, 0.5, -0.4)
+    cv.hline(2, 61, 37, hexc('e8f0f4'))
+    meats = [('e8a0a8', 'f4c8cc'), ('a83a3a', 'd86a6a'), ('e8d0a8', 'f4e4c8'), ('9a4a3a', 'c87060')]
+    for i, (a, b) in enumerate(meats):
+        x = 4 + i * 14
+        cv.rrect(x, 30, x + 11, 35, hexc(a), 2)
+        cv.ellipse(x + 11, 32.5, 1.5, 2.5, hexc(b))
+        if i == 1:
+            cv.px(x + 3, 32, hexc('f4e0d0')); cv.px(x + 6, 33, hexc('f4e0d0')); cv.px(x + 8, 31, hexc('f4e0d0'))
+    cv.poly([(5, 46), (17, 46), (17, 40)], hexc('f0c840'))
+    cv.px(13, 44, hexc('d8a828')); cv.px(15, 42, hexc('d8a828'))
+    cv.ellipse(28, 43.5, 6, 2.5, hexc('e8a0a8'))
+    cv.ellipse(28, 42.5, 5, 2, hexc('f4c0c4'))
+    cv.rrect(40, 40, 58, 46, hexc('f4f0e8'), 1)
+    for x in (43, 49, 55):
+        cv.ellipse(x, 42.5, 2, 1.5, hexc('8ab060'))
+    for i in range(4):
+        cv.rect(6 + i * 14, 36, 9 + i * 14, 36, WHITE)
+    cv.line(6, 46, 26, 27, (255, 255, 255, 140))
+    cv.line(9, 46, 29, 27, (255, 255, 255, 70))
+    cv.rect(2, 48, 61, 51, W(STEEL, -1))
     return cv
 
 
@@ -446,44 +472,100 @@ def oven():
 def bread_case():
     cv = Canvas(64, 56)
     counter_base(cv, top=hexc('e8dcc8'), front=hexc('a07048'))
-    cv.rect(2, 0, 61, 22, hexc('cfe6ee'))
-    cv.rect(2, 0, 61, 1, WOOD)
-    cv.rect(2, 11, 61, 12, WOOD)
-    cv.line(4, 20, 18, 2, (255, 255, 255, 160))
+    glass = hexc('d4ecf2')
+    cv.rect(2, 0, 61, 23, glass)
+    cv.shade_vgrad(2, 0, 61, 23, 0.3, -0.3)
+    cv.rect(1, 0, 62, 1, WOOD)
+    cv.rect(1, 0, 2, 23, WOOD)
+    cv.rect(61, 0, 62, 23, WOOD)
+    for y in (11, 22):
+        cv.rect(3, y, 60, y + 1, W(WOOD, 1))
+        for x in range(4, 60, 4):
+            cv.px(x, y - 1, hexc('f8f4ec'))
+    cv.rect(10, 30, 53, 44, hexc('3a3a34'))
+    cv.rect(11, 31, 52, 43, hexc('2e3a30'))
+    fake_text(cv, 14, 33, 40, hexc('f4f0e8'), 7)
+    fake_text(cv, 14, 37, 34, hexc('e8d8a8'), 8)
+    fake_text(cv, 14, 41, 44, hexc('f4f0e8'), 9)
+    cv.ellipse(47, 38, 3.5, 2.5, hexc('d8984a'))
+    cv.hline(45, 49, 37, hexc('f0c070'))
     return cv
 
 
 def coffee_bar():
     cv = Canvas(64, 56)
     counter_base(cv, top=hexc('5a4a40'), front=hexc('3a2a24'))
-    cv.rect(6, 0, 34, 20, hexc('c8ccd4'))
-    cv.rect(8, 2, 32, 7, hexc('3a3a44'))
-    for x in (12, 26):
-        cv.rect(x - 2, 9, x + 2, 12, hexc('2a2a30'))
-        cv.rect(x - 1, 13, x + 1, 15, STEEL)
-    cv.rect(10, 17, 30, 20, hexc('8a8e98'))
-    cv.shade_box(6, 0, 34, 20, 0.5)
-    for i, c in enumerate((hexc('f0f0f0'), hexc('e8c890'), hexc('8a5a3a'))):
-        x = 40 + i * 7
-        cv.rect(x, 10, x + 4, 20, c)
-        cv.shade_cyl(x, 10, x + 4, 20)
-    cv.rect(18, 32, 45, 44, hexc('e8d0a0'))
-    cv.ellipse(31.5, 38, 4, 3.5, hexc('6a3a20'))
+    body = hexc('c8ccd4')
+    cv.rrect(4, 1, 34, 21, body, 2)
+    cv.hline(5, 33, 1, W(body, 2))
+    for x in (10, 20):
+        cv.rect(x, -1 + 1, x + 4, 0 + 1, WHITE)
+    cv.rect(6, 4, 32, 10, hexc('3a3a44'))
+    cv.ellipse(19, 7, 2.5, 2.5, WHITE)
+    cv.px(19, 6, DARK); cv.px(20, 7, hexc('c84848'))
+    cv.px(9, 6, hexc('e84848')); cv.px(29, 6, hexc('7ae07a'))
+    for x in (11, 27):
+        cv.rect(x - 3, 11, x + 3, 13, hexc('8a8e98'))
+        cv.rect(x - 1, 14, x + 1, 15, STEEL)
+        cv.hline(x + 2, x + 7 if x == 11 else x + 6, 13, hexc('2a2228'))
+    cv.line(33, 8, 36, 17, STEEL)
+    cv.rect(6, 18, 32, 20, hexc('5a5e68'))
+    for x in range(7, 32, 2):
+        cv.px(x, 19, hexc('8a8e98'))
+    cv.shade_box(4, 1, 34, 21, 0.4)
+    cv.rect(39, 4, 46, 10, hexc('d8ecf0'))
+    cv.rect(40, 6, 45, 10, hexc('5a3420'))
+    for (x, y) in ((41, 7), (43, 8), (44, 6)):
+        cv.px(x, y, hexc('8a5a30'))
+    cv.rect(38, 11, 47, 20, hexc('2a2a30'))
+    cv.rect(41, 14, 44, 16, STEEL)
+    for i in range(3):
+        y = 20 - i * 3
+        cv.poly([(50, y), (58, y), (57, y - 3), (51, y - 3)], WHITE)
+        cv.hline(51, 57, y - 2, hexc('a07048'))
+    cv.rect(8, 28, 55, 47, hexc('8a6a4a'))
+    cv.rect(10, 30, 53, 45, hexc('2a3430'))
+    fake_text(cv, 13, 32, 38, hexc('f4f0e8'), 3)
+    fake_text(cv, 13, 36, 34, hexc('e8d8a8'), 5)
+    fake_text(cv, 13, 40, 40, hexc('f4f0e8'), 6)
+    cv.rect(43, 35, 49, 41, WHITE)
+    cv.vline(50, 36, 39, WHITE)
+    cv.rect(44, 36, 48, 37, hexc('8a5a30'))
+    cv.px(45, 33, (255, 255, 255, 140)); cv.px(47, 32, (255, 255, 255, 140))
     return cv
 
 
 def bagging():
     cv = Canvas(64, 56)
     counter_base(cv, top=hexc('d8dce4'), front=hexc('6a7a5a'))
-    for i, c in enumerate((hexc('c8a070'), hexc('5a9ac0'))):
-        x0 = 6 + i * 28
-        cv.poly([(x0, 20), (x0 + 22, 20), (x0 + 20, 2), (x0 + 2, 2)], c)
-        cv.rect(x0 + 2, 2, x0 + 20, 4, W(c, 2))
-        cv.shade_cyl(x0, 2, x0 + 22, 20)
+    paper = hexc('c89a68')
+    cv.poly([(5, 21), (25, 21), (24, 6), (6, 6)], paper)
+    for x in (8, 14, 20):
+        cv.vline(x, 8, 20, W(paper, -1))
+    cv.rect(6, 6, 24, 7, W(paper, 2))
+    cv.line(10, 6, 16, -1 + 2, hexc('e8c890'), 3)
+    cv.ellipse(19, 4, 3, 2.5, hexc('6aa040'))
+    cv.px(18, 3, hexc('9ad070'))
+    cv.ellipse(9, 5, 2, 2, hexc('d84848'))
+    cv.shade_cyl(5, 6, 25, 21, 0.5)
+    blue = hexc('4a8ac0')
+    cv.rrect(30, 8, 48, 21, blue, 2)
+    cv.line(33, 8, 36, 2, W(blue, -2), 2)
+    cv.line(45, 8, 42, 2, W(blue, -2), 2)
+    cv.hline(36, 42, 2, W(blue, -2))
+    cv.rect(35, 12, 43, 16, hexc('f4f0e8'))
+    cv.ellipse(39, 14, 1.8, 1.4, hexc('6aa060'))
+    cv.shade_cyl(30, 8, 48, 21, 0.5)
+    cv.vline(55, 2, 21, STEEL)
+    cv.rect(51, 4, 59, 11, hexc('e8ecf0'))
+    cv.hline(51, 59, 7, hexc('c8ccd4'))
+    cv.poly([(53, 11), (57, 11), (58, 17), (52, 17)], (240, 244, 248, 200))
+    cv.ellipse(31.5, 37, 7, 7, hexc('f4f0e8'))
+    cv.ellipse(31.5, 37, 5.5, 5.5, hexc('6aa060'))
+    cv.poly([(28, 39), (32, 33), (35, 39)], hexc('f4f0e8'))
+    cv.vline(31, 39, 41, hexc('f4f0e8'))
     return cv
 
-
-# ---------- props / bubbles ----------
 
 def basket():
     cv = Canvas(16, 14)
@@ -594,6 +676,33 @@ def ic_wait(cv):
     cv.ellipse(11.5, 10, 7, 7, hexc('f0f2f6'))
     cv.vline(11, 5, 10, c)
     cv.hline(11, 14, 10, c)
+
+
+def ic_star(cv):
+    g = hexc('f0c040')
+    pts = []
+    for i in range(10):
+        a = math.pi / 2 + i * math.pi / 5
+        r = 7.5 if i % 2 == 0 else 3.2
+        pts.append((11.5 + r * math.cos(a), 10.5 - r * math.sin(a)))
+    cv.poly(pts, g)
+    cv.px(10, 7, hexc('fff0b0')); cv.px(11, 6, hexc('fff0b0'))
+
+
+def ic_paw(cv):
+    p = hexc('e8909a')
+    cv.ellipse(11.5, 12.5, 4, 3.2, p)
+    for (x, y) in ((6.5, 8), (9.5, 5.5), (13.5, 5.5), (16.5, 8)):
+        cv.ellipse(x, y, 1.6, 1.8, p)
+
+
+def ic_pricey(cv):
+    g = hexc('6aa060')
+    cv.rect(3, 6, 15, 15, g)
+    cv.rect(4, 7, 14, 14, hexc('b8d8a8'))
+    cv.ellipse(9, 10.5, 2, 2.5, g)
+    cv.ellipse(18, 7, 2, 2.6, hexc('7ab0e8'))
+    cv.poly([(16.5, 6), (19.5, 6), (18, 3)], hexc('7ab0e8'))
 
 
 def trophy():

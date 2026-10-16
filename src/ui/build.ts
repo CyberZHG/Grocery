@@ -1,5 +1,5 @@
 import { money, productName, t, type Key } from '../i18n';
-import { CATEGORIES, DECOR_KINDS, DECOR_UNLOCK, FIXTURES, NPCS, PRODUCT_BY_ID, PRODUCTS, type Category, type DecorKind, type FixtureKind, type ProductDef } from '../game/defs';
+import { CATEGORIES, DECOR_KINDS, DECOR_PRICE, DECOR_UNLOCK, FIXTURES, NPCS, PRODUCT_BY_ID, PRODUCTS, type Category, type DecorKind, type FixtureKind, type ProductDef } from '../game/defs';
 import { rosterSize } from '../game/growth';
 import { categoryLevels, isUnlocked, levelsNeeded, MAX_PRODUCT_LEVEL, priceMult, productExpToNext, unlockIndex } from '../game/progress';
 import type { Game } from '../game/game';
@@ -156,7 +156,7 @@ export class BuildMode {
   }
 
   private buy(kind: FixtureKind, decor?: DecorKind): void {
-    const price = FIXTURES[kind].price;
+    const price = decor ? DECOR_PRICE[decor] : FIXTURES[kind].price;
     if (this.state.money < price) {
       this.ui.toast(t('build.noMoney'));
       return;
@@ -208,7 +208,7 @@ export class BuildMode {
   }
 
   private refundValue(f: FixtureState): number {
-    let v = FIXTURES[f.kind].price * 0.5;
+    let v = (f.decor ? DECOR_PRICE[f.decor as DecorKind] ?? FIXTURES.decor.price : FIXTURES[f.kind].price) * 0.5;
     for (const s of f.slots) if (s.product) v += s.stock * PRODUCT_BY_ID.get(s.product)!.cost;
     return v;
   }
@@ -275,8 +275,8 @@ export class BuildMode {
       h('span', { class: 'tag' }, [t('build.decor')]),
       ...DECOR_KINDS.map((k) => {
         const open = rep >= DECOR_UNLOCK[k];
-        return h('button', { class: 'btn small', disabled: !open || st.money < FIXTURES.decor.price, onclick: () => this.buy('decor', k) }, [
-          open ? `${t(`decor.${k}` as Key)} ${money(FIXTURES.decor.price)}` : `${t(`decor.${k}` as Key)} · ${t('reno.needs', { n: DECOR_UNLOCK[k] })}`,
+        return h('button', { class: 'btn small', disabled: !open || st.money < DECOR_PRICE[k], onclick: () => this.buy('decor', k) }, [
+          open ? `${t(`decor.${k}` as Key)} ${money(DECOR_PRICE[k])}` : `${t(`decor.${k}` as Key)} · ${t('reno.needs', { n: DECOR_UNLOCK[k] })}`,
         ]);
       }),
     ]));

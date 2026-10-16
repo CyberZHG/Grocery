@@ -1,5 +1,5 @@
 import { money, npcName, productName, staffName, t, type Key } from '../i18n';
-import { GIFT_KINDS, GIFT_LEVELS, LEVELS, NPC_ROW0, NPCS, OWNER_ROW, PRODUCT_BY_ID, SKILLS, STAFF_ROW0, TRAIT_BY_ID, unlockedSkills, type Skill } from '../game/defs';
+import { favBread, GIFT_KINDS, GIFT_LEVELS, LEVELS, NPC_ROW0, NPCS, OWNER_ROW, PRODUCT_BY_ID, SKILLS, STAFF_ROW0, TRAIT_BY_ID, unlockedSkills, type Skill } from '../game/defs';
 import { rosterSize } from '../game/growth';
 import { spriteIcon } from './achievements';
 
@@ -123,6 +123,9 @@ export function regularsPanel(g: Game): HTMLElement {
         h('div', { class: 'kv' }, [h('span', {}, [`${t('npc.shopper')} ${t('common.level', { n: s.level })}`]), bar(s.exp / npcExpToNext(s.level))]),
         h('div', { class: 'kv' }, [h('span', {}, [t('npc.likes')]), h('span', {}, [n.likes.map((c) => t(`cat.${c}` as Key)).join(' · ')])]),
         h('div', { class: 'kv' }, [h('span', {}, [t('npc.favorites')]), h('div', { class: 'row' }, n.favs.map((f) => productIcon(PRODUCT_BY_ID.get(f)!.index)))]),
+        LEVELS[g.state.level].stations.includes('bakery')
+          ? h('div', { class: 'kv' }, [h('span', {}, [t('npc.favBread')]), h('span', { class: 'row' }, [spriteIcon(`bread_${favBread(n.index)}_golden`), t(`bakery.${favBread(n.index)}`)])])
+          : null,
         h('div', { class: 'kv' }, [h('span', {}, [t('npc.gifts')]), h('div', { class: 'row gifts' }, GIFT_KINDS.map((k, i) =>
           i < (g.state.gifts[n.id] ?? 0)
             ? spriteIcon(`gift_${k}`)

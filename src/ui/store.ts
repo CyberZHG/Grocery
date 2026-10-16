@@ -1,5 +1,5 @@
 import { money, t, type Key } from '../i18n';
-import { CATEGORIES, FLOOR_STYLES, LEVELS, SIGN_STYLES, STYLE_UNLOCK, WALL_STYLES } from '../game/defs';
+import { CAT_ACC_PRICE, CAT_ACCS, CATEGORIES, FLOOR_STYLES, LEVELS, SIGN_STYLES, STYLE_PRICE, STYLE_UNLOCK, WALL_STYLES } from '../game/defs';
 import { catName } from '../game/names';
 import { saveGame } from '../game/state';
 import type { Game } from '../game/game';
@@ -95,7 +95,10 @@ function catCard(g: Game, ui: UI): HTMLElement {
   const pose = g.sim.cat.mode === 'walk' ? 'sit' : g.sim.cat.mode;
   return h('div', { class: 'card' }, [
     h('div', { class: 'card-head' }, [
-      spriteIcon(`cat_${g.state.catCoat}_${pose}`, 2),
+      h('span', { class: 'layered' }, [
+        spriteIcon(`cat_${g.state.catCoat}_${pose}`, 2),
+        g.state.catAcc ? spriteIcon(`cacc_${g.state.catAcc}_${pose}`, 2) : null,
+      ]),
       h('div', { class: 'card-title' }, [
         h('strong', {}, [catName(g.state)]),
         h('span', { class: 'muted' }, [`${t(`coat.${g.state.catCoat}` as Key)} · ${t('store.pets', { n: pets, max: PETS_PER_DAY })}`]),
@@ -110,6 +113,26 @@ function catCard(g: Game, ui: UI): HTMLElement {
       h('span', { class: 'grow-eff' }, ['']),
     ]),
     h('p', { class: 'muted' }, [t('store.catHint')]),
+    h('div', { class: 'row wrap' }, [
+      h('span', { class: 'muted' }, [t('store.catAcc')]),
+      ...CAT_ACCS.map((a) => {
+        const owned = g.state.owned.includes(`acc:${a}`);
+        const worn = g.state.catAcc === a;
+        return h('button', {
+          class: `btn small${worn ? ' active' : ''}`, disabled: !owned && g.state.money < CAT_ACC_PRICE[a],
+          onclick: () => {
+            if (!owned) {
+              g.state.money -= CAT_ACC_PRICE[a];
+              g.state.owned.push(`acc:${a}`);
+            }
+            g.state.catAcc = worn ? null : a;
+            saveGame(g.state);
+            ui.refresh();
+            ui.rerenderPanel?.();
+          },
+        }, [owned ? t(`acc.${a}` as Key) : `${t(`acc.${a}` as Key)} ${money(CAT_ACC_PRICE[a])}`]);
+      }),
+    ]),
     h('button', {
       class: 'btn small primary', disabled: fed,
       onclick: () => {
@@ -224,18 +247,25 @@ function renovate(g: Game, ui: UI): void {
       h('h3', {}, [t(title)]),
       h('div', { class: 'reno-grid' }, styles.map((st, i) => {
         const open = rep >= unlock[i];
+        const price = STYLE_PRICE[key][i];
+        const owned = price === 0 || s.owned.includes(`${key}:${st}`);
         return h('button', {
-          class: `reno${s.style[key] === st ? ' active' : ''}`, disabled: !open,
+          class: `reno${s.style[key] === st ? ' active' : ''}`, disabled: !open || (!owned && s.money < price),
           onclick: () => {
+            if (!owned) {
+              s.money -= price;
+              s.owned.push(`${key}:${st}`);
+            }
             s.style[key] = st;
             saveGame(s);
             ui.closeModal();
             renovate(g, ui);
+            ui.refresh();
           },
         }, [
           spriteIcon(preview(st), key === 'wall' ? 1 : 2),
           h('span', {}, [t(`reno.${key}.${st}` as Key)]),
-          open ? null : h('small', { class: 'muted' }, [t('reno.needs', { n: unlock[i] })]),
+          !open ? h('small', { class: 'muted' }, [t('reno.needs', { n: unlock[i] })]) : owned ? null : h('small', { class: 'muted' }, [money(price)]),
         ]);
       })),
     ]);

@@ -19,7 +19,7 @@ import { gainReputation } from './growth';
 import { eventText, goalText } from '../ui/goals';
 import type { AwaySummary } from '../ui/app';
 import { achName } from '../ui/achievements';
-import { freshSkills, loadGame, newGame, saveGame, type GameState, type MiniKind, type StaffState } from './state';
+import { freshSkills, loadGame, unlockedBreads, newGame, saveGame, type GameState, type MiniKind, type StaffState } from './state';
 
 export type Phase = 'day' | 'night';
 
@@ -72,10 +72,11 @@ export class Game {
       if (e.type === 'closed') this.endDay();
       else if (e.type === 'growth') this.ui.toast(t('toast.growth', { name: growthName(e.what), n: e.level }));
       else if (e.type === 'gift') this.ui.toast(t('toast.gift', { name: productName(e.id), n: e.units, v: money(e.value) }));
+      else if (e.type === 'gifts') this.ui.toast(t('toast.gifts', { n: e.units, v: money(e.value) }));
       else if (e.type === 'reliefGift') this.ui.toast(t('toast.reliefGift', { n: e.units, v: money(e.value) }));
-      else if (e.type === 'productLevel') this.ui.toast(t('toast.productLevel', { name: productName(e.id), n: e.level }));
+      else if (e.type === 'productLevel') this.ui.toast(t('toast.productLevel', { name: productName(e.id), n: e.level }), 'productLevel');
       else if (e.type === 'unlock') this.ui.toast(t('toast.unlock', { name: productName(e.id) }));
-      else if (e.type === 'npcLevel') this.ui.toast(t('toast.npcLevel', { name: npcName(e.npc), n: e.level }));
+      else if (e.type === 'npcLevel') this.ui.toast(t('toast.npcLevel', { name: npcName(e.npc), n: e.level }), 'npcLevel');
       else if (e.type === 'npcGift') this.ui.toast(t('toast.npcGift', { name: npcName(e.npc), gift: t(`gift.${e.kind}` as Key) }));
       else if (e.type === 'friend') this.ui.toast(t('toast.friend', { name: npcName(e.by), friend: npcName(e.friend) }));
       else if (e.type === 'sold') this.goal('sellCat', e.qty, e.cat);
@@ -84,7 +85,8 @@ export class Game {
       else if (e.type === 'tourArrived') this.ui.toast(t('event.tourArrived'));
       else if (e.type === 'staffLevel') {
         const name = e.staff < 0 ? t('staff.owner') : staffName(this.state.staff.find((s) => s.id === e.staff)?.name ?? 0);
-        this.ui.toast(t('toast.staffLevel', { name, skill: t(`skill.${e.skill}`), n: e.level }));
+        this.ui.toast(t('toast.staffLevel', { name, skill: t(`skill.${e.skill}`), n: e.level }), 'staffLevel');
+        if (e.skill === 'bakery') this.checkBreads();
       }
     });
   }
@@ -176,6 +178,7 @@ export class Game {
     this.state.staff.push(c);
     saveGame(this.state);
     this.ui.refresh();
+    this.checkBreads();
   }
 
   fire(id: number): void {
@@ -277,12 +280,8 @@ export class Game {
     const z = this.cam.zoom;
     ctx.setTransform(z, 0, 0, z, Math.round(-this.cam.x * z), Math.round(-this.cam.y * z));
     ctx.imageSmoothingEnabled = false;
+    this.renderer.night = this.phase === 'night' && !this.build;
     this.renderer.draw(ctx, this.sim, dt, this.build);
-    if (this.phase === 'night') {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = 'rgba(20, 24, 60, 0.28)';
-      ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    }
   }
 
   toWorld(clientX: number, clientY: number): [number, number] {
@@ -549,6 +548,7 @@ export class Game {
       history: [],
       reputation: { level: Math.max(1, Math.floor(old.reputation.level / 4)), exp: 0 },
       day: old.day,
+      openedDay: old.day,
     };
     if (s.branch % 2 === 1) {
       const w = LEVELS[0].w;
@@ -560,8 +560,20 @@ export class Game {
     this.fit();
   }
 
+  /** Announces breads that a higher bakery skill has just unlocked. */
+  checkBreads(): void {
+    const list = unlockedBreads(this.state);
+    for (const b of list.slice(this.state.breadsSeen)) this.ui.toast(t('toast.breadUnlock', { name: t(`bakery.${b}`) }));
+    this.state.breadsSeen = Math.max(this.state.breadsSeen, list.length);
+  }
+
   checkAchievements(): void {
-    for (const a of checkAchievements(this.state)) this.ui.toast(t('ach.unlocked', { name: achName(a) }));
+    const got = checkAchievements(this.state);
+    if (got.length === 1) this.ui.toast(t('ach.unlocked', { name: achName(got[0]) }));
+    else if (got.length > 1) {
+      const names = got.slice(0, 2).map(achName).join(', ') + (got.length > 2 ? ', …' : '');
+      this.ui.toast(t('ach.unlockedMany', { n: got.length, names }), 'ach');
+    }
   }
 
   /** Replaces the running game with an imported save. */

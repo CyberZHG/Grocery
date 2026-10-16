@@ -1,4 +1,4 @@
-import { BREADS, CAT_COATS, NPCS, SKILLS, START_MONEY, type Bread, type Category, type CatCoat, type FixtureKind, type Skill } from './defs';
+import { BREAD_UNLOCK, BREADS, CAT_COATS, NPCS, SKILLS, START_MONEY, type Bread, type Category, type CatCoat, type FixtureKind, type Skill } from './defs';
 import type { GoalsState } from './goals';
 import { freshGrowth, type CatState, type EquipKind } from './growth';
 import { freshProducts, type ProductProgress } from './progress';
@@ -112,11 +112,18 @@ export interface GameState {
   catName: string;
   storeName: string;
   style: { floor: string; wall: string; sign: string };
+  /** Bought cosmetics: renovation styles as 'floor:wood' and cat accessories as 'acc:bell'. */
+  owned: string[];
+  catAcc: string | null;
   /** regulars introduced by friends, beyond the expansion roster */
   friends: number;
   gifts: Record<string, number>;
   goals: GoalsState;
   branch: number;
+  /** Breads the player has been told about, so each unlock is announced once. */
+  breadsSeen: number;
+  /** Day this store (or branch) opened; new stores draw extra curious visitors for two weeks. */
+  openedDay: number;
   savedAt: number;
 }
 
@@ -170,10 +177,14 @@ export function newGame(seed = Date.now() % 1e9): GameState {
     catName: '',
     storeName: '',
     style: { floor: 'cream', wall: 'beige', sign: 'wood' },
+    owned: [],
+    catAcc: null,
     friends: 0,
     gifts: {},
     goals: { day: 0, daily: [], week: -1, weekly: [], completed: 0 },
     branch: 0,
+    breadsSeen: 4,
+    openedDay: 1,
     savedAt: Date.now(),
   };
 }
@@ -228,10 +239,14 @@ export function migrate(data: unknown): GameState | null {
     s.catName ??= '';
     s.storeName ??= '';
     s.style = Object.assign({ floor: 'cream', wall: 'beige', sign: 'wood' }, s.style ?? {});
+    s.owned ??= [`floor:${s.style.floor}`, `wall:${s.style.wall}`, `sign:${s.style.sign}`];
+    s.catAcc ??= null;
     s.friends ??= 0;
     s.gifts ??= {};
     s.goals ??= { day: 0, daily: [], week: -1, weekly: [], completed: 0 };
     s.branch ??= 0;
+    s.breadsSeen ??= unlockedBreads(s).length;
+    s.openedDay ??= 1;
     s.savedAt ??= Date.now();
     const skills = freshSkills();
     s.owner = { ...skills, ...s.owner };
@@ -248,4 +263,19 @@ export function clearSave(): void {
   } catch {
     // ignore
   }
+}
+
+/** Highest bakery skill on the team (owner or staff). */
+export function bakeryLevel(s: GameState): number {
+  return Math.max(s.owner.bakery.level, ...s.staff.map((st) => st.skills.bakery.level));
+}
+
+export function unlockedBreads(s: GameState): Bread[] {
+  const lv = bakeryLevel(s);
+  return BREADS.filter((b) => BREAD_UNLOCK[b] <= lv);
+}
+
+/** Extra traffic share for a newly opened store, fading out over 14 days. */
+export function openingBuzz(s: GameState): number {
+  return 0.5 * Math.max(0, 1 - (s.day - s.openedDay) / 14);
 }

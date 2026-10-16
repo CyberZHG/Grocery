@@ -60,8 +60,34 @@ export function worldBounds(l: Layout): { x: number; y: number; w: number; h: nu
   return { x: -T, y: -2 * T - 8, w: (l.w + 2) * T, h: (l.h + 4) * T + 8 };
 }
 
+type RGB = [number, number, number];
+/** Light through the day by game minute: [minute, outdoor tint, indoor tint]. Indoors the lights soften the change. */
+const LIGHT: [number, RGB, RGB][] = [
+  [480, [255, 232, 208], [255, 246, 236]],
+  [600, [255, 255, 255], [255, 255, 255]],
+  [960, [255, 255, 255], [255, 255, 255]],
+  [1080, [255, 196, 150], [255, 240, 224]],
+  [1170, [160, 132, 186], [240, 226, 230]],
+  [1200, [84, 96, 160], [214, 214, 236]],
+];
+
+function lightAt(min: number): { out: RGB; inside: RGB; dark: number } {
+  let i = 0;
+  while (i < LIGHT.length - 1 && min >= LIGHT[i + 1][0]) i++;
+  const [m0, o0, n0] = LIGHT[i];
+  const [m1, o1, n1] = LIGHT[Math.min(i + 1, LIGHT.length - 1)];
+  const k = m1 > m0 ? Math.min(1, Math.max(0, (min - m0) / (m1 - m0))) : 0;
+  const mix = (a: RGB, b: RGB): RGB => [0, 1, 2].map((j) => Math.round(a[j] + (b[j] - a[j]) * k)) as RGB;
+  const out = mix(o0, o1);
+  return { out, inside: mix(n0, n1), dark: Math.max(0, 1 - (out[0] + out[1] + out[2]) / 765) * 1.6 };
+}
+
 export class WorldRenderer {
   hits: Hit[] = [];
+  /** Set by the game; at night the scene uses the after-hours light. */
+  night = false;
+  /** Fixed game minute for the light, e.g. noon for the share card. */
+  lightAt: number | null = null;
   prompts: Prompt[] = [];
   time = 0;
   doorOpen = 0;
@@ -201,6 +227,7 @@ export class WorldRenderer {
     const frame = `cat_${sim.state.catCoat}_${pose}`;
     drawSprite(ctx, 'shadow', px, py + 12);
     drawSprite(ctx, frame, px, py, c.mover.dir === 'left');
+    if (sim.state.catAcc) drawSprite(ctx, `cacc_${sim.state.catAcc}_${pose}`, px, py, c.mover.dir === 'left');
     this.hits.push({ x: px - 4, y: py - 6, w: 32, h: 28, action: { type: 'cat' } });
     if (c.bubble) this.bubble(ctx, c.bubble.icon, c.mover.x, c.mover.y + 0.6, false);
   }
@@ -266,6 +293,8 @@ export class WorldRenderer {
     for (const c of sim.customers) list.push({ y: c.mover.y, draw: () => this.drawCustomer(ctx, c) });
     list.sort((a, b) => a.y - b.y);
     for (const d of list) d.draw();
+    if (!this.night && !build) this.drawStationFx(ctx, sim);
+    this.drawLight(ctx, sim);
     this.drawWeather(ctx, sim);
     if (build?.ghost) this.drawGhost(ctx, build.ghost);
     if (!build) this.drawPrompts(ctx, sim);
@@ -275,6 +304,79 @@ export class WorldRenderer {
       drawText(ctx, f.text, f.x * T + 16 - tw / 2 + 1, f.y * T - 30 - f.t * 6 + 1, '#1a1420');
       drawText(ctx, f.text, f.x * T + 16 - tw / 2, f.y * T - 30 - f.t * 6, f.color);
     }
+  }
+
+  /** Small idle animations on the counters: oden steam, a blinking espresso light, a slicer glint, the oven glow. */
+  private drawStationFx(ctx: CanvasRenderingContext2D, sim: Sim): void {
+    const t = this.time;
+    for (const s of sim.layout.stations) {
+      const px = s.x * T;
+      const top = (s.y + 1) * T - 56;
+      if (s.kind === 'oden') {
+        [11, 25, 38, 51].forEach((cx, i) => {
+          for (let k = 0; k < 3; k++) {
+            const ph = (t * 0.7 + k / 3 + i * 0.27) % 1;
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.5 * (1 - ph)})`;
+            ctx.fillRect(px + cx + Math.round(Math.sin(ph * 6 + i)), Math.round(top + 7 - ph * 16), 1, 2);
+          }
+        });
+      } else if (s.kind === 'coffee') {
+        if (Math.floor(t * 1.5) % 2 === 0) {
+          ctx.fillStyle = '#b8ffb0';
+          ctx.fillRect(px + 29, top + 6, 1, 1);
+        }
+        const ph = (t * 0.5) % 1;
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.45 * (1 - ph)})`;
+        ctx.fillRect(px + 54 + Math.round(Math.sin(ph * 5)), Math.round(top + 10 - ph * 10), 1, 2);
+      } else if (s.kind === 'deli') {
+        const ph = t % 3.5;
+        if (ph < 0.4) {
+          const a = -Math.PI / 2 + (ph / 0.4) * Math.PI;
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.fillRect(Math.round(px + 44 + Math.cos(a) * 6), Math.round(top + 9 + Math.sin(a) * 6), 2, 1);
+        }
+      } else if (s.kind === 'bakery' && sim.oven.phase === 'baking') {
+        ctx.fillStyle = `rgba(255, 150, 60, ${0.18 + 0.1 * Math.sin(t * 4)})`;
+        for (let i = 0; i < 2; i++) ctx.fillRect(px + 8, 16 - 72 + 8 + i * 30 + 4, 48, 18);
+      }
+    }
+  }
+
+  /** Tints the scene for the time of day and adds warm light spilling from the store after dark. */
+  private drawLight(ctx: CanvasRenderingContext2D, sim: Sim): void {
+    const l = sim.layout;
+    const { out, inside, dark } = lightAt(this.night ? 1200 : this.lightAt ?? sim.clock);
+    if (dark <= 0 && out[2] >= 255) return;
+    const b = worldBounds(l);
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = `rgb(${out.join(',')})`;
+    ctx.beginPath();
+    ctx.rect(b.x, b.y - 8, b.w, b.h + T + 8);
+    ctx.rect(0, -2 * T - 8, l.w * T, l.h * T + 2 * T + 8);
+    ctx.fill('evenodd');
+    ctx.fillStyle = `rgb(${inside.join(',')})`;
+    ctx.fillRect(0, -2 * T - 8, l.w * T, l.h * T + 2 * T + 8);
+    if (dark > 0.05) {
+      ctx.globalCompositeOperation = 'lighter';
+      const a = Math.min(0.35, dark * 0.4);
+      const ex = (l.entrance + 1) * T;
+      const ey = (l.h + 1.2) * T;
+      const g = ctx.createRadialGradient(ex, ey, 4, ex, ey, 3.2 * T);
+      g.addColorStop(0, `rgba(255, 210, 140, ${a})`);
+      g.addColorStop(1, 'rgba(255, 210, 140, 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(ex - 4 * T, ey - 4 * T, 8 * T, 8 * T);
+      const sx = (l.entrance - 2) * T + 32;
+      const sy = l.h * T + 14;
+      const sg = ctx.createRadialGradient(sx, sy, 2, sx, sy, 1.6 * T);
+      const neon = sim.state.style.sign === 'neon';
+      sg.addColorStop(0, neon ? `rgba(255, 120, 200, ${a})` : `rgba(255, 220, 160, ${a * 0.8})`);
+      sg.addColorStop(1, 'rgba(255, 200, 160, 0)');
+      ctx.fillStyle = sg;
+      ctx.fillRect(sx - 2 * T, sy - 2 * T, 4 * T, 4 * T);
+    }
+    ctx.restore();
   }
 
   private drawReserved(ctx: CanvasRenderingContext2D, l: Layout): void {

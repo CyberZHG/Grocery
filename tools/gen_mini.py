@@ -3,6 +3,7 @@ import random
 from pix import Canvas, hexc, tone, mix, fake_text
 
 WHITE = hexc('f4f2ee')
+STEEL = hexc('8c92a0')
 DARK = hexc('2a2430')
 
 
@@ -694,10 +695,80 @@ def coffee_icon(kind):
 
 
 def coffee_cup():
+    """Clear glass so the drink layers drawn behind it show through."""
     w, h = 56, 72
     cv = Canvas(w, h)
-    cv.poly([(4, 8), (51, 8), (45, 71), (10, 71)], (255, 255, 255, 90))
-    cv.rect(2, 4, 53, 8, hexc('d8dce4'))
+    cv.poly([(4, 8), (51, 8), (45, 70), (10, 70)], (230, 240, 248, 50))
+    for y in range(8, 71):
+        k = (y - 8) / 62
+        l = round(4 + 6 * k)
+        r = round(51 - 6 * k)
+        cv.px(l, y, (255, 255, 255, 170))
+        cv.px(r, y, (200, 210, 225, 170))
+        if 14 < y < 60:
+            cv.px(l + 3, y, (255, 255, 255, 90))
+    cv.rect(2, 4, 53, 8, hexc('e8ecf0'))
+    cv.hline(2, 53, 4, WHITE)
+    cv.hline(2, 53, 8, hexc('b8bcc8'))
+    cv.rect(9, 69, 46, 71, (230, 240, 248, 140))
+    cv.outline(0.5)
+    return cv
+
+
+def cafe_wall():
+    cv = Canvas(32, 32)
+    base = hexc('4a3428')
+    cv.rect(0, 0, 31, 31, base)
+    for x in (0, 16):
+        cv.vline(x, 0, 31, W(base, -2))
+        cv.vline(x + 1, 0, 31, W(base, 1))
+    rnd = random.Random(4)
+    for _ in range(24):
+        x, y = rnd.randint(2, 30), rnd.randint(0, 31)
+        cv.vline(x, y, min(31, y + rnd.randint(2, 6)), W(base, rnd.choice((-1, 1))))
+    return cv
+
+
+def cafe_counter():
+    cv = Canvas(32, 20)
+    top = hexc('8a6a4a')
+    cv.rect(0, 0, 31, 3, W(top, 2))
+    cv.hline(0, 31, 0, W(top, 3))
+    cv.rect(0, 4, 31, 19, hexc('3a2a24'))
+    cv.hline(0, 31, 4, hexc('2a1e1a'))
+    return cv
+
+
+def cafe_head():
+    """Underside of the espresso machine: chrome body, group head and spouts above the cup."""
+    w, h = 96, 34
+    cv = Canvas(w, h)
+    body = hexc('c8ccd4')
+    cv.rect(0, 0, w - 1, 20, body)
+    cv.hline(0, w - 1, 0, W(body, 2))
+    cv.hline(0, w - 1, 20, W(body, -3))
+    cv.shade_box(0, 0, w - 1, 20, 0.5)
+    cv.rect(36, 21, 59, 26, hexc('8a8e98'))
+    cv.hline(36, 59, 21, W(STEEL, 2))
+    cv.rect(58, 22, 86, 25, hexc('2a2228'))
+    cv.hline(58, 86, 22, hexc('4a4450'))
+    cv.rect(42, 27, 53, 29, STEEL)
+    for x in (44, 50):
+        cv.rect(x, 30, x + 1, 33, W(STEEL, -1))
+    cv.ellipse(14, 10, 6, 6, hexc('f4f0e8'))
+    cv.ellipse(14, 10, 5, 5, WHITE)
+    cv.line(14, 10, 17, 7, hexc('c84848'))
+    cv.px(80, 8, hexc('7ae07a')); cv.px(84, 8, hexc('e84848'))
+    cv.outline(0.5)
+    return cv
+
+
+def cafe_tray():
+    cv = Canvas(80, 8)
+    cv.rect(0, 0, 79, 7, hexc('5a5e68'))
+    cv.hline(0, 79, 0, hexc('a8acb8'))
+    for x in range(3, 78, 3):
+        cv.vline(x, 2, 5, hexc('3a3e48'))
     cv.outline(0.5)
     return cv
 
@@ -709,18 +780,49 @@ def bag_bg(kind):
     w = cell * 4 + 8
     h = cell * 4 + 18
     cv = Canvas(w, h)
-    c = hexc('c8a070') if kind == 'paper' else hexc('4a8ab8')
-    cv.poly([(0, 10), (w - 1, 10), (w - 3, h - 1), (2, h - 1)], c)
-    cv.rect(0, 6, w - 1, 12, W(c, 1))
-    for x in range(0, w, 2):
-        cv.px(x, 6, W(c, -1))
-    inner = W(c, -2)
+    rnd = random.Random(11)
+    if kind == 'paper':
+        c = hexc('c8a070')
+        cv.poly([(0, 10), (w - 1, 10), (w - 3, h - 1), (2, h - 1)], c)
+        for _ in range(260):
+            x, y = rnd.randint(1, w - 2), rnd.randint(11, h - 2)
+            if cv.get(x, y):
+                cv.px(x, y, W(c, rnd.choice((-1, 1))))
+        for x in range(0, w):
+            y = 6 + (1 if (x // 3) % 2 else 0) + (1 if x % 7 == 0 else 0)
+            cv.vline(x, y, 12, W(c, 1))
+            cv.px(x, y, W(c, 2))
+        cv.rect(0, 13, 3, h - 1, W(c, -1))
+        cv.rect(w - 4, 13, w - 1, h - 1, W(c, -1))
+        inner = W(c, -2)
+    else:
+        c = hexc('3a7ab0')
+        cv.rrect(0, 8, w - 1, h - 1, c, 3)
+        for y in range(10, h - 1):
+            for x in range(1, w - 1):
+                if (x + y) % 8 == 0 or (x - y) % 8 == 0:
+                    cv.px(x, y, W(c, -1))
+        cv.rect(0, 6, w - 1, 11, hexc('2a5a88'))
+        for x in range(2, w - 2, 2):
+            cv.px(x, 8, hexc('c8ccd4'))
+        cv.rect(w - 22, 4, w - 16, 12, hexc('d8dce4'))
+        cv.rect(w - 21, 9, w - 17, 11, hexc('8a8e98'))
+        for hx in (14, w - 40):
+            cv.rect(hx, 0, hx + 2, 7, hexc('2a5a88'))
+            cv.rect(hx + 22, 0, hx + 24, 7, hexc('2a5a88'))
+            cv.hline(hx, hx + 24, 0, hexc('2a5a88'))
+        inner = hexc('9aa4b4')
     cv.rect(4, 14, w - 5, h - 5, inner)
-    for i in range(5):
-        cv.vline(4 + i * cell, 14, h - 5, W(inner, -1))
-        cv.hline(4, w - 5, 14 + i * cell, W(inner, -1))
+    for y in range(14, 22):
+        cv.hline(4, w - 5, y, W(inner, -2 if y < 17 else -1))
     if kind != 'paper':
-        for x in range(8, w - 8, 10):
-            cv.px(x, 9, WHITE)
+        for _ in range(60):
+            x, y = rnd.randint(5, w - 6), rnd.randint(22, h - 6)
+            cv.px(x, y, W(inner, 1))
+    for i in range(5):
+        for k in range(4, w - 4, 3):
+            cv.px(k, 14 + i * cell, W(inner, -1))
+        for k in range(14, h - 4, 3):
+            cv.px(4 + i * cell, k, W(inner, -1))
     cv.outline(0.5)
     return cv

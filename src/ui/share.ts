@@ -31,7 +31,9 @@ export async function makeShareImage(game: Game): Promise<HTMLCanvasElement> {
   ctx.save();
   ctx.translate(Math.round((W - b.w * z) / 2 - b.x * z), Math.round((areaH - b.h * z) / 2 - b.y * z));
   ctx.scale(z, z);
-  new WorldRenderer().draw(ctx, game.sim, 0, null);
+  const r = new WorldRenderer();
+  r.lightAt = 720;
+  r.draw(ctx, game.sim, 0, null);
   ctx.restore();
 
   ctx.fillStyle = 'rgba(20, 24, 34, 0.94)';

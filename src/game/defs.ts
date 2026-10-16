@@ -78,11 +78,11 @@ export interface LevelDef {
 
 export const LEVELS: LevelDef[] = [
   { w: 14, h: 10, registers: 1, stations: [], bagging: false, cost: 0, roster: 60, rent: 30 },
-  { w: 18, h: 12, registers: 2, stations: ['oden'], bagging: false, cost: 3000, roster: 80, rent: 80 },
-  { w: 22, h: 13, registers: 2, stations: ['oden', 'deli'], bagging: false, cost: 8000, roster: 100, rent: 130 },
-  { w: 26, h: 14, registers: 2, stations: ['oden', 'deli', 'bakery'], bagging: false, cost: 18000, roster: 120, rent: 190 },
-  { w: 30, h: 15, registers: 3, stations: ['oden', 'deli', 'bakery', 'coffee'], bagging: false, cost: 35000, roster: 140, rent: 260 },
-  { w: 34, h: 16, registers: 3, stations: ['oden', 'deli', 'bakery', 'coffee'], bagging: true, cost: 60000, roster: 160, rent: 340 },
+  { w: 18, h: 12, registers: 2, stations: ['oden'], bagging: false, cost: 1500, roster: 80, rent: 80 },
+  { w: 22, h: 13, registers: 2, stations: ['oden', 'deli'], bagging: false, cost: 4500, roster: 100, rent: 130 },
+  { w: 26, h: 14, registers: 2, stations: ['oden', 'deli', 'bakery'], bagging: false, cost: 12000, roster: 120, rent: 190 },
+  { w: 30, h: 15, registers: 3, stations: ['oden', 'deli', 'bakery', 'coffee'], bagging: false, cost: 25000, roster: 140, rent: 260 },
+  { w: 34, h: 16, registers: 3, stations: ['oden', 'deli', 'bakery', 'coffee'], bagging: true, cost: 45000, roster: 160, rent: 340 },
 ];
 
 export type Skill = 'restock' | 'checkout' | 'walk' | 'clean' | 'oden' | 'deli' | 'bakery' | 'coffee' | 'bagging';
@@ -102,6 +102,11 @@ export const MEAT_COST_RATIO = 0.55;
 
 export const BREADS = ['croissant', 'baguette', 'muffin', 'cinnamon', 'melonpan', 'bagel', 'pretzel', 'anpan'] as const;
 export type Bread = (typeof BREADS)[number];
+/** Team bakery skill level needed before a bread can be baked. */
+export const BREAD_UNLOCK: Record<Bread, number> = {
+  croissant: 1, baguette: 1, muffin: 1, cinnamon: 1, melonpan: 3, bagel: 6, pretzel: 10, anpan: 15,
+};
+export const favBread = (npcIndex: number): Bread => BREADS[(npcIndex * 7 + 3) % BREADS.length];
 export const BREAD_PRICE: Record<Bread, number> = {
   croissant: 2.75, baguette: 3.5, muffin: 2.5, cinnamon: 3.25, melonpan: 2.5, bagel: 2.25, pretzel: 3, anpan: 2.5,
 };
@@ -161,10 +166,15 @@ export function unlockedSkills(level: number): Skill[] {
 export const CAT_COATS = ['orange', 'black', 'white', 'calico', 'gray', 'tuxedo', 'shorthair', 'siamese'] as const;
 export type CatCoat = (typeof CAT_COATS)[number];
 
-export const DECOR_KINDS = ['plant_small', 'flowers', 'bench', 'cactus', 'cat_tower'] as const;
+export const DECOR_KINDS = ['plant_small', 'flowers', 'bench', 'cactus', 'lamp', 'gumball', 'magazine', 'cat_tower', 'aquarium'] as const;
 export type DecorKind = (typeof DECOR_KINDS)[number];
 /** Reputation level needed for each decor item and renovation style. */
-export const DECOR_UNLOCK: Record<DecorKind, number> = { plant_small: 1, flowers: 2, bench: 5, cactus: 8, cat_tower: 12 };
+export const DECOR_UNLOCK: Record<DecorKind, number> = {
+  plant_small: 1, flowers: 2, bench: 5, cactus: 8, lamp: 4, gumball: 7, magazine: 10, cat_tower: 12, aquarium: 15,
+};
+export const DECOR_PRICE: Record<DecorKind, number> = {
+  plant_small: 40, flowers: 60, bench: 120, cactus: 80, lamp: 600, gumball: 900, magazine: 1200, cat_tower: 300, aquarium: 3000,
+};
 export const FLOOR_STYLES = ['cream', 'wood', 'blue', 'terrazzo', 'mint'] as const;
 export const WALL_STYLES = ['beige', 'mint', 'brick', 'navy'] as const;
 export const SIGN_STYLES = ['wood', 'metal', 'chalk', 'neon'] as const;
@@ -173,6 +183,15 @@ export const STYLE_UNLOCK = {
   wall: [1, 4, 8, 12],
   sign: [1, 5, 10, 20],
 };
+/** One-time cost of each renovation style; the first of each is the default. */
+export const STYLE_PRICE = {
+  floor: [0, 1500, 3000, 5000, 8000],
+  wall: [0, 2000, 4000, 7000],
+  sign: [0, 2500, 6000, 12000],
+};
+export const CAT_ACCS = ['bell', 'bandana', 'bow', 'scarf', 'crown'] as const;
+export type CatAcc = (typeof CAT_ACCS)[number];
+export const CAT_ACC_PRICE: Record<CatAcc, number> = { bell: 500, bandana: 1200, bow: 2000, scarf: 4000, crown: 15000 };
 
 /** Affinity levels at which a regular hands over a gift: postcard, sticker, craft, photo. */
 export const GIFT_KINDS = ['postcard', 'sticker', 'craft', 'photo'] as const;

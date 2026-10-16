@@ -16,6 +16,7 @@ export class CoffeeGame extends MiniGame {
   private made: CoffeeStep[] = [];
   private mistakes = 0;
   private shake = 0;
+  private pour = 0;
   private goBtn: HTMLButtonElement;
 
   constructor(private drink: DrinkDef) {
@@ -58,6 +59,7 @@ export class CoffeeGame extends MiniGame {
       if (this.memoLeft <= 0) this.startMaking();
     }
     this.shake = Math.max(0, this.shake - dt * 4);
+    this.pour = Math.max(0, this.pour - dt);
   }
 
   protected pointerDown(x: number, y: number): void {
@@ -74,6 +76,7 @@ export class CoffeeGame extends MiniGame {
       return;
     }
     this.made.push(c.s);
+    this.pour = 0.4;
     sfx('steam');
     if (this.made.length === this.drink.steps.length) {
       const accuracy = this.mistakes === 0 ? 1 : this.mistakes === 1 ? 0.6 : 0.3;
@@ -83,9 +86,16 @@ export class CoffeeGame extends MiniGame {
 
   protected render(ctx: CanvasRenderingContext2D): void {
     const { vw, vh } = this;
-    ctx.fillStyle = '#2e2420';
-    ctx.fillRect(0, 0, vw, vh);
     const steps = this.drink.steps;
+    const cells0 = this.cells();
+    const cupY0 = Math.max(66, Math.floor((66 + cells0[0].y) / 2 - 36));
+    const counterY = cupY0 + 76;
+    for (let y = 0; y < counterY; y += 32) for (let x = 0; x < vw; x += 32) drawSprite(ctx, 'cafe_wall', x, y);
+    ctx.fillStyle = '#3a2a24';
+    ctx.fillRect(0, counterY, vw, vh - counterY);
+    for (let x = 0; x < vw; x += 32) drawSprite(ctx, 'cafe_counter', x, counterY);
+    drawSprite(ctx, 'cafe_head', Math.floor(vw / 2) - 48, cupY0 - 30);
+    drawSprite(ctx, 'cafe_tray', Math.floor(vw / 2) - 40, counterY - 6);
     const rw = steps.length * 38 + 10;
     const rx = Math.floor((vw - rw) / 2);
     panel(ctx, rx, 6, rw, 50, '#f4f2ee', '#3a3440');
@@ -125,6 +135,13 @@ export class CoffeeGame extends MiniGame {
         ctx.fillRect(cupX + 32, y1 + 4, 4, 4);
       }
     });
+    if (this.pour > 0 && this.made.length) {
+      ctx.fillStyle = LAYER[this.made[this.made.length - 1]];
+      const top = cupY - 2;
+      const bottom = Math.round(fillBottom - per * this.made.length);
+      ctx.fillRect(Math.floor(vw / 2) - 4, top, 2, bottom - top);
+      ctx.fillRect(Math.floor(vw / 2) + 2, top, 2, bottom - top);
+    }
     drawSprite(ctx, 'coffee_cup', cupX, cupY);
     for (const c of cells) {
       panel(ctx, c.x, c.y, c.w, c.h, this.phase === 'make' ? '#4a3a34' : '#3a302c', '#1a1210');

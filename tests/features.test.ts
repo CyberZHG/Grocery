@@ -123,3 +123,23 @@ describe('agents keep their own tiles', () => {
     expect(shared / samples).toBeLessThan(0.02);
   });
 });
+
+describe('bread unlocks and opening buzz', () => {
+  it('more breads unlock as the team bakery skill grows', async () => {
+    const { unlockedBreads } = await import('../src/game/state');
+    const s = newGame(3);
+    expect(unlockedBreads(s)).toHaveLength(4);
+    s.owner.bakery.level = 10;
+    expect(unlockedBreads(s)).toEqual(['croissant', 'baguette', 'muffin', 'cinnamon', 'melonpan', 'bagel', 'pretzel']);
+  });
+
+  it('a new store draws extra visitors that fade over two weeks', async () => {
+    const { openingBuzz } = await import('../src/game/state');
+    const s = newGame(3);
+    expect(openingBuzz(s)).toBeCloseTo(0.5);
+    s.day = 8;
+    expect(openingBuzz(s)).toBeCloseTo(0.25);
+    s.day = 20;
+    expect(openingBuzz(s)).toBe(0);
+  });
+});

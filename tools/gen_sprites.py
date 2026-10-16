@@ -212,10 +212,11 @@ def atlas():
         'b_deli': GW.bubble(GW.ic_deli, hexc('f0c040')), 'b_coffee': GW.bubble(GW.ic_coffee, hexc('f0c040')),
         'b_bag': GW.bubble(GW.ic_bag, hexc('f0c040')), 'b_bread': GW.bubble(GW.ic_bread, hexc('f0c040')),
         'b_heart': GW.bubble(GW.ic_heart), 'b_sad': GW.bubble(GW.ic_sad), 'b_empty': GW.bubble(GW.ic_empty),
-        'b_wait': GW.bubble(GW.ic_wait),
+        'b_wait': GW.bubble(GW.ic_wait), 'b_star': GW.bubble(GW.ic_star, hexc('f0c040')),
+        'b_paw': GW.bubble(GW.ic_paw), 'b_pricey': GW.bubble(GW.ic_pricey),
         'drawer': GM.drawer(), 'tray': GM.tray(), 'counter_wood': GM.wood_counter(),
         'oden_pot': GM.oden_pot(), 'oden_box_back': GM.oden_box_back(), 'oden_box_front': GM.oden_box_front(), 'slicer': GM.slicer(), 'scale': GM.scale_box(),
-        'bake_sheet': GM.bake_sheet(), 'bake_sheet_end': GM.bake_sheet_end(), 'oven_wall': GM.oven_wall(), 'oven_coil': GM.oven_coil(), 'oven_rail': GM.oven_rail(), 'coffee_cup': GM.coffee_cup(),
+        'bake_sheet': GM.bake_sheet(), 'bake_sheet_end': GM.bake_sheet_end(), 'oven_wall': GM.oven_wall(), 'oven_coil': GM.oven_coil(), 'oven_rail': GM.oven_rail(), 'coffee_cup': GM.coffee_cup(), 'cafe_wall': GM.cafe_wall(), 'cafe_counter': GM.cafe_counter(), 'cafe_head': GM.cafe_head(), 'cafe_tray': GM.cafe_tray(),
         'bag_paper': GM.bag_bg('paper'), 'bag_cold': GM.bag_bg('cold'), 'font': GM.font_sheet(),
     }
     for name, kind in (('register', 'register'), ('oden', 'oden'), ('deli', 'deli'), ('oven', 'oven'), ('coffee', 'coffee'), ('bagging', 'bagging')):
@@ -226,6 +227,9 @@ def atlas():
     for coat in GD.CAT_COATS:
         for pose in GD.CAT_POSES:
             items[f'cat_{coat}_{pose}'] = GD.cat_sprite(coat, pose)
+    for acc in GD.CAT_ACCS:
+        for pose in GD.CAT_POSES:
+            items[f'cacc_{acc}_{pose}'] = GD.cat_acc(acc, pose)
     for st in GD.FLOOR_STYLES:
         for v in (0, 1):
             items[f'f_{st}_{v}'] = GD.floor_style(st, v)

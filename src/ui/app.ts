@@ -270,10 +270,14 @@ export class UI {
     }
   }
 
-  toast(text: string): void {
+  /** Toasts sharing a key replace each other instead of stacking up. */
+  toast(text: string, key?: string): void {
+    const old = key ? ([...this.toasts.children] as HTMLElement[]).find((e) => e.dataset.key === key) : undefined;
+    old?.remove();
     const el = h('div', { class: 'toast' }, [text]);
+    if (key) el.dataset.key = key;
     this.toasts.append(el);
-    while (this.toasts.children.length > 4) this.toasts.firstChild!.remove();
+    while (this.toasts.children.length > 3) this.toasts.firstChild!.remove();
     setTimeout(() => el.classList.add('out'), 2600);
     setTimeout(() => el.remove(), 3000);
   }

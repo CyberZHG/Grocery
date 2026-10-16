@@ -164,10 +164,72 @@ def sign_style(style):
 
 # ---------- decor items (1x1 placeable) ----------
 
-DECOR = ['plant_small', 'flowers', 'bench', 'cactus', 'cat_tower']
+DECOR = ['plant_small', 'flowers', 'bench', 'cactus', 'cat_tower', 'lamp', 'gumball', 'magazine', 'aquarium']
 
 
 def decor(kind):
+    if kind == 'lamp':
+        cv = Canvas(T, 48)
+        cv.vline(15, 14, 44, DARK)
+        cv.vline(16, 14, 44, hexc('5a5060'))
+        cv.ellipse(15.5, 45, 6, 2, DARK)
+        shade = hexc('f0d8a0')
+        cv.poly([(9, 14), (22, 14), (19, 3), (12, 3)], shade)
+        cv.hline(9, 22, 14, hexc('d8b070'))
+        cv.shade_cyl(9, 3, 22, 14, 0.5)
+        cv.px(15, 15, hexc('fff4c0')); cv.px(16, 15, hexc('fff4c0'))
+        cv.outline(0.5)
+        return cv
+    if kind == 'gumball':
+        cv = Canvas(T, 44)
+        red = hexc('d84848')
+        cv.rect(11, 24, 20, 40, red)
+        cv.rect(9, 40, 22, 42, W(red, -2))
+        cv.rect(13, 30, 18, 34, hexc('c8ccd4'))
+        cv.px(15, 32, DARK); cv.px(16, 32, DARK)
+        cv.ellipse(15.5, 14, 9, 9, (220, 236, 244, 230))
+        rnd = random.Random(6)
+        for _ in range(26):
+            x, y = rnd.randint(9, 22), rnd.randint(9, 22)
+            if (x - 15.5) ** 2 + (y - 15) ** 2 < 50:
+                cv.px(x, y, hexc(rnd.choice(['e84848', 'f0d040', '5ab0e0', '7ad070', 'f088c0'])))
+        cv.rect(12, 4, 19, 6, red)
+        cv.px(12, 10, WHITE); cv.px(11, 11, WHITE)
+        cv.shade_cyl(11, 24, 20, 40, 0.6)
+        cv.outline(0.5)
+        return cv
+    if kind == 'aquarium':
+        cv = Canvas(T, 44)
+        wood = hexc('8a5a3a')
+        cv.rect(2, 28, 29, 43, wood)
+        cv.rect(4, 31, 27, 41, W(wood, -1))
+        cv.rect(2, 6, 29, 27, hexc('5ab0d8'))
+        cv.shade_vgrad(2, 6, 29, 27, 0.6, -0.5)
+        cv.rect(2, 4, 29, 6, hexc('3a3440'))
+        cv.rect(3, 24, 28, 26, hexc('e8d8a8'))
+        for x in (6, 9, 24):
+            cv.line(x, 24, x + 1, 15 + x % 4, hexc('4a9a50'), 1)
+        for (x, y, c) in ((12, 12, 'f08030'), (20, 18, 'f0d040'), (17, 10, 'e84848')):
+            cv.ellipse(x, y, 2, 1.2, hexc(c))
+            cv.px(x - 3, y, hexc(c))
+        for (x, y) in ((22, 8), (23, 11), (22, 14)):
+            cv.px(x, y, (255, 255, 255, 180))
+        cv.line(4, 25, 10, 8, (255, 255, 255, 90))
+        cv.outline(0.5)
+        return cv
+    if kind == 'magazine':
+        cv = Canvas(T, 40)
+        frame = hexc('6a6e7a')
+        cv.rect(4, 6, 27, 38, frame)
+        for i, y in enumerate((8, 18, 28)):
+            for k, c in enumerate(('e86a8a', '5ab0e0', 'f0d040', '7ad070')):
+                x = 6 + k * 5
+                cv.rect(x, y, x + 4, y + 8, hexc(c))
+                cv.hline(x, x + 4, y + 2, WHITE)
+                cv.px(x + 1, y + 5, DARK)
+            cv.hline(4, 27, y + 9, W(frame, 2))
+        cv.outline(0.5)
+        return cv
     if kind == 'cat_tower':
         cv = Canvas(T, 48)
         post = hexc('d8c8a0')
@@ -596,4 +658,53 @@ def cat_sprite(coat, pose):
             c = tone(c, -1)
         cv.px(x, y, c)
     cv.outline(0.5)
+    return cv
+
+
+# ---------- cat accessories (overlays drawn on the cat sprite) ----------
+
+CAT_ACCS = ['bell', 'bandana', 'bow', 'scarf', 'crown']
+
+
+def cat_acc(acc, pose):
+    rows = _cat_template(pose)
+    cells = {(x, y): ch for y, r in enumerate(rows) for x, ch in enumerate(r) if ch != '.'}
+    head = [(x, y) for (x, y), ch in cells.items() if ch in 'HM']
+    top = min(y for _, y in head)
+    bottom = max(y for _, y in head)
+    neck = sorted(x for x, y in head if y == bottom)
+    cx = (neck[0] + neck[-1]) / 2
+    xs = sorted(x for x, y in head if y == top)
+    cv = Canvas(24, 18)
+    if acc in ('bell', 'bandana', 'scarf'):
+        band = {'bell': hexc('d84848'), 'bandana': hexc('4a8ac0'), 'scarf': hexc('6aa060')}[acc]
+        for x in neck:
+            cv.px(x, bottom, band)
+            if acc == 'scarf':
+                cv.px(x, bottom + 1, W(band, -1)) if (x, bottom + 1) in cells else None
+        if acc == 'bell':
+            cv.px(round(cx), bottom + 1, hexc('f0c040'))
+        elif acc == 'bandana':
+            c = round(cx)
+            cv.hline(c - 1, c + 1, bottom + 1, band)
+            cv.px(c, bottom + 2, band)
+            cv.px(c - 1, bottom, WHITE)
+        else:
+            cv.vline(neck[0], bottom + 1, bottom + 3, band)
+            cv.px(neck[0], bottom + 3, W(band, 2))
+    elif acc == 'bow':
+        x = xs[0] + 1
+        pink = hexc('f088b0')
+        cv.px(x - 1, top - 1, pink); cv.px(x - 1, top, pink)
+        cv.px(x, top, hexc('d85890'))
+        cv.px(x + 1, top - 1, pink); cv.px(x + 1, top, pink)
+    elif acc == 'crown':
+        g = hexc('f0c040')
+        c = round((xs[0] + xs[-1]) / 2)
+        cv.hline(c - 2, c + 2, top - 1, g)
+        for dx in (-2, 0, 2):
+            cv.px(c + dx, top - 2, g)
+        cv.px(c, top - 1, hexc('e84848'))
+    if acc == 'crown':
+        cv.outline(0.4)
     return cv

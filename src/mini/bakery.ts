@@ -166,6 +166,9 @@ export class BakeryGame extends MiniGame<BakeResult> {
       ctx.fillRect(bx + Math.round(from * scale), by, Math.round(to * scale) - Math.round(from * scale), 6);
       from = to;
     }
+    ctx.fillStyle = '#14101a';
+    for (const g of GOLD) ctx.fillRect(bx + Math.round(g * scale), by - 2, 1, 10);
+    ctx.fillRect(bx + Math.round(GOLD[0] * scale), by - 2, Math.round((GOLD[1] - GOLD[0]) * scale) + 1, 1);
     const pos = Math.min(45, Math.round(tr.p * scale));
     ctx.fillStyle = '#14101a';
     ctx.fillRect(bx + pos - 1, by - 3, 4, 12);
