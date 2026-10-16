@@ -9,6 +9,7 @@ function runDay(state: GameState): Sim {
   sim.startDay();
   let steps = 0;
   while (!sim.done && steps < 200000) {
+    sim.tickReal(0.1 * 0.4);
     sim.update(0.1);
     steps += 1;
   }

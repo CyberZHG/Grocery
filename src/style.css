@@ -1,3 +1,12 @@
+/* Pixelify Sans digits are hard to tell apart; VT323 supplies digits and money symbols only. */
+@font-face {
+  font-family: 'Grocery Digits';
+  src: url('@fontsource/vt323/files/vt323-latin-400-normal.woff2') format('woff2');
+  unicode-range: U+0024-0025, U+002B-002E, U+0030-003A;
+  size-adjust: 128%;
+  font-display: swap;
+}
+
 :root {
   --bg: #1e1a24;
   --panel: #2c2734;
@@ -10,7 +19,7 @@
   --bad: #e06060;
   --primary: #4a8a5a;
   --warn: #a84848;
-  --font: 'Pixelify Sans', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font: 'Grocery Digits', 'Pixelify Sans', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
   color-scheme: dark;
 }
 
@@ -89,9 +98,15 @@ canvas.world {
 }
 .hud.is-night { background: linear-gradient(rgba(20, 22, 50, 0.95), rgba(20, 22, 50, 0.82)); }
 .hud-left { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
-.hud-day { font-weight: 600; color: var(--accent); }
-.hud-time { color: var(--text); font-variant-numeric: tabular-nums; }
-.hud-money { font-weight: 600; color: var(--good); font-variant-numeric: tabular-nums; margin-left: auto; }
+.hud-day, .hud-time, .hud-money, .num {
+  font-size: 18px;
+  line-height: 1.1;
+  letter-spacing: 0.5px;
+}
+.hud-money { font-size: 20px; }
+.hud-day { color: var(--accent); }
+.hud-time { color: var(--text); }
+.hud-money { color: var(--good); margin-left: auto; }
 .hud-money.neg { color: var(--bad); }
 .hud-controls { display: flex; gap: 4px; }
 .night-bar { position: absolute; left: 0; right: 0; bottom: -2px; height: 2px; }
@@ -135,6 +150,31 @@ canvas.world {
 .slot-label small { color: var(--muted); font-size: 11px; }
 .slot-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .slot-empty { width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted); border: 1px dashed #5a5266; }
+
+/* ---------- service prompts ---------- */
+
+.prompts { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.prompt {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: auto;
+  font: inherit;
+  font-size: 13px;
+  color: #1e1a24;
+  background: var(--accent);
+  border: 2px solid var(--edge);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25), 0 2px 0 rgba(0, 0, 0, 0.35);
+  padding: 4px 8px 6px;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  animation: prompt-bob 0.9s ease-in-out infinite;
+}
+.prompt:hover { filter: brightness(1.1); }
+.prompt-bar { position: absolute; left: 0; bottom: 0; height: 3px; background: #c04030; width: 0; }
+.prompt:not(.waiting) { background: #e8dcc0; }
+@keyframes prompt-bob { 50% { margin-top: -3px; } }
 
 /* ---------- toasts ---------- */
 
@@ -191,6 +231,7 @@ p { margin: 0; line-height: 1.45; }
 .muted { color: var(--muted); font-size: 13px; }
 .stack { display: flex; flex-direction: column; gap: 10px; }
 .row { display: flex; gap: 6px; align-items: center; }
+label.row > span { white-space: nowrap; }
 .row.wrap { flex-wrap: wrap; }
 
 .select, .search {
@@ -302,7 +343,8 @@ p { margin: 0; line-height: 1.45; }
   .modal-back { padding: 0; }
   .modal, .modal.wide { width: 100%; height: 100%; max-height: 100%; border: none; }
   .hud { gap: 6px; padding-left: 8px; padding-right: 8px; }
-  .hud-time { font-size: 13px; }
+  .hud-day, .hud-time { font-size: 15px; }
+  .hud-money { font-size: 17px; }
   .bar { justify-content: flex-start; }
   .cards { grid-template-columns: 1fr; }
   .mini-bottom { flex-wrap: wrap; }

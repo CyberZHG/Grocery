@@ -54,8 +54,12 @@ export function drawProduct(ctx: CanvasRenderingContext2D, index: number, x: num
 export const CHAR_W = 32;
 export const CHAR_H = 48;
 
-export function drawChar(ctx: CanvasRenderingContext2D, row: number, dir: 'down' | 'up' | 'left' | 'right', frame: number, x: number, y: number): void {
-  const col = (dir === 'down' ? 0 : dir === 'up' ? 6 : 3) + frame;
+export type Expression = 'happy' | 'sad' | null;
+
+export function drawChar(ctx: CanvasRenderingContext2D, row: number, dir: 'down' | 'up' | 'left' | 'right', frame: number, x: number, y: number, expr: Expression = null): void {
+  // Expressions only exist for the front view: columns 9-11 happy, 12-14 upset.
+  const base = dir === 'down' ? (expr === 'happy' ? 9 : expr === 'sad' ? 12 : 0) : dir === 'up' ? 6 : 3;
+  const col = base + frame;
   blit(ctx, assets.chars, col * CHAR_W, row * CHAR_H, CHAR_W, CHAR_H, x, y, dir === 'left');
 }
 
@@ -97,7 +101,7 @@ export function drawText(ctx: CanvasRenderingContext2D, s: string, x: number, y:
   const img = fontFor(color);
   let cx = Math.round(x);
   for (const raw of s) {
-    const ch = raw === '¢' ? 'c' : raw.toUpperCase();
+    const ch = raw.toUpperCase();
     const i = fontChars.indexOf(ch);
     if (i >= 0) ctx.drawImage(img, i * 6, 0, 5, 8, cx, Math.round(y), 5 * scale, 8 * scale);
     cx += 6 * scale;

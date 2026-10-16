@@ -1,5 +1,6 @@
 import '@fontsource/pixelify-sans/400.css';
 import '@fontsource/pixelify-sans/600.css';
+import '@fontsource/vt323/400.css';
 import './style.css';
 import { loadAssets } from './core/assets';
 import { locale, t } from './i18n';

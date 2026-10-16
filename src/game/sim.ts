@@ -85,6 +85,9 @@ export class Line {
   progress = 0;
   duration = 0;
   idle = 0;
+  /** Real seconds left before staff takes over a service the player could do by hand. */
+  offer = 0;
+  offerFor: Customer | null = null;
 
   constructor(readonly kind: LineKind, readonly spots: P[], readonly staffSpot: P, readonly index: number, readonly station?: StationKind) {}
 
@@ -129,6 +132,9 @@ export class Worker {
 
 export type OvenState = { phase: 'idle' } | { phase: 'loading'; bread: Bread } | { phase: 'baking'; bread: Bread; t: number } | { phase: 'ready'; bread: Bread; t: number };
 export const BAKE_MIN = 18;
+/** Manual window in real seconds at 1x; shorter when fast-forwarding. */
+export const OFFER_SECONDS = 4;
+export const OVEN_OFFER_SECONDS = 6;
 export const BURN_AFTER = 10;
 export const BATCH = 8;
 
@@ -378,7 +384,8 @@ export class Sim {
     if (c.bubble && c.bubble.until < this.clock && c.state !== 'queue') c.bubble = null;
     if (c.state === 'leave') return;
     if (c.state === 'queue') {
-      if (c.mover.path.length === 0) c.wait += dt;
+      const held = c.line?.offerFor === c && c.line.offer > 0;
+      if (c.mover.path.length === 0 && !held) c.wait += dt;
       const front = c.line?.front() === c;
       if (front) c.mover.face(c.line!.kind === 'station' ? 'up' : 'left');
       return;
@@ -656,6 +663,16 @@ export class Sim {
       return;
     }
     line.idle = 0;
+    if (this.manualEligible(line, front)) {
+      if (line.offerFor !== front) {
+        line.offerFor = front;
+        line.offer = this.offerSeconds(OFFER_SECONDS);
+      }
+      if (line.offer > 0) {
+        if (w && w.mover.at(line.staffSpot)) w.mover.face(line.kind === 'station' ? 'down' : 'right');
+        return;
+      }
+    }
     if (!w || !w.mover.at(line.staffSpot)) return;
     w.mover.face(line.kind === 'station' ? 'down' : 'right');
     if (line.duration <= 0) line.duration = this.autoDuration(line, front, w);
@@ -693,12 +710,38 @@ export class Sim {
 
   // ---------- oven ----------
 
+  manualEligible(line: Line, c: Customer): boolean {
+    if (line.kind === 'register') return c.cash && !!c.payment;
+    if (line.kind === 'station') return !!c.order;
+    return true;
+  }
+
+  /** Real-time countdowns, independent of game speed so the player always has time to react. */
+  tickReal(dt: number): void {
+    for (const line of this.allLines()) {
+      if (line.front() !== line.offerFor) line.offerFor = null;
+      if (line.offerFor) line.offer = Math.max(0, line.offer - dt);
+    }
+    if (this.oven.phase === 'ready') this.ovenOffer = Math.max(0, this.ovenOffer - dt);
+  }
+
+  ovenOffer = 0;
+  speed = 1;
+
+  offerSeconds(base: number): number {
+    return base / Math.sqrt(this.speed);
+  }
+
   private updateOven(dt: number): void {
     const o = this.oven;
     if (o.phase === 'baking') {
       o.t += dt;
-      if (o.t >= BAKE_MIN) this.oven = { phase: 'ready', bread: o.bread, t: 0 };
+      if (o.t >= BAKE_MIN) {
+        this.oven = { phase: 'ready', bread: o.bread, t: 0 };
+        this.ovenOffer = this.offerSeconds(OVEN_OFFER_SECONDS);
+      }
     } else if (o.phase === 'ready') {
+      if (this.ovenOffer > 0) return;
       o.t += dt;
       if (o.t > BURN_AFTER) {
         this.oven = { phase: 'idle' };
@@ -790,7 +833,7 @@ export class Sim {
         },
       });
     }
-    if (this.ovenNeedsLoad() || this.oven.phase === 'ready') {
+    if (this.ovenNeedsLoad() || (this.oven.phase === 'ready' && this.ovenOffer <= 0)) {
       const busy = this.workers.some((w) => w.task.type === 'oven');
       const sp = this.stationSpot('bakery')!;
       if (!busy) {

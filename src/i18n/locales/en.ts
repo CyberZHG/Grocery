@@ -178,6 +178,13 @@ export const en = {
   'menu.newConfirm': 'Start over? Your current store will be lost.',
   'menu.about': 'Run the store on autopilot, or step in at the counter for better results.',
 
+  'prompt.register': 'Cash checkout',
+  'prompt.oden': 'Serve oden',
+  'prompt.deli': 'Slice by hand',
+  'prompt.coffee': 'Make coffee',
+  'prompt.bagging': 'Bag by hand',
+  'prompt.oven': 'Open the oven',
+  'prompt.bakery': 'Open the oven',
   'mini.perfect': 'Perfect',
   'mini.good': 'Good',
   'mini.wrong': 'Not right',

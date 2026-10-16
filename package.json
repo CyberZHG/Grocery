@@ -16,6 +16,7 @@
     "vitest": "5.0.2"
   },
   "dependencies": {
-    "@fontsource/pixelify-sans": "5.2.7"
+    "@fontsource/pixelify-sans": "5.2.7",
+    "@fontsource/vt323": "5.2.7"
   }
 }

@@ -6,7 +6,7 @@ import { CheckoutGame } from '../mini/checkout';
 import { CoffeeGame } from '../mini/coffee';
 import { DeliGame } from '../mini/deli';
 import { OdenGame } from '../mini/oden';
-import { T, worldBounds, WorldRenderer, type BuildView, type Hit } from '../render/world';
+import { T, worldBounds, WorldRenderer, type BuildView, type Hit, type HitAction } from '../render/world';
 import type { UI } from '../ui/app';
 import { DAY_START, FIXTURES, LEVELS, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF_LOOKS, TRAITS, type Skill } from './defs';
 import { BATCH, Sim, type Line } from './sim';
@@ -190,6 +190,8 @@ export class Game {
       if (this.paused()) break;
       simulated += dt;
       if (this.phase === 'day') {
+        this.sim.speed = this.speed;
+        this.sim.tickReal(dt);
         for (let i = 0; i < this.speed; i++) this.sim.update(dt / SEC_PER_MIN);
       } else {
         this.nightLeft -= dt;
@@ -199,6 +201,7 @@ export class Game {
     if (!draw) return;
     this.render(Math.min(0.1, simulated));
     this.ui.tick();
+    this.ui.updatePrompts(this.phase === 'day' && !this.miniOpen ? this.renderer.prompts : []);
   }
 
   // ---------- view ----------
@@ -346,8 +349,7 @@ export class Game {
     if (!hit) return;
     const a = hit.action;
     if (this.phase === 'day') {
-      if (a.type === 'line') void this.serveLine(a.line);
-      else if (a.type === 'oven') void this.serveOven();
+      if (a.type === 'line' || a.type === 'oven') this.serve(a);
       else if (a.type === 'customer') {
         const c = a.customer;
         const st = this.state.npcs[c.npc.id];
@@ -362,6 +364,17 @@ export class Game {
     } else if (a.type === 'slot' || a.type === 'fixture') {
       this.ui.openBuild(a.type === 'slot' ? a.fixture : a.fixture);
     }
+  }
+
+  serve(a: HitAction): void {
+    if (this.miniOpen || this.phase !== 'day') return;
+    if (a.type === 'line') void this.serveLine(a.line);
+    else if (a.type === 'oven') void this.serveOven();
+  }
+
+  toClient(wx: number, wy: number): [number, number] {
+    const dpr = window.devicePixelRatio || 1;
+    return [((wx - this.cam.x) * this.cam.zoom) / dpr, ((wy - this.cam.y) * this.cam.zoom) / dpr];
   }
 
   cell(wx: number, wy: number): { x: number; y: number } {

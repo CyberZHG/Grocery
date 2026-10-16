@@ -180,6 +180,13 @@ export const zh: Record<Key, string> = {
   'menu.newConfirm': '确定重新开始？当前的超市将会丢失。',
   'menu.about': '超市可以自动运转，亲自上柜台服务能获得更好的效果。',
 
+  'prompt.register': '手动结账',
+  'prompt.oden': '手动盛关东煮',
+  'prompt.deli': '手动切片',
+  'prompt.coffee': '手动做咖啡',
+  'prompt.bagging': '手动装袋',
+  'prompt.oven': '手动出炉',
+  'prompt.bakery': '手动出炉',
   'mini.perfect': '完美',
   'mini.good': '不错',
   'mini.wrong': '不对',

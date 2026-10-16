@@ -1,7 +1,7 @@
 import { drawChar, drawProduct, drawSprite, drawText, textWidth } from '../core/assets';
 import { BREADS, FIXTURES, PRODUCT_BY_ID, type FixtureKind } from '../game/defs';
 import { fixtureCells, type Layout } from '../game/layout';
-import type { Customer, Line, Sim, Worker } from '../game/sim';
+import { OFFER_SECONDS, OVEN_OFFER_SECONDS, type Customer, type Line, type Sim, type Worker } from '../game/sim';
 import type { FixtureState } from '../game/state';
 
 export const T = 32;
@@ -19,6 +19,16 @@ export interface Hit {
   y: number;
   w: number;
   h: number;
+  action: HitAction;
+}
+
+export interface Prompt {
+  key: string;
+  label: string;
+  wx: number;
+  wy: number;
+  /** remaining share of the manual window, 0 when staff already took over */
+  ratio: number;
   action: HitAction;
 }
 
@@ -45,6 +55,7 @@ export function worldBounds(l: Layout): { x: number; y: number; w: number; h: nu
 
 export class WorldRenderer {
   hits: Hit[] = [];
+  prompts: Prompt[] = [];
   time = 0;
 
   drawFloor(ctx: CanvasRenderingContext2D, l: Layout): void {
@@ -80,6 +91,7 @@ export class WorldRenderer {
   draw(ctx: CanvasRenderingContext2D, sim: Sim, dt: number, build: BuildView | null): void {
     this.time += dt;
     this.hits = [];
+    this.prompts = [];
     const l = sim.layout;
     this.drawFloor(ctx, l);
     if (build) this.drawReserved(ctx, l);
@@ -251,7 +263,7 @@ export class WorldRenderer {
   private drawWorker(ctx: CanvasRenderingContext2D, w: Worker): void {
     const [px, py] = this.charPos(w.mover.x, w.mover.y);
     drawSprite(ctx, 'shadow', px + 4, py + 42);
-    drawChar(ctx, w.row, w.mover.dir, w.mover.frame(), px, py);
+    drawChar(ctx, w.row, w.mover.dir, w.mover.frame(), px, py, w.bubble?.icon === 'b_heart' ? 'happy' : null);
     if (w.carrying) drawSprite(ctx, 'carton', px + 6, py + 22);
     if (w.bubble) this.bubble(ctx, w.bubble.icon, w.mover.x, w.mover.y, false);
   }
@@ -262,7 +274,10 @@ export class WorldRenderer {
     const dir = c.mover.dir;
     const showBasket = c.basket.length > 0 && c.state !== 'leave';
     if (showBasket && dir === 'up') drawSprite(ctx, 'basket', px + 16, py + 26);
-    drawChar(ctx, c.row, dir, c.mover.frame(), px, py);
+    const icon = c.bubble?.icon;
+    const tired = c.state === 'queue' && c.wait > 8 * c.npc.patience;
+    const expr = icon === 'b_heart' ? 'happy' : icon === 'b_sad' || icon === 'b_wait' || icon === 'b_empty' || tired ? 'sad' : null;
+    drawChar(ctx, c.row, dir, c.mover.frame(), px, py, expr);
     this.hits.push({ x: px + 6, y: py + 4, w: 20, h: 40, action: { type: 'customer', customer: c } });
     if (showBasket && dir !== 'up') drawSprite(ctx, 'basket', dir === 'left' ? px + 2 : px + 14, py + 28);
     if (c.state === 'leave' && c.basket.length) drawSprite(ctx, 'carton', dir === 'left' ? px + 2 : px + 12, py + 24);
@@ -290,13 +305,25 @@ export class WorldRenderer {
       if (line.kind === 'register' && c.cash) icon = 'b_cash';
       else if (line.kind === 'bagging') icon = 'b_bag';
       else if (line.kind === 'station' && c.order) icon = `b_${c.order.kind}`;
-      if (icon) this.bubble(ctx, icon, c.mover.x, c.mover.y, true, { type: 'line', line });
+      if (!icon) continue;
+      const action: HitAction = { type: 'line', line };
+      this.bubble(ctx, icon, c.mover.x, c.mover.y, true, action);
+      const label = line.kind === 'register' ? 'register' : line.kind === 'bagging' ? 'bagging' : line.station!;
+      this.prompts.push({
+        key: `${line.kind}${line.index}${line.station ?? ''}`, label,
+        wx: c.mover.x * T + 16, wy: c.mover.y * T - 42,
+        ratio: line.offerFor === c ? line.offer / sim.offerSeconds(OFFER_SECONDS) : 0, action,
+      });
     }
     const o = sim.oven;
     const bakery = sim.stationSpot('bakery');
     if (bakery && (o.phase === 'baking' || o.phase === 'ready')) {
       const urgent = o.phase === 'ready';
       this.bubble(ctx, 'b_bread', bakery.x + 0.5, -1.2, true, { type: 'oven' });
+      this.prompts.push({
+        key: 'oven', label: 'oven', wx: (bakery.x + 0.5) * T + 16, wy: -1.2 * T - 42,
+        ratio: urgent ? sim.ovenOffer / sim.offerSeconds(OVEN_OFFER_SECONDS) : 0, action: { type: 'oven' },
+      });
       const pct = o.phase === 'baking' ? Math.min(1, o.t / 18) : 1;
       const bx = bakery.x * T + 8;
       const by = -2 * T - 4;

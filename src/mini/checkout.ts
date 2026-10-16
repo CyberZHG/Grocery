@@ -4,12 +4,35 @@ import { t } from '../i18n';
 import { COINS, DRAWER_BILLS, greedy, roundCash, sum, type CashPayment } from '../game/rules';
 import { accuracyLabel, inRect, MiniGame, panel, type MiniResult } from './base';
 
+/** Cash on the counter, positioned by its center and rotated by rot radians. */
 interface Piece {
   v: number;
-  x: number;
-  y: number;
+  cx: number;
+  cy: number;
   w: number;
   h: number;
+  rot: number;
+}
+
+function extents(p: Piece): [number, number] {
+  const c = Math.abs(Math.cos(p.rot));
+  const s = Math.abs(Math.sin(p.rot));
+  return [(p.w / 2) * c + (p.h / 2) * s, (p.w / 2) * s + (p.h / 2) * c];
+}
+
+function hitPiece(p: Piece, x: number, y: number): boolean {
+  const dx = x - p.cx;
+  const dy = y - p.cy;
+  if (p.v < 100) return dx * dx + dy * dy <= (p.w / 2) * (p.w / 2);
+  const c = Math.cos(-p.rot);
+  const s = Math.sin(-p.rot);
+  return Math.abs(dx * c - dy * s) <= p.w / 2 && Math.abs(dx * s + dy * c) <= p.h / 2;
+}
+
+function overlap(a: Piece, b: Piece): number {
+  const [ax, ay] = extents(a);
+  const [bx, by] = extents(b);
+  return Math.max(0, ax + bx + 2 - Math.abs(a.cx - b.cx)) * Math.max(0, ay + by + 2 - Math.abs(a.cy - b.cy));
 }
 
 const pieceSprite = (v: number) => (v >= 100 ? `bill${v / 100}` : `coin${v}`);
@@ -56,26 +79,37 @@ export class CheckoutGame extends MiniGame {
     }
   }
 
+  /** Center-weighted placement; the spread widens on retries to avoid overlaps. */
   private scatter(values: number[]): void {
     const c = this.counter;
+    const midX = c.x + c.w / 2;
+    const midY = c.y + c.h / 2;
+    const centered = () => (this.rng.next() + this.rng.next()) - 1;
     for (const v of values) {
       const [, , w, hh] = rect(pieceSprite(v));
-      let best: Piece = { v, x: c.x + 4, y: c.y + 4, w, h: hh };
-      for (let i = 0; i < 40; i++) {
-        const p = { v, w, h: hh, x: c.x + 4 + this.rng.next() * Math.max(1, c.w - w - 8), y: c.y + 4 + this.rng.next() * Math.max(1, c.h - hh - 8) };
-        best = p;
-        if (!this.pieces.some((o) => p.x < o.x + o.w + 2 && o.x < p.x + p.w + 2 && p.y < o.y + o.h + 2 && o.y < p.y + p.h + 2)) break;
+      const rot = v >= 100 ? this.rng.range(-0.55, 0.55) : this.rng.range(-0.6, 0.6);
+      let best: Piece | null = null;
+      let bestScore = Infinity;
+      for (let i = 0; i < 60; i++) {
+        const spread = Math.min(1, 0.45 + i * 0.02);
+        const p: Piece = { v, w, h: hh, rot, cx: midX + centered() * (c.w / 2) * spread, cy: midY + centered() * (c.h / 2) * spread };
+        this.clamp(p);
+        const score = this.pieces.reduce((a, o) => a + overlap(p, o), 0);
+        if (score < bestScore) {
+          best = p;
+          bestScore = score;
+        }
+        if (score === 0) break;
       }
-      best.x = Math.round(best.x);
-      best.y = Math.round(best.y);
-      this.pieces.push(best);
+      this.pieces.push(best!);
     }
   }
 
   private clamp(p: Piece): void {
     const c = this.counter;
-    p.x = Math.max(c.x, Math.min(c.x + c.w - p.w, p.x));
-    p.y = Math.max(c.y, Math.min(c.y + c.h - p.h, p.y));
+    const [ex, ey] = extents(p);
+    p.cx = Math.max(c.x + ex, Math.min(c.x + c.w - ex, p.cx));
+    p.cy = Math.max(c.y + ey, Math.min(c.y + c.h - ey, p.cy));
   }
 
   private paid(): number {
@@ -136,10 +170,10 @@ export class CheckoutGame extends MiniGame {
     if (this.ended) return;
     for (let i = this.pieces.length - 1; i >= 0; i--) {
       const p = this.pieces[i];
-      if (inRect(x, y, p)) {
+      if (hitPiece(p, x, y)) {
         this.pieces.splice(i, 1);
         this.pieces.push(p);
-        this.drag = { p, dx: x - p.x, dy: y - p.y };
+        this.drag = { p, dx: x - p.cx, dy: y - p.cy };
         return;
       }
     }
@@ -161,8 +195,8 @@ export class CheckoutGame extends MiniGame {
 
   protected pointerMove(x: number, y: number): void {
     if (!this.drag) return;
-    this.drag.p.x = Math.round(x - this.drag.dx);
-    this.drag.p.y = Math.round(y - this.drag.dy);
+    this.drag.p.cx = x - this.drag.dx;
+    this.drag.p.cy = y - this.drag.dy;
     this.clamp(this.drag.p);
   }
 
@@ -191,7 +225,15 @@ export class CheckoutGame extends MiniGame {
     panel(ctx, lx, 4, lw, 22, '#203020');
     drawText(ctx, amount, lx + (lw - textWidth(amount, 2)) / 2, 7, '#8ef08a', 2);
 
-    for (const p of this.pieces) drawSprite(ctx, pieceSprite(p.v), p.x, p.y);
+    for (const p of this.pieces) {
+      ctx.save();
+      ctx.translate(Math.round(p.cx), Math.round(p.cy));
+      ctx.rotate(p.rot);
+      ctx.fillStyle = 'rgba(40, 20, 10, 0.25)';
+      if (p.v >= 100) ctx.fillRect(-p.w / 2 + 2, -p.h / 2 + 2, p.w, p.h);
+      drawSprite(ctx, pieceSprite(p.v), -p.w / 2, -p.h / 2);
+      ctx.restore();
+    }
 
     drawSprite(ctx, 'tray', this.trayR.x, this.trayR.y);
     for (const it of this.trayItems()) drawSprite(ctx, pieceSprite(it.v), it.x, it.y);

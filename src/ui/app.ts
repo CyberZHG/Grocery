@@ -2,6 +2,7 @@ import { LOCALES, locale, money, onLocaleChange, setLocale, t, type Key } from '
 import { NIGHT_SECONDS } from '../game/defs';
 import type { Game } from '../game/game';
 import type { DayStats } from '../game/state';
+import type { Prompt } from '../render/world';
 import { BuildMode } from './build';
 import { clear, h } from './dom';
 import { expandPanel, regularsPanel, reportPanel, staffPanel } from './panels';
@@ -27,7 +28,7 @@ export function charIcon(row: number, scale = 1): HTMLElement {
     style: {
       width: `${32 * scale}px`, height: `${40 * scale}px`,
       backgroundImage: `url(${base}assets/chars.png?v=${__BUILD__})`,
-      backgroundSize: `${288 * scale}px auto`,
+      backgroundSize: `${480 * scale}px auto`,
       backgroundPosition: `0 -${(row * 48 + 2) * scale}px`,
     },
   });
@@ -48,6 +49,8 @@ export class UI {
   private modalEl: HTMLElement | null = null;
   private buildMode: BuildMode | null = null;
   private lastSig = '';
+  private promptLayer: HTMLElement;
+  private promptEls = new Map<string, { el: HTMLButtonElement; bar: HTMLElement }>();
 
   constructor(root: HTMLElement) {
     this.canvas = h('canvas', { class: 'world' });
@@ -65,7 +68,8 @@ export class UI {
     this.bottom = h('div', { class: 'bar' });
     this.toasts = h('div', { class: 'toasts' });
     this.overlay = h('div', { class: 'overlay' });
-    root.append(this.canvas, this.top, this.bottom, this.toasts, this.overlay);
+    this.promptLayer = h('div', { class: 'prompts' });
+    root.append(this.canvas, this.promptLayer, this.top, this.bottom, this.toasts, this.overlay);
     onLocaleChange(() => {
       this.refresh();
       this.buildMode?.render();
@@ -147,6 +151,37 @@ export class UI {
       const s = Number(b.dataset.speed);
       b.classList.toggle('active', s === 0 ? g.userPaused : !g.userPaused && g.speed === s);
     });
+  }
+
+  /** DOM buttons above service bubbles so the manual option is visible and readable in any language. */
+  updatePrompts(list: Prompt[]): void {
+    const seen = new Set<string>();
+    for (const p of list) {
+      seen.add(p.key);
+      let item = this.promptEls.get(p.key);
+      if (!item) {
+        const bar = h('i', { class: 'prompt-bar' });
+        const el = h('button', { class: 'prompt' }, [h('span', {}, ['']), bar]) as HTMLButtonElement;
+        item = { el, bar };
+        this.promptEls.set(p.key, item);
+        this.promptLayer.append(el);
+      }
+      const { el, bar } = item;
+      el.onclick = () => this.game.serve(p.action);
+      const label = t(`prompt.${p.label}` as Key);
+      const span = el.firstChild as HTMLElement;
+      if (span.textContent !== label) span.textContent = label;
+      const [x, y] = this.game.toClient(p.wx, p.wy);
+      el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
+      bar.style.width = `${Math.round(p.ratio * 100)}%`;
+      el.classList.toggle('waiting', p.ratio > 0);
+    }
+    for (const [k, item] of this.promptEls) {
+      if (!seen.has(k)) {
+        item.el.remove();
+        this.promptEls.delete(k);
+      }
+    }
   }
 
   toast(text: string): void {

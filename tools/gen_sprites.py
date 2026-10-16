@@ -131,7 +131,7 @@ def staff_looks():
 
 def characters(npc_looks):
     looks = staff_looks() + npc_looks
-    img = Image.new('RGBA', (GC.FW * 9, GC.FH * len(looks)), (0, 0, 0, 0))
+    img = Image.new('RGBA', (GC.FW * GC.FRAMES_PER_ROW, GC.FH * len(looks)), (0, 0, 0, 0))
     for r, lk in enumerate(looks):
         for i, f in enumerate(GC.char_row(lk)):
             f.to_image(img, i * GC.FW, r * GC.FH)
@@ -281,19 +281,19 @@ def og_image(prods, items, chars_img):
         img.alpha_composite(shelf, (sx, 30))
         for j, idx in enumerate(row):
             img.alpha_composite(prod(idx), (sx + (j % 2) * 32, 30 + (j // 2) * 20 - 6))
-    for i, (row, col, x) in enumerate(((0, 0, 24), (14, 0, 92), (20, 3, 150), (30, 0, 250), (3, 3, 196))):
+    for i, (row, col, x) in enumerate(((0, 9, 24), (14, 9, 92), (20, 3, 150), (30, 9, 250), (3, 3, 196))):
         fr = chars_img.crop((col * 32, row * 48, col * 32 + 32, row * 48 + 48))
-        img.alpha_composite(fr, (x, 71))
-    band = Image.new('RGBA', (w, 40), (30, 40, 48, 215))
-    img.alpha_composite(band, (0, h - 40))
-    font = items['font']
-    cv = Canvas(w, 40)
-    GM.glyphs(cv, 'GROCERY', 10, 6, hexc('f8e8a0'), 3)
-    GM.glyphs(cv, 'PIXEL SUPERMARKET', 150, 10, hexc('e8eef0'), 1)
-    GM.glyphs(cv, 'MANAGER', 150, 20, hexc('e8eef0'), 1)
-    txt = cv.to_image()
-    img.alpha_composite(txt, (0, h - 40))
-    del font
+        img.alpha_composite(fr, (x, 64))
+    band_h = 48
+    band = Image.new('RGBA', (w, band_h), (24, 30, 40, 225))
+    img.alpha_composite(band, (0, h - band_h))
+    cv = Canvas(w, band_h)
+    GM.glyphs(cv, 'Grocery', 11, 7, hexc('3a2a10'), 3)
+    GM.glyphs(cv, 'Grocery', 10, 6, hexc('f8e08a'), 3)
+    GM.glyphs(cv, 'Pixel Supermarket', 160, 8, hexc('e8eef0'), 1)
+    GM.glyphs(cv, 'Manager', 160, 18, hexc('e8eef0'), 1)
+    GM.glyphs(cv, 'https://cyberzhg.github.io/Grocery/', 10, 36, hexc('9fd8f0'), 1)
+    img.alpha_composite(cv.to_image(), (0, h - band_h))
     img = img.resize((w * 4, h * 4), Image.NEAREST).crop((0, 1, 1200, 631))
     img.convert('RGB').save(os.path.join(PUBLIC, 'og.png'))
 

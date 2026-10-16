@@ -1,14 +1,14 @@
-import math
+"""Characters are composed from hand-authored pixel templates (one per direction),
+recolored per outfit. Letters map to palette slots; '.' is transparent."""
 import random
-from pix import Canvas, hexc, tone, mix
+from pix import Canvas, hexc, mix
 
 FW, FH = 32, 48
-SKIN = hexc('f4d3b8')
-SKIN_SH = hexc('e2b496')
-BLUSH = hexc('f0b0a0')
-EYE = hexc('2a2028')
-HAIR_COLORS = [hexc('231c22'), hexc('2c2228'), hexc('3a2a26'), hexc('4a3428'), hexc('1e1a24')]
-GRAY_HAIR = [hexc('b8b4bc'), hexc('9c98a4'), hexc('d0ccd2')]
+
+SKIN = {'S': hexc('f7dcc6'), 's': hexc('e9bea2'), 'r': hexc('d79d84'), 'b': hexc('f3b4a4'),
+        'E': hexc('2b2230'), 'W': hexc('ffffff'), 'm': hexc('c86e60')}
+HAIR_COLORS = [hexc('2a2228'), hexc('33282a'), hexc('3e2c26'), hexc('4c3628'), hexc('241e28')]
+GRAY_HAIR = [hexc('b8b4bc'), hexc('a09ca6'), hexc('cfcbd2')]
 SHIRTS = ['e8e4dc', '5a7ab8', 'c85a5a', '6aa070', 'e0b860', '8a6ab0', '3a4a6a', 'f0a0a8', '60a8c0', 'd88040',
           'f4f0e8', '4a6a50', 'b04060', '7a8a98', 'c8b8a0', '2a3a5a']
 PANTS = ['3a4a6a', '2a2a34', '6a5a48', '4a5a7a', 'b8a888', '5a4a5a', '303848']
@@ -16,257 +16,652 @@ SHOES = ['f0f0f0', '3a2a2a', '5a3a2a', '2a2a3a', 'c84a4a']
 HAIRSTYLES = ['short', 'bob', 'long', 'ponytail', 'bun', 'buzz', 'spiky', 'parted']
 
 
+def shade(c, f):
+    """Darker step that keeps the hue (slightly warm-to-cool), unlike the product ramp."""
+    d = (int(c[0] * (1 - f)), int(c[1] * (1 - f * 0.9)), int(c[2] * (1 - f * 0.75)), 255)
+    return d
+
+
+def light(c, f):
+    return mix(c, (255, 250, 240, 255), f)
+
+
+# ---------- head (16 x 15), origin = top-left of face ----------
+
+FACE = {
+    'down': [
+        '.....SSSSSS.....',
+        '...SSSSSSSSSS...',
+        '..SSSSSSSSSSSS..',
+        '.SSSSSSSSSSSSSS.',
+        '.SSSSSSSSSSSSSS.',
+        'SSSSSSSSSSSSSSSS',
+        'SSSSSSSSSSSSSSSS',
+        'SSSWESSSSSSWESSS',
+        'SSSEESSSSSSEESSS',
+        'sSSEESSSSSSEESSs',
+        'sSbbSSSSSSSSbbSs',
+        '.sSSSSSmmSSSSSs.',
+        '.ssSSSSSSSSSSss.',
+        '..sssSSSSSSsss..',
+        '....ssssssss....',
+    ],
+    'side': [
+        '.....SSSSSS.....',
+        '...SSSSSSSSSS...',
+        '..SSSSSSSSSSSS..',
+        '.SSSSSSSSSSSSSS.',
+        '.SSSSSSSSSSSSSS.',
+        'SSSSSSSSSSSSSSS.',
+        'SSSSSSSSSSSSSSS.',
+        'SSSsSSSSSSSWESS.',
+        'SSsrSSSSSSSEESS.',
+        'SSSsSSSSSSSEESSS',
+        'sSSSSSSSSSSSbbSs',
+        '.sSSSSSSSSSSSmS.',
+        '.ssSSSSSSSSSSS..',
+        '..sssSSSSSSss...',
+        '....sssssss.....',
+    ],
+    'up': [
+        '.....SSSSSS.....',
+        '...SSSSSSSSSS...',
+        '..SSSSSSSSSSSS..',
+        '.SSSSSSSSSSSSSS.',
+        '.SSSSSSSSSSSSSS.',
+        'SSSSSSSSSSSSSSSS',
+        'SSSSSSSSSSSSSSSS',
+        'SSSSSSSSSSSSSSSS',
+        'SSSSSSSSSSSSSSSS',
+        'sSSSSSSSSSSSSSSs',
+        'sSSSSSSSSSSSSSSs',
+        '.sSSSSSSSSSSSSs.',
+        '.ssSSSSSSSSSSss.',
+        '..sssSSSSSSsss..',
+        '....ssssssss....',
+    ],
+}
+
+# ---------- hair (18 wide), origin = face origin + (-1, -3) ----------
+# H base, h shadow, L highlight. Rows may extend below the face for long styles.
+
+HAIR = {
+    'short': {
+        'down': [
+            '.....HHHHHHHH.....',
+            '...HHHHHHHHHHHH...',
+            '..HHHHLLLHHHHHHH..',
+            '.HHHHLLHHHHHHHHHH.',
+            '.HHHHHHHHHHHHHHHH.',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHhHHHHhHHHHhHHHHH',
+            'Hh.hHHh..hHHh..hhH',
+            'Hh..h.........h.hH',
+            'hh..............hh',
+            'h................h',
+        ],
+        'side': [
+            '.....HHHHHHH......',
+            '...HHHHHHHHHHH....',
+            '..HHHHHLLLHHHHH...',
+            '.HHHHHLLHHHHHHHH..',
+            '.HHHHHHHHHHHHHHHH.',
+            'HHHHHHHHHHHHHHHHH.',
+            'HHHHHHHHHHHHHHHHH.',
+            'HHHHHHHhHHHHHhhHH.',
+            'HHHHHhh.hHHh...hh.',
+            'HHHHh.....h.......',
+            'HHHH..............',
+            'HHHh..............',
+            'hHh...............',
+            '.h................',
+        ],
+        'up': [
+            '.....HHHHHHHH.....',
+            '...HHHHHHHHHHHH...',
+            '..HHHHLLLHHHHHHH..',
+            '.HHHHLLHHHHHHHHHH.',
+            '.HHHHHHHHHHHHHHHH.',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'hHHHHHHHHHHHHHHHHh',
+            '.hHHHHHHHHHHHHHHh.',
+            '..hhHHHHHHHHHHhh..',
+            '....hhhhhhhhhh....',
+        ],
+    },
+    'buzz': {
+        'down': [
+            '..................',
+            '.....hhhhhhhh.....',
+            '...hHHHHHHHHHHh...',
+            '..hHHHLLHHHHHHHh..',
+            '.hHHHHHHHHHHHHHHh.',
+            '.hHHHHHHHHHHHHHHh.',
+            '.hHHhhhhhhhhhhHHh.',
+            '.hh............hh.',
+        ],
+        'side': [
+            '..................',
+            '.....hhhhhhh......',
+            '...hHHHHHHHHHh....',
+            '..hHHHHLLHHHHHh...',
+            '.hHHHHHHHHHHHHHh..',
+            '.hHHHHHHHHHHHHhh..',
+            '.hHHHHHHHhhhh.....',
+            '.hHHHh............',
+            '.hHHh.............',
+            '.hHh..............',
+            '..h...............',
+        ],
+        'up': [
+            '..................',
+            '.....hhhhhhhh.....',
+            '...hHHHHHHHHHHh...',
+            '..hHHHLLHHHHHHHh..',
+            '.hHHHHHHHHHHHHHHh.',
+            '.hHHHHHHHHHHHHHHh.',
+            '.hHHHHHHHHHHHHHHh.',
+            '.hHHHHHHHHHHHHHHh.',
+            '.hHHHHHHHHHHHHHHh.',
+            '.hHHHHHHHHHHHHHHh.',
+            '..hHHHHHHHHHHHHh..',
+            '...hhHHHHHHHHhh...',
+            '.....hhhhhhhh.....',
+        ],
+    },
+    'spiky': {
+        'down': [
+            '...H...H...H...H..',
+            '..HH..HH..HH..HH..',
+            '.HHHHHHHHHHHHHHHH.',
+            '.HHHHLLLHHHHHHHHH.',
+            'HHHHLLHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHhHHHHhHHHHhHHH',
+            'Hh.H.hH.H.hH.H.hhH',
+            'Hh..............hH',
+            'hh..............hh',
+        ],
+        'side': [
+            '....H...H...H.....',
+            '...HH..HH..HH.....',
+            '..HHHHHHHHHHHHH...',
+            '.HHHHHLLLHHHHHHH..',
+            'HHHHHLLHHHHHHHHHH.',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHH.',
+            'HHHHHHHhHHHhHHHhH.',
+            'HHHHHhH.hH.H.hH.h.',
+            'HHHHh.............',
+            'HHHH..............',
+            'HHHh..............',
+            'hHh...............',
+        ],
+        'up': [
+            '...H...H...H...H..',
+            '..HH..HH..HH..HH..',
+            '.HHHHHHHHHHHHHHHH.',
+            '.HHHHLLLHHHHHHHHH.',
+            'HHHHLLHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'hHHHHHHHHHHHHHHHHh',
+            '.hHHHHHHHHHHHHHHh.',
+            '..hhHHHHHHHHHHhh..',
+            '....hhhhhhhhhh....',
+        ],
+    },
+    'parted': {
+        'down': [
+            '.....HHHHHHHH.....',
+            '...HHHHHHHHHHHH...',
+            '..HHHHHHHLLLHHHH..',
+            '.HHHHHHHHLLHHHHHH.',
+            '.HHHHHHHHhHHHHHHH.',
+            'HHHHHHHHh.HHHHHHHH',
+            'HHHHHHHh...HHHHHHH',
+            'HHHHHHh.....hHHHHH',
+            'HHhhh........hhHHH',
+            'Hh..............hH',
+            'hh..............hh',
+            'h................h',
+        ],
+        'side': [
+            '.....HHHHHHH......',
+            '...HHHHHHHHHHH....',
+            '..HHHHHHHLLLHHH...',
+            '.HHHHHHHLLHHHHHH..',
+            '.HHHHHHHHHHHHHHHH.',
+            'HHHHHHHHHHHHHHHHH.',
+            'HHHHHHHHHHHHHHHHH.',
+            'HHHHHHHHHHHHHhHH..',
+            'HHHHHhhhhhhh..hh..',
+            'HHHHh.............',
+            'HHHH..............',
+            'HHHh..............',
+            'hHh...............',
+            '.h................',
+        ],
+        'up': None,
+    },
+    'bob': {
+        'down': [
+            '.....HHHHHHHH.....',
+            '...HHHHHHHHHHHH...',
+            '..HHHHLLLHHHHHHH..',
+            '.HHHHLLHHHHHHHHHH.',
+            '.HHHHHHHHHHHHHHHH.',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHhhhhhhhhhhhhhhHH',
+            'HHh............hHH',
+            'HHh............hHH',
+            'HHh............hHH',
+            'HHh............hHH',
+            'HHH............HHH',
+            'hHH............HHh',
+            'hhh............hhh',
+        ],
+        'side': [
+            '.....HHHHHHH......',
+            '...HHHHHHHHHHH....',
+            '..HHHHHLLLHHHHH...',
+            '.HHHHHLLHHHHHHHH..',
+            '.HHHHHHHHHHHHHHHH.',
+            'HHHHHHHHHHHHHHHHH.',
+            'HHHHHHHHHHHHHHHHH.',
+            'HHHHHHHHHHHHHHHHH.',
+            'HHHHHHHHhhhhhhhhh.',
+            'HHHHHHHHh.........',
+            'HHHHHHHHh.........',
+            'HHHHHHHHh.........',
+            'HHHHHHHHh.........',
+            'HHHHHHHHH.........',
+            'hHHHHHHHh.........',
+            '.hhhhhhhh.........',
+        ],
+        'up': [
+            '.....HHHHHHHH.....',
+            '...HHHHHHHHHHHH...',
+            '..HHHHLLLHHHHHHH..',
+            '.HHHHLLHHHHHHHHHH.',
+            '.HHHHHHHHHHHHHHHH.',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'HHHHHHHHHHHHHHHHHH',
+            'hHHHHHHHHHHHHHHHHh',
+            'hhhhhhhhhhhhhhhhhh',
+        ],
+    },
+}
+HAIR['parted']['up'] = HAIR['short']['up']
+
+
+# long: bob silhouette extended past the shoulders
+HAIR['long'] = {
+    'down': HAIR['bob']['down'][:-2] + [
+        'HHH............HHH',
+        'HHH............HHH',
+        'HHH............HHH',
+        'HHH............HHH',
+        'HHH............HHH',
+        'hHh............hHh',
+        'hh..............hh',
+    ],
+    'side': HAIR['bob']['side'][:-2] + [
+        'HHHHHHHHH.........',
+        'HHHHHHHH..........',
+        'HHHHHHHH..........',
+        'HHHHHHHH..........',
+        'HHHHHHH...........',
+        'hHHHHHh...........',
+        '.hhhhh............',
+    ],
+    'up': HAIR['bob']['up'][:-2] + [
+        'HHHHHHHHHHHHHHHHHH',
+        'HHHHHHHHHHHHHHHHHH',
+        '.HHHHHHHHHHHHHHHH.',
+        '.HHHHHHHHHHHHHHHH.',
+        '.HHHHHHHHHHHHHHHH.',
+        '.hHHHHHHHHHHHHHHh.',
+        '..hhhhhhhhhhhhhh..',
+    ],
+}
+
+# ponytail and bun reuse the short cut with an extra piece
+HAIR['ponytail'] = {
+    'down': HAIR['short']['down'],
+    'side': [r for r in HAIR['short']['side']],
+    'up': HAIR['short']['up'],
+}
+HAIR['bun'] = {k: v for k, v in HAIR['short'].items()}
+
+PONYTAIL = {
+    'side': (-4, 6, [
+        '.HHh',
+        'HHHH',
+        'HHHH',
+        'HHHh',
+        'HHH.',
+        'HHH.',
+        'HHh.',
+        'HH..',
+        'Hh..',
+        'h...',
+    ]),
+    'up': (6, 13, [
+        '.HHHHh',
+        '.HHHHh',
+        '.HHHH.',
+        '..HHHh',
+        '..HHH.',
+        '..HHh.',
+        '..Hh..',
+    ]),
+    'down': (16, 4, [
+        '.Hh',
+        'HHh',
+        'HH.',
+        'Hh.',
+        'h..',
+    ]),
+}
+BUN = {
+    'down': (5, -4, ['..HHHH..', '.HHLLHH.', 'HHHLHHHH', 'hHHHHHHh', '.hhhhhh.']),
+    'up': (5, -4, ['..HHHH..', '.HHLLHH.', 'HHHLHHHH', 'hHHHHHHh', '.hhhhhh.']),
+    'side': (0, -2, ['..HHHH..', '.HHLLHH.', 'HHHLHHHH', 'hHHHHHHh', '.hhhhhh.']),
+}
+
+CAP = {
+    'down': (0, -1, [
+        '....KKKKKKKKKK....',
+        '..KKKKKKkKKKKKKK..',
+        '.KKKKKKKkKKKKKKKK.',
+        '.KKKKKKKkKKKKKKKK.',
+        'KKKKKKKKKKKKKKKKKK',
+        'kkkkkkkkkkkkkkkkkk',
+        '.kVVVVVVVVVVVVVVk.',
+    ]),
+    'side': (0, -1, [
+        '....KKKKKKKKK.......',
+        '..KKKKKKKKkKKKK.....',
+        '.KKKKKKKKKkKKKKK....',
+        '.KKKKKKKKKkKKKKKK...',
+        'KKKKKKKKKKKKKKKKK...',
+        'kkkkkkkkkkkkkkkkVVVV',
+        '................VVV.',
+    ]),
+    'up': (0, -1, [
+        '....KKKKKKKKKK....',
+        '..KKKKKKkKKKKKKK..',
+        '.KKKKKKKkKKKKKKKK.',
+        '.KKKKKKKkKKKKKKKK.',
+        'KKKKKKKKKKKKKKKKKK',
+        'kkkkkkkkkkkkkkkkkk',
+    ]),
+}
+
+GLASSES = {
+    'down': (1, 6, ['GGGGG..GGGGG', 'G...GGGG...G', 'G...G..G...G', 'GGGGG..GGGGG']),
+    'side': (9, 6, ['..GGGGG', 'GGG...G', '..G...G', '..GGGGG']),
+}
+
+# ---------- body (16 wide), origin x = 8 ----------
+
+TORSO = {
+    'down': [
+        '....CCCCCCCC....',
+        '..CCCCCCCCCCCC..',
+        '.CCCCCCCCCCCCCC.',
+        '.CCcCCCCCCCCcCC.',
+        '.CCcCCCCCCCCcCC.',
+        '.CCcCCCCCCCCcCC.',
+        '.SScCCCCCCCCcSS.',
+        '.sSccccccccccSs.',
+        '...PPPPPPPPPP...',
+    ],
+    'side': [
+        '.....CCCCCC.....',
+        '....CCCCCCCC....',
+        '....CCCCCCCCc...',
+        '....CCCCCCCCc...',
+        '....CCCCCCCCc...',
+        '....CCCCCCCCc...',
+        '....CCCCCCCCc...',
+        '....ccccccccc...',
+        '.....PPPPPPP....',
+    ],
+    'up': [
+        '....CCCCCCCC....',
+        '..CCCCCCCCCCCC..',
+        '.CCCCCCCCCCCCCC.',
+        '.CCcCCCCCCCCcCC.',
+        '.CCcCCCCCCCCcCC.',
+        '.CCcCCCCCCCCcCC.',
+        '.SScCCCCCCCCcSS.',
+        '.sSccccccccccSs.',
+        '...PPPPPPPPPP...',
+    ],
+}
+SIDE_ARM = ['CCc', 'CCc', 'CCc', 'CCc', 'cCc', 'SSs', 'sss']
+
+KID_TORSO_ROWS = [0, 1, 2, 4, 6, 7, 8]
+
+
+def paint(cv, ox, oy, rows, pal):
+    for y, row in enumerate(rows):
+        for x, ch in enumerate(row):
+            if ch == '.':
+                continue
+            c = pal.get(ch)
+            if c is not None:
+                cv.px(ox + x, oy + y, c)
+
+
 class Look:
     def __init__(self, hair='short', hair_c=None, shirt='5a7ab8', pants='3a4a6a', shoes='3a2a2a', kid=False,
                  skirt=False, apron=None, glasses=False, cap=None, jacket=None):
         self.hair = hair
         self.hair_c = hair_c or HAIR_COLORS[0]
-        self.shirt = hexc(shirt)
-        self.pants = hexc(pants)
-        self.shoes = hexc(shoes)
+        self.shirt = hexc(shirt) if isinstance(shirt, str) else shirt
+        self.pants = hexc(pants) if isinstance(pants, str) else pants
+        self.shoes = hexc(shoes) if isinstance(shoes, str) else shoes
         self.kid = kid
         self.skirt = skirt
-        self.apron = hexc(apron) if apron else None
+        self.apron = hexc(apron) if isinstance(apron, str) else apron
         self.glasses = glasses
-        self.cap = hexc(cap) if cap else None
-        self.jacket = hexc(jacket) if jacket else None
+        self.cap = hexc(cap) if isinstance(cap, str) else cap
+        self.jacket = hexc(jacket) if isinstance(jacket, str) else jacket
 
 
-def metrics(look):
-    leg = 5 if look.kid else 8
-    torso = 9 if look.kid else 11
-    feet = 46
-    leg_top = feet - 2 - leg
-    torso_top = leg_top - torso
-    head_cy = torso_top - 9
-    return leg_top, torso_top, head_cy
-
-
-def draw_head(look, d, hy):
-    cv = Canvas(FW, FH)
-    cv.ellipse(16, hy, 9.2, 9.0, SKIN)
-    if d == 'side':
-        cv.rect(24, hy + 1, 25, hy + 2, SKIN)
-    cv.shade_ball(16, hy, 9.2, 9.0, 0.55, dither=False)
-    ey = round(hy + 1)
-    if d == 'down':
-        for ex in (12, 19):
-            cv.rect(ex, ey, ex + 1, ey + 2, EYE)
-            cv.px(ex, ey, hexc('f8f0f0'))
-        cv.px(10, ey + 4, BLUSH); cv.px(11, ey + 4, BLUSH)
-        cv.px(21, ey + 4, BLUSH); cv.px(22, ey + 4, BLUSH)
-        cv.rect(15, ey + 5, 16, ey + 5, hexc('c87868'))
-        if look.glasses:
-            for ex in (11, 18):
-                cv.rect(ex, ey - 1, ex + 3, ey - 1, hexc('3a3040'))
-                cv.rect(ex, ey + 3, ex + 3, ey + 3, hexc('3a3040'))
-                cv.vline(ex, ey - 1, ey + 3, hexc('3a3040'))
-                cv.vline(ex + 3, ey - 1, ey + 3, hexc('3a3040'))
-            cv.hline(15, 17, ey, hexc('3a3040'))
-    elif d == 'side':
-        cv.rect(21, ey, 22, ey + 2, EYE)
-        cv.px(22, ey, hexc('f8f0f0'))
-        cv.px(22, ey + 4, BLUSH); cv.px(23, ey + 4, BLUSH)
-        cv.px(23, ey + 5, hexc('c87868'))
-        cv.rect(15, ey - 1, 16, ey + 2, SKIN_SH)
-        if look.glasses:
-            cv.rect(20, ey - 1, 24, ey - 1, hexc('3a3040'))
-            cv.rect(20, ey + 3, 24, ey + 3, hexc('3a3040'))
-            cv.vline(20, ey - 1, ey + 3, hexc('3a3040'))
-            cv.hline(14, 19, ey, hexc('3a3040'))
-    return cv
-
-
-def draw_hair(look, d, hy):
-    cv = Canvas(FW, FH)
-    c = look.hair_c
-    top = hy - 9.5
-    style = look.hair
-
-    def cap_mask(rx=10.2, ry=10.0, cy_off=-0.8):
-        pts = []
-        for y in range(FH):
-            for x in range(FW):
-                if cv.inside_ellipse(x, y, 16, hy + cy_off, rx, ry):
-                    pts.append((x, y))
-        return pts
-
-    if style == 'buzz':
-        rx, ry = 9.5, 9.3
-    elif style == 'spiky':
-        rx, ry = 10.4, 10.4
-    else:
-        rx, ry = 10.2, 10.0
-    for (x, y) in cap_mask(rx, ry):
-        if d == 'up':
-            limit = hy + (6 if style in ('buzz', 'short', 'spiky', 'parted', 'bun', 'ponytail') else 9)
-            if y <= limit:
-                cv.px(x, y, c)
-        elif d == 'down':
-            fringe = hy - 3 + ((x * 7) % 3 == 0) * 1 - (style == 'buzz') * 2
-            if style == 'parted':
-                fringe = hy - 3 + (1 if x < 14 else -1) + (x % 3 == 0)
-            side = (x <= 8 or x >= 24)
-            side_limit = hy + (2 if style in ('short', 'spiky', 'parted', 'ponytail', 'bun') else (-1 if style == 'buzz' else 6))
-            if y <= fringe or (side and y <= side_limit):
-                cv.px(x, y, c)
-        else:
-            back = x <= 15 + max(0, (hy - 2 - y)) // 2
-            limit = hy + (2 if style in ('short', 'spiky', 'parted', 'ponytail', 'bun') else (-1 if style == 'buzz' else 6))
-            if y <= hy - 3 + (x > 20) * 0 or (back and y <= limit):
-                cv.px(x, y, c)
-    if style == 'spiky':
-        for i, x in enumerate(range(8, 25, 3)):
-            cv.poly([(x - 1, top + 3), (x + 2, top + 3), (x + 1 + (i % 2), top - 1)], c)
-    if style in ('long', 'bob') and d != 'down':
-        ext = 8 if style == 'long' else 3
-        if d == 'up':
-            cv.rrect(7, hy, 25, hy + 6 + ext, c, 2)
-        else:
-            cv.rrect(7, hy, 15, hy + 6 + ext, c, 2)
-    if style == 'long' and d == 'down':
-        cv.rect(6, hy, 8, hy + 13, c)
-        cv.rect(24, hy, 26, hy + 13, c)
-    if style == 'ponytail':
-        if d == 'side':
-            cv.ellipse(7, hy + 2, 2.5, 6, c)
-        elif d == 'up':
-            cv.ellipse(16, hy + 9, 2.6, 6, c)
-        else:
-            cv.rect(24, hy - 2, 26, hy + 5, c)
-    if style == 'bun':
-        if d == 'side':
-            cv.ellipse(9, top + 2, 4, 3.5, c)
-        else:
-            cv.ellipse(16, top + 0.5, 4.2, 3.5, c)
-    if look.cap is not None:
-        capc = look.cap
-        for (x, y) in cap_mask(10.4, 10.2, -1.5):
-            if y <= hy - 4:
-                cv.px(x, y, capc)
-        if d == 'down':
-            cv.rect(8, round(hy - 4), 24, round(hy - 3), tone(capc, -1))
-        elif d == 'side':
-            cv.rect(20, round(hy - 4), 28, round(hy - 3), tone(capc, -1))
-        cv.ellipse(16, hy - 7, 2.2, 1.6, tone(capc, 2))
-    cv.shade_ball(16, hy - 2, 11, 12, 0.85, dither=False)
-    # glossy strand highlight
-    if d != 'up' or True:
-        for i in range(5):
-            x, y = 11 + i, round(hy - 7 + abs(i - 2) * 0.5)
-            p = cv.get(x, y)
-            if p is not None:
-                cv.px(x, y, tone(p, 2))
-    return cv
-
-
-def draw_body(look, d, frame):
-    cv = Canvas(FW, FH)
-    leg_top, torso_top, _ = metrics(look)
-    step = 0 if frame == 0 else (1 if frame == 1 else -1)
+def palette(look):
+    h = look.hair_c
     shirt = look.shirt
-    pants = look.pants
-    shoes = look.shoes
+    pal = dict(SKIN)
+    pal.update({
+        'H': h, 'h': shade(h, 0.28), 'L': light(h, 0.28),
+        'C': shirt, 'c': shade(shirt, 0.2),
+        'P': look.pants, 'p': shade(look.pants, 0.25),
+        'F': look.shoes, 'f': shade(look.shoes, 0.3),
+        'G': hexc('3a3040'),
+    })
+    if look.cap is not None:
+        pal.update({'K': look.cap, 'k': shade(look.cap, 0.25), 'V': shade(look.cap, 0.4)})
+    return pal
 
-    def leg(x0, x1, lift, shift=0, dark=0):
-        y1 = 43 - lift
-        if look.skirt:
-            cv.rect(x0 + shift, leg_top + 2, x1 + shift, y1, tone(SKIN, dark))
-        else:
-            cv.rect(x0 + shift, leg_top, x1 + shift, y1, tone(pants, dark))
-        cv.rect(x0 + shift, y1 + 1, x1 + shift + (1 if d == 'side' else 0), y1 + 3, shoes)
-        cv.hline(x0 + shift, x1 + shift, y1 + 1, tone(shoes, 1))
 
+def legs(cv, look, d, frame, top, pal):
+    """Two legs plus shoes; lifting one leg per step frame."""
+    leg_len = 4 if look.kid else 6
+    step = 0 if frame == 0 else (1 if frame == 1 else -1)
+    P = pal['P'] if not look.skirt else pal['S']
+    p = pal['p'] if not look.skirt else pal['s']
+    F, f = pal['F'], pal['f']
     if d == 'side':
-        leg(14, 17, 1 if step != 0 else 0, -2 * step, -1)
-        leg(14, 17, 0, 2 * step)
-    else:
-        leg(11, 14, 2 if step == 1 else 0)
-        leg(17, 20, 2 if step == -1 else 0)
-    if d == 'side':
-        tx0, tx1 = 11, 20
-    else:
-        tx0, tx1 = 9, 22
-    cv.rrect(tx0, torso_top, tx1, leg_top + (1 if not look.skirt else 0), shirt, 2)
+        for lg, (shift, dark) in enumerate(((-2 * step, True), (2 * step, False))):
+            x0 = 14 + shift
+            lift = 1 if (step != 0 and lg == 0) else 0
+            for y in range(leg_len - lift):
+                cv.px(x0, top + y, p if dark else P)
+                cv.px(x0 + 1, top + y, p if dark else P)
+                cv.px(x0 + 2, top + y, p)
+            y = top + leg_len - lift
+            for dx in range(4):
+                cv.px(x0 + dx, y, f if dark else F)
+                cv.px(x0 + dx, y + 1, f)
+        return
+    for side, x0 in ((0, 12), (1, 16)):
+        lift = 1 if (step == 1 and side == 0) or (step == -1 and side == 1) else 0
+        for y in range(leg_len - lift):
+            for dx in range(4):
+                edge = (dx == 3 and side == 0) or (dx == 3 and side == 1)
+                cv.px(x0 + dx, top + y, p if edge else P)
+        y = top + leg_len - lift
+        for dx in range(-1 if side == 0 else 0, 4 if side == 0 else 5):
+            cv.px(x0 + dx, y, F)
+            cv.px(x0 + dx, y + 1, f)
+
+
+EXPRESSION = {
+    'happy': {7: 'SSSSSSSSSSSSSSSS', 8: 'SSSEESSSSSSEESSS', 9: 'sSESSESSSSESSESs', 11: '.sSSSSmSSmSSSSs.', 12: '.ssSSSSmmSSSSss.'},
+    'sad': {6: 'SSSSESSSSSSESSSS', 11: '.sSSSSSmmSSSSSs.', 12: '.ssSSSmSSmSSSss.'},
+}
+
+
+def draw_frame(look, d, frame, expr=None):
+    pal = palette(look)
+    cv = Canvas(FW, FH)
+    leg_len = 4 if look.kid else 6
+    feet = 45
+    legs_top = feet - 1 - leg_len
+    torso_rows = TORSO[d] if not look.kid else [TORSO[d][i] for i in KID_TORSO_ROWS]
+    bob = 1 if frame != 0 else 0
+    torso_top = legs_top - len(torso_rows) + 1 - bob
+    head_top = torso_top - 14
+    face_x = 8
+
+    back = Canvas(FW, FH)
+    if look.hair == 'long' and d == 'down':
+        rows = HAIR['long']['down']
+        paint(back, face_x - 1, head_top - 3, [''.join(ch if i in (0, 1, 2, 15, 16, 17) else '.' for i, ch in enumerate(r)) for r in rows], pal)
+    if look.hair == 'ponytail' and d == 'down':
+        ox, oy, rows = PONYTAIL['down']
+        paint(back, face_x - 1 + ox, head_top - 3 + oy, rows, pal)
+    cv.blit(back, 0, 0)
+
+    legs(cv, look, d, frame, legs_top, pal)
     if look.skirt:
-        cv.poly([(tx0, leg_top - 2), (tx1 + 1, leg_top - 2), (tx1 + 3, leg_top + 6), (tx0 - 2, leg_top + 6)], pants)
-    else:
-        cv.rect(tx0 + 1, leg_top - 1, tx1 - 1, leg_top, pants)
-        cv.hline(tx0 + 1, tx1 - 1, leg_top - 1, tone(pants, -2))
+        sk = look.pants
+        for i, w in enumerate((12, 13, 14, 15)):
+            x0 = 16 - w // 2
+            for x in range(w):
+                cv.px(x0 + x, legs_top - 1 + i, shade(sk, 0.25) if (x == w - 1 or i == 3) else sk)
+    tp = dict(pal)
     if look.jacket is not None:
-        j = look.jacket
-        if d == 'down':
-            cv.rect(tx0, torso_top, tx0 + 3, leg_top, j)
-            cv.rect(tx1 - 3, torso_top, tx1, leg_top, j)
-        elif d == 'up':
-            cv.rrect(tx0, torso_top, tx1, leg_top, j, 2)
-        else:
-            cv.rect(tx0, torso_top, tx1 - 2, leg_top, j)
+        tp['C'] = look.jacket
+        tp['c'] = shade(look.jacket, 0.2)
+    if d == 'side':
+        paint(cv, 8, torso_top, torso_rows, tp)
+    else:
+        # arms (columns 1-2 and 13-14 below the shoulders) swing opposite to each other
+        arm_cols = (1, 2, 13, 14)
+        core = [''.join('.' if (y >= 2 and x in arm_cols) else ch for x, ch in enumerate(r)) for y, r in enumerate(torso_rows)]
+        paint(cv, 8, torso_top, core, tp)
+        swing = 0 if frame == 0 else (1 if frame == 1 else -1)
+        if d == 'up':
+            swing = -swing
+        for cols, dy in (((1, 2), swing), ((13, 14), -swing)):
+            arm = [''.join(r[c] for c in cols) for r in torso_rows[2:]]
+            if dy < 0:
+                arm = arm[-dy:]
+            paint(cv, 8 + cols[0], torso_top + 2 + max(0, dy), arm, tp)
+    if look.jacket is not None and d == 'down':
+        for y in range(1, len(torso_rows) - 2):
+            for x in range(13, 19):
+                cv.px(x, torso_top + y, pal['C'] if x not in (13, 18) else pal['c'])
     if look.apron is not None and d != 'up':
         a = look.apron
+        ad = shade(a, 0.22)
         if d == 'down':
-            cv.rect(11, torso_top + 2, 20, leg_top + 4, a)
-            cv.vline(11, torso_top, torso_top + 2, a)
-            cv.vline(20, torso_top, torso_top + 2, a)
-            cv.rect(13, torso_top + 6, 18, torso_top + 8, tone(a, 2))
-            cv.hline(14, 17, torso_top + 7, tone(a, -2))
+            for y in range(2, len(torso_rows) + 3):
+                for x in range(12, 20):
+                    cv.px(x, torso_top + y, ad if x == 19 or y == len(torso_rows) + 2 else a)
+            cv.px(12, torso_top, a); cv.px(12, torso_top + 1, a)
+            cv.px(19, torso_top, a); cv.px(19, torso_top + 1, a)
+            for x in range(14, 18):
+                cv.px(x, torso_top + 5, light(a, 0.35))
         else:
-            cv.rect(18, torso_top + 2, 21, leg_top + 4, a)
-            cv.vline(15, torso_top, torso_top + 4, a)
-    if look.apron is not None and d == 'up':
-        cv.hline(tx0 + 1, tx1 - 1, torso_top + 6, look.apron)
-        cv.rect(15, torso_top + 6, 16, torso_top + 8, look.apron)
-    cv.shade_cyl(tx0 - 2, torso_top, tx1 + 2, leg_top + 6, 0.6, dither=False)
-
-    sleeve = look.jacket if look.jacket is not None else shirt
+            for y in range(2, len(torso_rows) + 3):
+                for x in range(18, 21):
+                    cv.px(x, torso_top + y, ad if x == 20 else a)
+    if d == 'up' and look.apron is not None:
+        for x in range(10, 22):
+            cv.px(x, torso_top + 4, look.apron)
+        cv.px(15, torso_top + 5, look.apron); cv.px(16, torso_top + 5, look.apron)
+        cv.px(15, torso_top + 6, shade(look.apron, 0.2)); cv.px(16, torso_top + 6, shade(look.apron, 0.2))
     if d == 'side':
-        sw = 2 * step
-        cv.rect(14 + sw, torso_top + 1, 17 + sw, torso_top + 6, sleeve)
-        cv.rect(14 + sw, torso_top + 7, 17 + sw, torso_top + 8, tone(sleeve, -1))
-        cv.rect(14 + sw, torso_top + 9, 17 + sw, torso_top + 10, SKIN)
-    else:
-        for (ax, sgn) in ((tx0 - 3, 1), (tx1 + 1, -1)):
-            sw = step * sgn if d == 'down' else -step * sgn
-            cv.rect(ax, torso_top + 1 + max(0, -sw), ax + 2, torso_top + 7 - max(0, sw), sleeve)
-            cv.rect(ax, torso_top + 8 - max(0, sw), ax + 2, torso_top + 9 - max(0, sw), SKIN)
-            cv.px(ax + (2 if sgn > 0 else 0), torso_top + 1, tone(sleeve, 1))
+        swing = 0 if frame == 0 else (2 if frame == 1 else -2)
+        arm_pal = dict(tp)
+        rows = SIDE_ARM if not look.kid else SIDE_ARM[:2] + SIDE_ARM[3:]
+        paint(cv, 13 + swing, torso_top + 1, rows, arm_pal)
+
+    face = list(FACE[d])
+    if expr and d == 'down':
+        for row, line in EXPRESSION[expr].items():
+            face[row] = line
+    paint(cv, face_x, head_top, face, pal)
+    style = HAIR[look.hair]
+    hair_rows = style[d] or HAIR['short'][d]
+    if look.hair == 'long' and d == 'down':
+        hair_rows = [''.join(ch if (i < 12 or x in (0, 1, 2, 15, 16, 17)) else '.' for x, ch in enumerate(r)) for i, r in enumerate(HAIR['long']['down'])]
+    hair = Canvas(FW, FH)
+    paint(hair, face_x - 1, head_top - 3, hair_rows, pal)
+    if look.hair == 'ponytail' and d in ('side', 'up'):
+        ox, oy, rows = PONYTAIL[d]
+        paint(hair, face_x - 1 + ox, head_top - 3 + oy, rows, pal)
+    if look.hair == 'bun':
+        ox, oy, rows = BUN[d]
+        paint(hair, face_x - 1 + ox, head_top - 3 + oy, rows, pal)
+    if look.cap is not None:
+        ox, oy, rows = CAP[d]
+        paint(hair, face_x - 1 + ox, head_top - 3 + oy, rows, pal)
+    if look.glasses and d in GLASSES:
+        ox, oy, rows = GLASSES[d]
+        paint(cv, face_x + ox, head_top + oy, rows, pal)
+    cv.blit(hair, 0, 0)
+    cv.outline(0.45)
     return cv
 
 
-def draw_frame(look, d, frame):
-    _, torso_top, hy = metrics(look)
-    bob = 1 if frame != 0 else 0
-    out = Canvas(FW, FH)
-    body = draw_body(look, d, frame)
-    head = draw_head(look, d, hy)
-    hair = draw_hair(look, d, hy)
-    if d == 'up':
-        out.blit(head, 0, 0)
-        out.blit(hair, 0, 0)
-        upper_hair = Canvas(FW, FH)
-        upper_hair.blit(hair, 0, 0)
-        out2 = Canvas(FW, FH)
-        out2.blit(body, 0, 0)
-        out2.blit(head, 0, -bob)
-        out2.blit(hair, 0, -bob)
-        out = out2
-    else:
-        if look.hair in ('long', 'bob', 'ponytail') and d == 'side':
-            back_only = Canvas(FW, FH)
-            back_only.blit(hair, 0, 0)
-            out.blit(back_only, 0, -bob)
-        out.blit(body, 0, 0)
-        out.blit(head, 0, -bob)
-        out.blit(hair, 0, -bob)
-    out.outline(0.5)
-    return out
+FRAMES_PER_ROW = 15
 
 
 def char_row(look):
+    """Columns: down 0-2, side 3-5, up 6-8, down happy 9-11, down upset 12-14."""
     frames = []
     for d in ('down', 'side', 'up'):
         for f in range(3):
             frames.append(draw_frame(look, d, f))
+    for expr in ('happy', 'sad'):
+        for f in range(3):
+            frames.append(draw_frame(look, 'down', f, expr))
     return frames
 
 
