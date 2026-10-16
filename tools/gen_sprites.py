@@ -275,43 +275,99 @@ def icons():
 
 
 def og_image(prods, items, chars_img):
-    w, h = 300, 158
+    """A small, slightly irregular store scene with the owner up front."""
+    w, h, band_h = 400, 210, 54
     img = Image.new('RGBA', (w, h), (0, 0, 0, 255))
-    floor = [items['floor0'].to_image(), items['floor1'].to_image()]
-    for ty in range(0, h, 32):
-        for tx in range(0, w, 32):
-            img.paste(floor[((tx + ty) // 32) % 2], (tx, ty))
-    wall = items['wall1'].to_image()
-    wall0 = items['wall0'].to_image()
-    for i, tx in enumerate(range(0, w, 32)):
-        img.paste(wall if i % 3 == 1 else wall0, (tx, -34))
-    pimg = Image.open(os.path.join(ASSETS, 'products.png'))
+    sprite = lambda name: items[name].to_image()
+    floor = [sprite('floor0'), sprite('floor1')]
+    for ty in range(36, h, 32):
+        for tx in range(-8, w, 32):
+            img.paste(floor[((tx + 8) // 32 + (ty - 36) // 32) % 2], (tx, ty))
+    walls = ['wall0', 'wall1', 'wall0', 'wall2', 'wall1', 'wall0', 'door_stock', 'wall1', 'wall0', 'wall3', 'wall1', 'wall0', 'wall0']
+    for i, name in enumerate(walls):
+        img.alpha_composite(sprite(name), (i * 32 - 8, -28))
 
-    def prod(idx):
-        return pimg.crop(((idx % 20) * 32, (idx // 20) * 32, (idx % 20) * 32 + 32, (idx // 20) * 32 + 32))
+    small = Image.open(os.path.join(ASSETS, 'products_small.png'))
+    index = {p['id']: i for i, p in enumerate(prods)}
 
-    shelf = items['shelf_h'].to_image()
-    picks = [[0, 3, 7, 22], [118, 123, 140, 147], [88, 96, 106, 112], [24, 28, 58, 60]]
-    for s, row in enumerate(picks):
-        sx = 8 + s * 72
-        img.alpha_composite(shelf, (sx, 30))
-        for j, idx in enumerate(row):
-            img.alpha_composite(prod(idx), (sx + (j % 2) * 32, 30 + (j // 2) * 20 - 6))
-    for i, (row, col, x) in enumerate(((0, 9, 24), (14, 9, 92), (20, 3, 150), (30, 9, 250), (3, 3, 196))):
-        fr = chars_img.crop((col * 32, row * 48, col * 32 + 32, row * 48 + 48))
-        img.alpha_composite(fr, (x, 64))
-    band_h = 48
-    band = Image.new('RGBA', (w, band_h), (24, 30, 40, 225))
+    def icon(pid):
+        i = index[pid]
+        return small.crop(((i % 20) * 16, (i // 20) * 16, (i % 20) * 16 + 16, (i // 20) * 16 + 16))
+
+    def row(x0, y, step=7, n=3):
+        return [(x0 + k * step, y) for k in range(n)]
+
+    def spots(kind, i, vertical=False):
+        if vertical:
+            y0 = 2 + i * 38
+            return row(1, y0, 14, 2) + row(1, y0 + 9, 14, 2) + row(1, y0 + 18, 14, 2)
+        x0 = i * 32
+        if kind == 'shelf_h':
+            return row(x0 + 1, 11) + row(x0 + 1, 31)
+        if kind == 'fridge_h':
+            return row(x0 + 2, 22) + row(x0 + 2, 48)
+        if kind == 'freezer_h':
+            return row(x0 + 2, 3) + row(x0 + 4, 11)
+        return row(x0 + 1, 4) + row(x0 + 4, 11, 8, 2) + row(x0 + 8, 16, 8, 1)
+
+    # (sprite, x, bottom y, products per slot)
+    fixtures = [
+        ('fridge_h', 6, 96, ['milk_whole', 'orange_juice']),
+        ('fridge_h', 74, 92, ['greek_yogurt', 'cheddar']),
+        ('shelf_h', 152, 100, ['potato_chips', 'cola']),
+        ('shelf_h', 222, 94, ['corn_flakes', 'peanut_butter']),
+        ('produce_h', 292, 104, ['apple_red', 'banana']),
+        ('shelf_v', 366, 128, ['sparkling_water', 'instant_ramen']),
+        ('freezer_h', 20, 160, ['ice_cream_vanilla', 'pepperoni_pizza']),
+        ('produce_h', 238, 156, ['strawberries', 'avocado']),
+        ('shelf_h', 304, 166, ['cheese_puffs', 'chocolate_bar']),
+    ]
+    owner = (170, 146)
+    order = sorted(fixtures, key=lambda f: f[2])
+    drawn_owner = False
+    for name, x, bottom, products in order:
+        if not drawn_owner and bottom > owner[1]:
+            drawn_owner = True
+            draw_owner(img, items, chars_img, owner)
+        body = sprite(name)
+        top = bottom - body.height
+        img.alpha_composite(body, (x, top))
+        layer = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+        vertical = name.endswith('_v')
+        for i, pid in enumerate(products):
+            for (dx, dy) in spots(name, i, vertical):
+                layer.alpha_composite(icon(pid), (x + dx, top + dy))
+        if name.startswith('freezer'):
+            mask = Image.new('L', (w, h), 0)
+            for i in range(2):
+                mask.paste(255, (x + 3 + i * 29, top + 3, x + 3 + i * 29 + 28, top + 27))
+            layer.putalpha(Image.composite(layer.getchannel('A'), Image.new('L', (w, h), 0), mask))
+        img.alpha_composite(layer)
+        glass = name.replace('_h', '_glass_h').replace('_v', '_glass_v')
+        if glass in items and name.split('_')[0] in ('fridge', 'freezer'):
+            img.alpha_composite(sprite(glass), (x, top))
+    if not drawn_owner:
+        draw_owner(img, items, chars_img, owner)
+
+    band = Image.new('RGBA', (w, band_h), (24, 30, 40, 232))
     img.alpha_composite(band, (0, h - band_h))
     cv = Canvas(w, band_h)
-    GM.glyphs(cv, 'Grocery', 11, 7, hexc('3a2a10'), 3)
-    GM.glyphs(cv, 'Grocery', 10, 6, hexc('f8e08a'), 3)
-    GM.glyphs(cv, 'Pixel Supermarket', 160, 8, hexc('e8eef0'), 1)
-    GM.glyphs(cv, 'Manager', 160, 18, hexc('e8eef0'), 1)
-    GM.glyphs(cv, 'https://cyberzhg.github.io/Grocery/', 10, 36, hexc('9fd8f0'), 1)
+    cv.rect(0, 0, w - 1, 0, hexc('f0c040'))
+    GM.glyphs(cv, 'Grocery', 13, 11, hexc('3a2a10'), 3)
+    GM.glyphs(cv, 'Grocery', 12, 10, hexc('f8e08a'), 3)
+    GM.glyphs(cv, 'Pixel Supermarket Manager', 160, 13, hexc('e8eef0'), 1)
+    GM.glyphs(cv, 'https://cyberzhg.github.io/Grocery/', 160, 31, hexc('9fd8f0'), 1)
     img.alpha_composite(cv.to_image(), (0, h - band_h))
-    img = img.resize((w * 4, h * 4), Image.NEAREST).crop((0, 1, 1200, 631))
-    img.convert('RGB').save(os.path.join(PUBLIC, 'og.png'))
+    img.resize((w * 3, h * 3), Image.NEAREST).convert('RGB').save(os.path.join(PUBLIC, 'og.png'))
+
+
+def draw_owner(img, items, chars_img, pos):
+    x, feet = pos
+    shadow = items['shadow'].to_image()
+    img.alpha_composite(shadow, (x + 4, feet - 4))
+    happy_col = 9
+    frame = chars_img.crop((happy_col * 32, 0, happy_col * 32 + 32, 48))
+    img.alpha_composite(frame, (x, feet - 46))
 
 
 def main():
