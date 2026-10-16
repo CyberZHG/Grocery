@@ -1,5 +1,6 @@
 import { t, type Key } from '../i18n';
 import { h } from '../ui/dom';
+import { sfx } from '../core/audio';
 
 export interface MiniResult {
   accuracy: number;
@@ -107,6 +108,7 @@ export abstract class MiniGame<R = MiniResult> {
   /** Shows the verdict briefly, then closes. */
   protected finish(r: R, label: Key): void {
     this.ended = true;
+    sfx(label === 'mini.wrong' ? 'error' : 'level');
     this.say(t(label), 'big');
     setTimeout(() => this.close(r), 750);
   }
@@ -116,6 +118,7 @@ export abstract class MiniGame<R = MiniResult> {
   }
 
   protected say(text: string, cls = ''): void {
+    if (cls === 'bad') sfx('error');
     this.msg.textContent = text;
     this.msg.className = `mini-msg show ${cls}`;
     clearTimeout(this.msgTimer);

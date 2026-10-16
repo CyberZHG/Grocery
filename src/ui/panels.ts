@@ -1,5 +1,10 @@
-import { money, npcName, staffName, t, type Key } from '../i18n';
-import { LEVELS, NPC_ROW0, NPCS, OWNER_ROW, PRODUCT_BY_ID, SKILLS, STAFF_ROW0, TRAIT_BY_ID, unlockedSkills, type Skill } from '../game/defs';
+import { money, npcName, productName, staffName, t, type Key } from '../i18n';
+import { GIFT_KINDS, GIFT_LEVELS, LEVELS, NPC_ROW0, NPCS, OWNER_ROW, PRODUCT_BY_ID, SKILLS, STAFF_ROW0, TRAIT_BY_ID, unlockedSkills, type Skill } from '../game/defs';
+import { rosterSize } from '../game/growth';
+import { spriteIcon } from './achievements';
+
+export const BRANCH_REP = 20;
+export const BRANCH_MONEY = 50000;
 import type { Game } from '../game/game';
 import { buildLayout, canPlace, type FixturePlacement } from '../game/layout';
 import { affinityExpToNext, npcExpToNext, skillExpToNext, skillSpeed, type Leveled } from '../game/rules';
@@ -94,7 +99,7 @@ function traitTag(id: string | null): HTMLElement | null {
 }
 
 export function regularsPanel(g: Game): HTMLElement {
-  const roster = NPCS.slice(0, LEVELS[g.state.level].roster);
+  const roster = NPCS.slice(0, rosterSize(g.state));
   let sort: 'affinity' | 'level' = 'affinity';
   const list = h('div', { class: 'cards' });
   const render = () => {
@@ -118,6 +123,11 @@ export function regularsPanel(g: Game): HTMLElement {
         h('div', { class: 'kv' }, [h('span', {}, [`${t('npc.shopper')} ${t('common.level', { n: s.level })}`]), bar(s.exp / npcExpToNext(s.level))]),
         h('div', { class: 'kv' }, [h('span', {}, [t('npc.likes')]), h('span', {}, [n.likes.map((c) => t(`cat.${c}` as Key)).join(' · ')])]),
         h('div', { class: 'kv' }, [h('span', {}, [t('npc.favorites')]), h('div', { class: 'row' }, n.favs.map((f) => productIcon(PRODUCT_BY_ID.get(f)!.index)))]),
+        h('div', { class: 'kv' }, [h('span', {}, [t('npc.gifts')]), h('div', { class: 'row gifts' }, GIFT_KINDS.map((k, i) =>
+          i < (g.state.gifts[n.id] ?? 0)
+            ? spriteIcon(`gift_${k}`)
+            : h('span', { class: 'gift-lock', title: t('npc.giftAt', { n: GIFT_LEVELS[i] }) }, ['?']),
+        ))]),
       ]));
     }
   };
@@ -126,7 +136,15 @@ export function regularsPanel(g: Game): HTMLElement {
     h('option', { value: 'affinity' }, [t('npc.sortAffinity')]),
     h('option', { value: 'level' }, [t('npc.shopper')]),
   ]);
-  return h('div', { class: 'stack' }, [h('label', { class: 'row' }, [h('span', {}, [t('npc.sort')]), sel]), list]);
+  const total = roster.reduce((a, n) => a + (g.state.gifts[n.id] ?? 0), 0);
+  return h('div', { class: 'stack' }, [
+    h('div', { class: 'row wrap' }, [
+      h('label', { class: 'row' }, [h('span', {}, [t('npc.sort')]), sel]),
+      h('span', { class: 'muted' }, [t('npc.album', { n: total, total: roster.length * GIFT_KINDS.length })]),
+      g.state.friends ? h('span', { class: 'muted' }, [t('npc.friends', { n: g.state.friends })]) : null,
+    ]),
+    list,
+  ]);
 }
 
 export function expandPanel(g: Game, ui: UI): HTMLElement {
@@ -138,6 +156,20 @@ export function expandPanel(g: Game, ui: UI): HTMLElement {
   ]);
   if (!next) {
     out.append(h('p', {}, [t('expand.max')]));
+    const ok = st.reputation.level >= BRANCH_REP && st.money >= BRANCH_MONEY;
+    out.append(
+      h('h3', {}, [t('branch.title')]),
+      h('p', { class: 'muted' }, [t('branch.hint', { rep: BRANCH_REP, v: money(BRANCH_MONEY) })]),
+      h('button', {
+        class: 'btn primary', disabled: !ok || g.phase !== 'night',
+        onclick: () => ui.confirm(t('branch.confirm'), () => {
+          g.openBranch();
+          ui.closeModal();
+          ui.refresh();
+          ui.toast(t('branch.opened', { n: g.state.branch + 1 }));
+        }),
+      }, [t('branch.open')]),
+    );
     return out;
   }
   const unlocks: string[] = [];
@@ -172,7 +204,7 @@ export function expandPanel(g: Game, ui: UI): HTMLElement {
 
 /** After a layout change, fixtures that no longer fit go back to storage. */
 function relocate(g: Game): number {
-  const layout = buildLayout(g.state.level);
+  const layout = buildLayout(g.state.level, g.state.branch % 2 === 1);
   const kept: FixturePlacement[] = [];
   let moved = 0;
   for (const f of g.state.fixtures) {
@@ -193,12 +225,25 @@ export function reportPanel(s: DayStats): HTMLElement {
     ['report.goods', money(s.goodsCost)],
     ['report.restock', money(-s.restock)],
     ['report.wages', money(-s.wages)],
-    ['report.rent', money(-s.rent)],
+    ['report.rent', s.rentWaived ? t('report.rentWaived') : money(-s.rent)],
     ['report.cashflow', money(flow), flow >= 0 ? 'pos' : 'neg'],
     ['report.customers', String(s.customers)],
     ['report.manual', String(s.manual)],
     ['report.affinity', `${t('common.level', { n: s.avgAffinity.toFixed(1) })}`],
     ['report.levelUps', String(s.levelUps)],
   ];
-  return h('div', { class: 'report' }, rows.map(([k, v, cls]) => h('div', { class: `kv ${cls ?? ''}` }, [h('span', {}, [t(k)]), h('strong', {}, [v])])));
+  const list = (title: Key, items: [string, number][] | undefined) => items && items.length
+    ? h('div', { class: 'stack' }, [
+        h('h3', {}, [t(title)]),
+        ...items.map(([id, n]) => h('div', { class: 'kv rank' }, [
+          h('span', { class: 'row' }, [productIcon(PRODUCT_BY_ID.get(id)?.index ?? 0), productName(id)]),
+          h('strong', {}, [String(n)]),
+        ])),
+      ])
+    : null;
+  return h('div', { class: 'report' }, [
+    ...rows.map(([k, v, cls]) => h('div', { class: `kv ${cls ?? ''}` }, [h('span', {}, [t(k)]), h('strong', {}, [v])])),
+    list('report.topSold', s.topSold),
+    list('report.stockouts', s.stockouts),
+  ]);
 }

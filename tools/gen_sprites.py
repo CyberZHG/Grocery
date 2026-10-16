@@ -9,7 +9,11 @@ import gen_products as GP
 import gen_chars as GC
 import gen_world as GW
 import gen_mini as GM
-from names import make_name
+import gen_decor as GD
+from names import make_name, make_name_jk
+
+NAMES_JK = {}
+from products_i18n import JA_KO
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS = os.path.join(ROOT, 'public', 'assets')
@@ -75,7 +79,7 @@ def products():
 
 
 STATIONS = ['oden', 'deli', 'bakery', 'coffee']
-NPC_COUNT = 160
+NPC_COUNT = 240
 
 
 def npcs(prods):
@@ -85,11 +89,15 @@ def npcs(prods):
         ids_by_cat.setdefault(p['cat'], []).append(p['id'])
     out, en, zh, looks = [], {}, {}, []
     name_rnd = random.Random(31)
+    jk_rnd = random.Random(57)
+    used_jk = set()
+    ja, ko = {}, {}
     used_en, used_zh = set(), set()
     for i in range(NPC_COUNT):
         kind = 'kid' if rnd.random() < 0.13 else ('elder' if rnd.random() < 0.17 else 'adult')
         sex = rnd.choice('fm')
         en[f'n{i}'], zh[f'n{i}'] = make_name(name_rnd, sex, kind, used_en, used_zh)
+        ja[f'n{i}'], ko[f'n{i}'] = make_name_jk(jk_rnd, sex, kind, used_jk)
         look = GC.random_look(rnd, kind)
         look.hair = rnd.choice(['bob', 'long', 'ponytail', 'bun', 'short']) if sex == 'f' else rnd.choice(['short', 'buzz', 'spiky', 'parted'])
         look.skirt = sex == 'f' and rnd.random() < 0.45
@@ -107,6 +115,7 @@ def npcs(prods):
             'miscount': round(rnd.uniform(0.04, 0.18), 2), 'patience': round(rnd.uniform(0.7, 1.3), 2),
         })
     write_json(os.path.join(DATA, 'npcs.json'), out)
+    NAMES_JK['ja'], NAMES_JK['ko'] = ja, ko
     return looks, en, zh
 
 
@@ -116,10 +125,12 @@ STAFF_HAIR = ['ponytail', 'spiky', 'bob', 'parted', 'long', 'buzz', 'bun', 'shor
 def staff_names(used_en, used_zh):
     """Two names per staff look (index = look * 2 + k), gendered to match the hairstyle."""
     rnd = random.Random(88)
+    jk = random.Random(89)
+    used_jk = set(NAMES_JK['ja'].values()) | set(NAMES_JK['ko'].values())
     out = []
     for i in range(len(STAFF_HAIR) * 2):
         sex = 'f' if STAFF_HAIR[i // 2] in ('ponytail', 'bob', 'long', 'bun') else 'm'
-        out.append(make_name(rnd, sex, 'adult', used_en, used_zh, 0.9))
+        out.append(make_name(rnd, sex, 'adult', used_en, used_zh, 0.9) + make_name_jk(jk, sex, 'adult', used_jk, 0.9))
     return out
 
 
@@ -212,8 +223,30 @@ def atlas():
             items[f'{name}_t{tier}'] = GW.upgraded(kind, items[name], tier)
     for k in ('sunny', 'cloudy', 'rain', 'snow', 'hot'):
         items[f'w_{k}'] = GW.weather_icon(k)
-    for f in ('sit', 'walk1', 'walk2', 'sleep'):
-        items[f'cat_{f}'] = GW.cat(f)
+    for coat in GD.CAT_COATS:
+        for pose in GD.CAT_POSES:
+            items[f'cat_{coat}_{pose}'] = GD.cat_sprite(coat, pose)
+    for st in GD.FLOOR_STYLES:
+        for v in (0, 1):
+            items[f'f_{st}_{v}'] = GD.floor_style(st, v)
+    for st in GD.WALL_STYLES:
+        for k in range(4):
+            items[f'wall_{st}_{k}'] = GD.wall_style(st, k)
+        for season in GD.SEASONS:
+            items[f'wall_{st}_p_{season}'] = GD.wall_style(st, 2, season)
+    for st in GD.SIGN_STYLES:
+        items[f'sign_{st}'] = GD.sign_style(st)
+    for k in GD.DECOR:
+        items[f'decor_{k}'] = GD.decor(k)
+    for k in GD.GIFTS:
+        items[f'gift_{k}'] = GD.gift_icon(k)
+    items.update({
+        'pumpkin': GD.pumpkin(), 'jack': GD.jack_o_lantern(), 'xmas_tree': GD.xmas_tree(), 'gift_box': GD.gift_box(),
+        'bunting_july4': GD.bunting(['d84848', 'f4f2ee', '3a5ab0']), 'bunting_superbowl': GD.bunting(['3a5ab0', 'd84848']),
+        'bunting_newyear': GD.bunting(['f0d040', 'e05a9a', '40a0e0', '7ad070']), 'hearts': GD.hearts(),
+        'balloons': GD.balloons(), 'wreath': GD.wreath(), 'football': GD.football(),
+        'spill_puddle': GD.spill('puddle'), 'spill_crumbs': GD.spill('crumbs'),
+    })
     for v in (1, 5, 10, 20, 50, 100):
         items[f'bill{v}'] = GM.bill(v)
     for v in (1, 5, 10, 25):
@@ -356,6 +389,9 @@ def og_image(prods, items, chars_img):
             img.alpha_composite(sprite(glass), (x, top))
     if not drawn_owner:
         draw_owner(img, items, chars_img, owner)
+    cat = items['cat_shorthair_sit'].to_image().transpose(Image.FLIP_LEFT_RIGHT)
+    img.alpha_composite(items['shadow'].to_image(), (owner[0] + 34, owner[1] - 5))
+    img.alpha_composite(cat, (owner[0] + 34, owner[1] - 18))
 
     band = Image.new('RGBA', (w, band_h), (24, 30, 40, 232))
     img.alpha_composite(band, (0, h - band_h))
@@ -363,7 +399,7 @@ def og_image(prods, items, chars_img):
     cv.rect(0, 0, w - 1, 0, hexc('f0c040'))
     GM.glyphs(cv, 'Grocery', 13, 11, hexc('3a2a10'), 3)
     GM.glyphs(cv, 'Grocery', 12, 10, hexc('f8e08a'), 3)
-    GM.glyphs(cv, 'Pixel Supermarket Manager', 160, 13, hexc('e8eef0'), 1)
+    GM.glyphs(cv, 'Pixel Shopkeeping Sim', 160, 13, hexc('e8eef0'), 1)
     GM.glyphs(cv, 'https://cyberzhg.github.io/Grocery/', 160, 31, hexc('9fd8f0'), 1)
     img.alpha_composite(cv.to_image(), (0, h - band_h))
     img.resize((w * 3, h * 3), Image.NEAREST).convert('RGB').save(os.path.join(PUBLIC, 'og.png'))
@@ -388,6 +424,12 @@ def main():
     s_zh = {f's{i}': n[1] for i, n in enumerate(names)}
     write_json(os.path.join(GEN_I18N, 'en.json'), {'product': p_en, 'npc': n_en, 'staff': s_en}, compact=False)
     write_json(os.path.join(GEN_I18N, 'zh.json'), {'product': p_zh, 'npc': n_zh, 'staff': s_zh}, compact=False)
+    for idx, loc in ((0, 'ja'), (1, 'ko')):
+        write_json(os.path.join(GEN_I18N, f'{loc}.json'), {
+            'product': {k: v[idx] for k, v in JA_KO.items()},
+            'npc': NAMES_JK[loc],
+            'staff': {f's{i}': n[2 + idx] for i, n in enumerate(names)},
+        }, compact=False)
     items = atlas()
     icons()
     og_image(prods, items, Image.open(os.path.join(ASSETS, 'chars.png')))

@@ -19,11 +19,11 @@
   --bad: #e06060;
   --primary: #4a8a5a;
   --warn: #a84848;
-  --font: 'Grocery Digits', 'Pixelify Sans', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font: 'Grocery Digits', 'Pixelify Sans', 'PingFang SC', 'Hiragino Sans GB', 'Hiragino Sans', 'Apple SD Gothic Neo', 'Noto Sans SC', 'Noto Sans JP', 'Noto Sans KR', 'Microsoft YaHei', 'Malgun Gothic', system-ui, sans-serif;
   color-scheme: dark;
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; touch-action: manipulation; }
 button, input, select { font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'clig' 0; }
 
 html, body {
@@ -221,6 +221,23 @@ textarea.code {
 .trend-table th, .trend-table td { padding: 3px 6px; border-bottom: 1px solid #4a4256; text-align: right; }
 .trend-table th:first-child, .trend-table td:first-child { text-align: left; }
 details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+
+.reno-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+.reno { font: inherit; color: var(--text); background: var(--panel-2); border: 2px solid var(--edge); padding: 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+.reno.active { border-color: var(--accent); }
+.reno:disabled { opacity: 0.5; cursor: default; }
+.gifts .sprite { flex: none; }
+.gift-lock { width: 16px; height: 16px; display: grid; place-items: center; font-size: 11px; color: var(--muted); border: 1px dashed #5a5266; }
+.kv.rank .row { gap: 6px; }
+.goal { display: grid; grid-template-columns: 18px 1fr auto auto; gap: 8px; align-items: center; font-size: 13px; padding: 2px 0; }
+.goal.done { opacity: 0.6; }
+.goal-check { color: var(--good); }
+.goal-text { display: flex; flex-direction: column; gap: 3px; }
+.goal-reward { color: var(--good); }
+.slider input { flex: 1; }
+.btn.lang { min-width: 44px; }
+.recs { display: flex; flex-direction: column; gap: 6px; }
+.rec-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
 
 /* ---------- toasts ---------- */
 

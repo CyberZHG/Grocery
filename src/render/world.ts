@@ -1,7 +1,9 @@
-import { drawChar, drawProductSmall, drawSprite, drawText, textWidth } from '../core/assets';
+import { drawChar, drawProductSmall, drawSprite, drawText, rect, textWidth } from '../core/assets';
+import { storeName } from '../game/names';
+import { sfx } from '../core/audio';
 import { BREADS, FIXTURES, PRODUCT_BY_ID, type FixtureKind } from '../game/defs';
 import { fixtureCells, type Layout } from '../game/layout';
-import { weatherOf } from '../game/calendar';
+import { dateOf, decorHoliday, weatherOf } from '../game/calendar';
 import { equipTier, stars, type EquipKind } from '../game/growth';
 import { OFFER_SECONDS, OVEN_OFFER_SECONDS, type Customer, type Line, type Sim, type Worker } from '../game/sim';
 import type { FixtureState } from '../game/state';
@@ -15,7 +17,8 @@ export type HitAction =
   | { type: 'fixture'; fixture: number }
   | { type: 'cell'; x: number; y: number }
   | { type: 'customer'; customer: Customer }
-  | { type: 'cat' };
+  | { type: 'cat' }
+  | { type: 'spill'; id: number };
 
 export interface Hit {
   x: number;
@@ -50,6 +53,7 @@ const FIX_H: Record<FixtureKind, [number, number]> = {
   produce: [56, 88],
   fridge: [72, 104],
   freezer: [48, 80],
+  decor: [32, 32],
 };
 
 export function worldBounds(l: Layout): { x: number; y: number; w: number; h: number } {
@@ -67,18 +71,21 @@ export class WorldRenderer {
       drawSprite(ctx, 'sidewalk', x * T, (l.h + 1) * T);
       drawSprite(ctx, 'sidewalk', x * T, (l.h + 2) * T);
     }
+    const style = sim?.state.style ?? { floor: 'cream', wall: 'beige', sign: 'wood' };
     for (let y = 0; y < l.h; y++) {
-      for (let x = 0; x < l.w; x++) drawSprite(ctx, (x + y) % 2 ? 'floor1' : 'floor0', x * T, y * T);
+      for (let x = 0; x < l.w; x++) drawSprite(ctx, `f_${style.floor}_${(x + y) % 2}`, x * T, y * T);
     }
     const bakery = l.stations.find((s) => s.kind === 'bakery');
+    const season = sim ? dateOf(sim.state.day).season : 'spring';
     for (let x = 0; x < l.w; x++) {
-      let name = 'wall0';
-      if (x % 5 === 3) name = 'wall1';
-      else if (x % 7 === 5) name = 'wall2';
-      else if (x === l.w - 1) name = 'wall3';
+      let name = `wall_${style.wall}_0`;
+      if (x % 5 === 3) name = `wall_${style.wall}_1`;
+      else if (x % 7 === 5) name = `wall_${style.wall}_p_${season}`;
+      else if (x === l.w - 1 || x === 0) name = `wall_${style.wall}_3`;
       if (x === l.stockDoor.x) name = 'door_stock';
       drawSprite(ctx, name, x * T, -2 * T);
     }
+    if (sim) this.drawWallDecor(ctx, sim);
     if (bakery) drawSprite(ctx, sim ? this.equipSprite(sim, 'oven') : 'oven', bakery.x * T, 16 - 72);
     for (let y = -2; y <= l.h; y++) {
       drawSprite(ctx, 'wallL', -T, y * T);
@@ -98,16 +105,63 @@ export class WorldRenderer {
     return tier ? `${kind}_t${tier}` : kind;
   }
 
-  /** Reputation sign beside the entrance: up to five stars and the level. */
+  /** Store sign beside the entrance: name, up to five stars and the reputation level. */
   private drawSign(ctx: CanvasRenderingContext2D, sim: Sim): void {
     const l = sim.layout;
-    const x = (l.entrance - 2) * T + 10;
+    const x = (l.entrance - 2) * T;
     const y = l.h * T + 6;
-    drawSprite(ctx, 'sign', x, y);
+    drawSprite(ctx, `sign_${sim.state.style.sign}`, x, y);
+    ctx.save();
+    ctx.font = "7px 'Grocery Digits', 'Pixelify Sans', 'PingFang SC', 'Noto Sans SC', sans-serif";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = sim.state.style.sign === 'neon' ? '#ffb0d8' : '#f8ecd0';
+    ctx.fillText(storeName(sim.state), x + 32, y + 2, 58);
+    ctx.restore();
     const n = stars(sim.state.reputation.level);
-    for (let i = 0; i < 5; i++) drawSprite(ctx, i < n ? 'star_on' : 'star_off', x + 4 + i * 8, y + 3);
+    for (let i = 0; i < 5; i++) drawSprite(ctx, i < n ? 'star_on' : 'star_off', x + 4 + i * 7, y + 11);
     const lv = `Lv${sim.state.reputation.level}`;
-    drawText(ctx, lv, x + 24 - textWidth(lv) / 2, y + 11, '#f0e0a0');
+    drawText(ctx, lv, x + 60 - textWidth(lv), y + 11, '#f0e0a0');
+  }
+
+  /** Bunting, garlands and wreaths on the back wall around holidays. */
+  private drawWallDecor(ctx: CanvasRenderingContext2D, sim: Sim): void {
+    const h = decorHoliday(sim.state.day);
+    if (!h) return;
+    const l = sim.layout;
+    const garland = { july4: 'bunting_july4', superbowl: 'bunting_superbowl', newyear: 'bunting_newyear', valentine: 'hearts' }[h as string];
+    for (let x = 0; x < l.w; x++) {
+      if (garland) drawSprite(ctx, garland, x * T, -2 * T + 9);
+      if ((h === 'christmas' || h === 'thanksgiving') && x % 6 === 2 && x !== l.stockDoor.x) drawSprite(ctx, 'wreath', x * T + 6, -2 * T + 16);
+    }
+  }
+
+  /** Floor decorations for holidays: pumpkins by the door, a tree in the corner. */
+  private holidayFloor(sim: Sim, list: Drawable[], ctx: CanvasRenderingContext2D): void {
+    const h = decorHoliday(sim.state.day);
+    if (!h) return;
+    const l = sim.layout;
+    const ex = l.entrance;
+    const door = (name: string, dx: number) => list.push({ y: l.h - 1.1, draw: () => drawSprite(ctx, name, (ex + dx) * T + 6, (l.h - 1) * T + 14) });
+    if (h === 'halloween') {
+      door('jack', -1);
+      door('jack', 2);
+      door('pumpkin', -1.5);
+    } else if (h === 'thanksgiving') {
+      door('pumpkin', -1);
+      door('pumpkin', 2);
+    } else if (h === 'superbowl') {
+      door('football', 2);
+    } else if (h === 'newyear') {
+      list.push({ y: l.h - 1.1, draw: () => drawSprite(ctx, 'balloons', (ex - 1) * T + 6, (l.h - 1) * T - 2) });
+    } else if (h === 'christmas') {
+      const cx = l.mirrored ? l.w - 1 : 0;
+      list.push({ y: 0.6, draw: () => {
+        drawSprite(ctx, 'xmas_tree', cx * T, -16);
+        drawSprite(ctx, 'gift_box', cx * T + 2, 22);
+        drawSprite(ctx, 'gift_box', cx * T + 16, 24);
+      } });
+    }
   }
 
   /** Rain or snow falls over the sidewalk; the whole scene gets a light weather tint. */
@@ -143,7 +197,8 @@ export class WorldRenderer {
     const c = sim.cat;
     const px = Math.round(c.mover.x * T) + 4;
     const py = Math.round(c.mover.y * T) + 12;
-    const frame = c.mode === 'sleep' ? 'cat_sleep' : c.mode === 'sit' ? 'cat_sit' : Math.floor(this.time * 6) % 2 ? 'cat_walk1' : 'cat_walk2';
+    const pose = c.mode === 'walk' ? (Math.floor(this.time * 6) % 2 ? 'walk1' : 'walk2') : c.mode;
+    const frame = `cat_${sim.state.catCoat}_${pose}`;
     drawSprite(ctx, 'shadow', px, py + 12);
     drawSprite(ctx, frame, px, py, c.mover.dir === 'left');
     this.hits.push({ x: px - 4, y: py - 6, w: 32, h: 28, action: { type: 'cat' } });
@@ -174,6 +229,7 @@ export class WorldRenderer {
     const want = sim.customers.some((c) => near(c.mover)) || sim.workers.some((w) => near(w.mover)) ? 1 : 0;
     // ease at a fixed real-time rate; dt is 0 while paused so the doors freeze too
     const step = dt * 3.5;
+    if (want && this.doorOpen === 0 && dt > 0) sfx('door');
     this.doorOpen = want ? Math.min(1, this.doorOpen + step) : Math.max(0, this.doorOpen - step * 0.7);
   }
 
@@ -185,19 +241,24 @@ export class WorldRenderer {
     const l = sim.layout;
     this.drawFloor(ctx, l, sim);
     if (build) this.drawReserved(ctx, l);
+    for (const sp of sim.spills) {
+      drawSprite(ctx, `spill_${sp.kind}`, sp.x * T + 6, sp.y * T + 14);
+      this.hits.push({ x: sp.x * T, y: sp.y * T + 4, w: T, h: 28, action: { type: 'spill', id: sp.id } });
+    }
     const list: Drawable[] = [];
+    this.holidayFloor(sim, list, ctx);
     for (const f of sim.placed()) {
       const bottom = f.vertical ? f.y + 1 : f.y;
       list.push({ y: bottom + 0.5, draw: () => this.drawFixture(ctx, f, build?.selected === f.id) });
     }
-    for (const r of l.registers) list.push({ y: r.y + 0.5, draw: () => drawSprite(ctx, this.equipSprite(sim, 'register'), r.x * T, (r.y + 1) * T - 56) });
+    for (const r of l.registers) list.push({ y: r.y + 0.5, draw: () => drawSprite(ctx, this.equipSprite(sim, 'register'), r.x * T, (r.y + 1) * T - 56, l.mirrored) });
     for (const s of l.stations) {
       if (s.kind === 'bakery') list.push({ y: s.y + 0.5, draw: () => this.drawBreadCase(ctx, sim, s.x, s.y) });
       else list.push({ y: s.y + 0.5, draw: () => drawSprite(ctx, this.equipSprite(sim, s.kind as EquipKind), s.x * T, (s.y + 1) * T - 56) });
     }
     if (l.bagging) {
       const b = l.bagging;
-      list.push({ y: b.y + 0.5, draw: () => drawSprite(ctx, this.equipSprite(sim, 'bagging'), b.x * T, (b.y + 1) * T - 56) });
+      list.push({ y: b.y + 0.5, draw: () => drawSprite(ctx, this.equipSprite(sim, 'bagging'), b.x * T, (b.y + 1) * T - 56, l.mirrored) });
     }
     list.push({ y: l.h - 1.4, draw: () => drawSprite(ctx, 'plant', (l.w - 1) * T, (l.h - 1) * T - 16) });
     for (const w of sim.workers) list.push({ y: w.mover.y, draw: () => this.drawWorker(ctx, w) });
@@ -240,6 +301,16 @@ export class WorldRenderer {
   }
 
   drawFixture(ctx: CanvasRenderingContext2D, f: FixtureState, selected: boolean, alpha = 1): void {
+    if (f.kind === 'decor') {
+      const name = `decor_${f.decor ?? 'plant_small'}`;
+      const [, , , sh] = rect(name);
+      ctx.globalAlpha = alpha;
+      drawSprite(ctx, name, f.x * T, (f.y + 1) * T - sh);
+      ctx.globalAlpha = 1;
+      if (selected) drawSprite(ctx, 'select', f.x * T, f.y * T);
+      this.hits.push({ x: f.x * T, y: (f.y + 1) * T - sh, w: T, h: sh, action: { type: 'fixture', fixture: f.id } });
+      return;
+    }
     const [hh, hv] = FIX_H[f.kind];
     const sh = f.vertical ? hv : hh;
     const px = f.x * T;
@@ -323,6 +394,7 @@ export class WorldRenderer {
         return [...row(3, y0, 10, 2), ...row(5, y0 + 10, 10, 2)];
       }
     }
+    return [];
   }
 
   private slotClip(f: FixtureState, i: number, top: number): [number, number, number, number] | null {

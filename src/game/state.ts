@@ -1,4 +1,5 @@
-import { BREADS, NPCS, SKILLS, START_MONEY, type Bread, type Category, type FixtureKind, type Skill } from './defs';
+import { BREADS, CAT_COATS, NPCS, SKILLS, START_MONEY, type Bread, type Category, type CatCoat, type FixtureKind, type Skill } from './defs';
+import type { GoalsState } from './goals';
 import { freshGrowth, type CatState, type EquipKind } from './growth';
 import { freshProducts, type ProductProgress } from './progress';
 import type { Leveled } from './rules';
@@ -16,6 +17,8 @@ export interface FixtureState {
   vertical: boolean;
   placed: boolean;
   slots: [SlotState, SlotState];
+  /** decor fixtures only */
+  decor?: string;
 }
 
 export type Role = 'auto' | 'cashier' | 'stocker' | 'service';
@@ -50,6 +53,7 @@ export interface DayStats {
   goodsCost: number;
   wages: number;
   rent: number;
+  rentWaived?: boolean;
   restock: number;
   customers: number;
   manual: number;
@@ -58,6 +62,9 @@ export interface DayStats {
   reputation?: number;
   weather?: string;
   holiday?: string | null;
+  event?: string | null;
+  topSold?: [string, number][];
+  stockouts?: [string, number][];
 }
 
 export type MiniKind = 'checkout' | 'oden' | 'deli' | 'bakery' | 'coffee' | 'bagging';
@@ -101,6 +108,16 @@ export interface GameState {
   suppliers: Record<Category, Leveled>;
   equipment: Record<EquipKind, Leveled>;
   cat: CatState;
+  catCoat: CatCoat;
+  catName: string;
+  storeName: string;
+  style: { floor: string; wall: string; sign: string };
+  /** regulars introduced by friends, beyond the expansion roster */
+  friends: number;
+  gifts: Record<string, number>;
+  goals: GoalsState;
+  branch: number;
+  savedAt: number;
 }
 
 export const SAVE_VERSION = 1;
@@ -149,10 +166,20 @@ export function newGame(seed = Date.now() % 1e9): GameState {
     lifetime: freshLifetime(),
     achievements: {},
     ...freshGrowth(),
+    catCoat: CAT_COATS[Math.abs(seed) % CAT_COATS.length],
+    catName: '',
+    storeName: '',
+    style: { floor: 'cream', wall: 'beige', sign: 'wood' },
+    friends: 0,
+    gifts: {},
+    goals: { day: 0, daily: [], week: -1, weekly: [], completed: 0 },
+    branch: 0,
+    savedAt: Date.now(),
   };
 }
 
 export function saveGame(s: GameState): void {
+  s.savedAt = Date.now();
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
   } catch {
@@ -196,6 +223,18 @@ export function migrate(data: unknown): GameState | null {
     s.suppliers = { ...g.suppliers, ...(s.suppliers ?? {}) };
     s.equipment = { ...g.equipment, ...(s.equipment ?? {}) };
     s.cat = { ...g.cat, ...(s.cat ?? {}) };
+    s.catCoat ??= CAT_COATS[Math.abs(s.seed) % CAT_COATS.length];
+    s.catName ??= '';
+    s.storeName ??= '';
+    s.style = Object.assign({ floor: 'cream', wall: 'beige', sign: 'wood' }, s.style ?? {});
+    s.friends ??= 0;
+    s.gifts ??= {};
+    s.goals ??= { day: 0, daily: [], week: -1, weekly: [], completed: 0 };
+    s.branch ??= 0;
+    s.savedAt ??= Date.now();
+    const skills = freshSkills();
+    s.owner = { ...skills, ...s.owner };
+    for (const st of [...s.staff, ...s.candidates, ...s.former]) st.skills = { ...skills, ...st.skills };
     return s;
   } catch {
     return null;

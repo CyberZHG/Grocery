@@ -1,5 +1,6 @@
 import { drawProduct, drawSprite } from '../core/assets';
 import { t } from '../i18n';
+import { sfx } from '../core/audio';
 import { PRODUCT_BY_ID, type ProductDef } from '../game/defs';
 import { h } from '../ui/dom';
 import { accuracyLabel, inRect, MiniGame, panel } from './base';
@@ -193,6 +194,7 @@ export class BaggingGame extends MiniGame {
         const col = Math.round((it.x - o.x) / CELL);
         const prev = { bag: it.bag, cx: it.cx, cy: it.cy };
         if (this.drop(it, b, col)) {
+          sfx('pop');
           this.settle();
           return;
         }

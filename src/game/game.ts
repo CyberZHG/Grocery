@@ -10,9 +10,14 @@ import { DeliGame } from '../mini/deli';
 import { OdenGame } from '../mini/oden';
 import { T, worldBounds, WorldRenderer, type BuildView, type Hit, type HitAction } from '../render/world';
 import type { UI } from '../ui/app';
-import { DAY_START, FIXTURES, LEVELS, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF_LOOKS, TRAITS, type Skill } from './defs';
+import { DAY_END, DAY_START, FIXTURES, LEVELS, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF_LOOKS, TRAITS, type Category, type Skill } from './defs';
 import { BATCH, Sim, type Line } from './sim';
 import { checkAchievements } from './achievements';
+import { sfx } from '../core/audio';
+import { progressGoals, refreshGoals, type GoalKind } from './goals';
+import { gainReputation } from './growth';
+import { eventText, goalText } from '../ui/goals';
+import type { AwaySummary } from '../ui/app';
 import { achName } from '../ui/achievements';
 import { freshSkills, loadGame, newGame, saveGame, type GameState, type MiniKind, type StaffState } from './state';
 
@@ -51,7 +56,9 @@ export class Game {
     this.canvas = ui.canvas;
     this.ctx = this.canvas.getContext('2d')!;
     this.state = loadGame() ?? newGame();
+    const away = this.catchUp();
     this.enterNight(false);
+    if (away) requestAnimationFrame(() => this.ui.showAway(away));
     this.bindInput();
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -65,9 +72,16 @@ export class Game {
       if (e.type === 'closed') this.endDay();
       else if (e.type === 'growth') this.ui.toast(t('toast.growth', { name: growthName(e.what), n: e.level }));
       else if (e.type === 'gift') this.ui.toast(t('toast.gift', { name: productName(e.id), n: e.units, v: money(e.value) }));
+      else if (e.type === 'reliefGift') this.ui.toast(t('toast.reliefGift', { n: e.units, v: money(e.value) }));
       else if (e.type === 'productLevel') this.ui.toast(t('toast.productLevel', { name: productName(e.id), n: e.level }));
       else if (e.type === 'unlock') this.ui.toast(t('toast.unlock', { name: productName(e.id) }));
       else if (e.type === 'npcLevel') this.ui.toast(t('toast.npcLevel', { name: npcName(e.npc), n: e.level }));
+      else if (e.type === 'npcGift') this.ui.toast(t('toast.npcGift', { name: npcName(e.npc), gift: t(`gift.${e.kind}` as Key) }));
+      else if (e.type === 'friend') this.ui.toast(t('toast.friend', { name: npcName(e.by), friend: npcName(e.friend) }));
+      else if (e.type === 'sold') this.goal('sellCat', e.qty, e.cat);
+      else if (e.type === 'served') this.goal('customers');
+      else if (e.type === 'event') this.ui.toast(eventText(e.event));
+      else if (e.type === 'tourArrived') this.ui.toast(t('event.tourArrived'));
       else if (e.type === 'staffLevel') {
         const name = e.staff < 0 ? t('staff.owner') : staffName(this.state.staff.find((s) => s.id === e.staff)?.name ?? 0);
         this.ui.toast(t('toast.staffLevel', { name, skill: t(`skill.${e.skill}`), n: e.level }));
@@ -82,6 +96,7 @@ export class Game {
     this.makeSim();
     this.state.nightRestock += this.sim.restockAll();
     if (!this.state.candidates.length) this.state.candidates = this.makeCandidates();
+    refreshGoals(this.state.goals, this.state.seed, this.state.day, this.state.level);
     this.checkAchievements();
     this.forecast();
     saveGame(this.state);
@@ -345,7 +360,7 @@ export class Game {
     for (let i = hits.length - 1; i >= 0; i--) {
       const h = hits[i];
       if (wx >= h.x && wy >= h.y && wx < h.x + h.w && wy < h.y + h.h) {
-        if (h.action.type === 'line' || h.action.type === 'oven') return h;
+        if (h.action.type === 'line' || h.action.type === 'oven' || h.action.type === 'spill' || h.action.type === 'cat') return h;
       }
     }
     for (let i = hits.length - 1; i >= 0; i--) {
@@ -366,7 +381,16 @@ export class Game {
     if (!hit) return;
     const a = hit.action;
     if (a.type === 'cat') {
-      if (!this.sim.petCat()) this.ui.toast(t('toast.catEnough'));
+      sfx('meow');
+      if (this.sim.petCat()) this.goal('petCat');
+      else this.ui.toast(t('toast.catEnough'));
+      return;
+    }
+    if (a.type === 'spill') {
+      if (this.sim.cleanSpill(a.id)) {
+        sfx('pop');
+        this.goal('clean');
+      }
       return;
     }
     if (this.phase === 'day') {
@@ -379,6 +403,7 @@ export class Game {
         const f = this.sim.fixture(a.fixture);
         if (f && f.slots[a.slot].product && f.slots[a.slot].stock < FIXTURES[f.kind].capacity) {
           this.sim.prioritize(a.fixture, a.slot);
+          this.goal('priority');
           this.ui.toast(t('toast.restockSoon', { name: productName(f.slots[a.slot].product!) }));
         }
       }
@@ -426,8 +451,9 @@ export class Game {
     const r = await game.open(this.ui.overlay);
     this.miniOpen = false;
     if (r && line.front() === c) {
-      this.sim.manualLine(line, r);
       const kind: MiniKind = line.kind === 'register' ? 'checkout' : line.kind === 'bagging' ? 'bagging' : c.order?.kind ?? 'oden';
+      this.sim.manualLine(line, r);
+      this.sim.watchLearn(this.sim.lineSkill(line), line.staffSpot);
       this.recordMini(kind, r.amount ?? 0);
     }
   }
@@ -449,7 +475,89 @@ export class Game {
   private recordMini(kind: MiniKind, amount: number): void {
     this.state.lifetime.manual[kind] += 1;
     this.state.lifetime.amount[kind] += amount;
+    this.goal('manualAny');
+    this.goal(kind === 'checkout' ? 'manualCheckout' : kind);
     this.checkAchievements();
+  }
+
+  goal(kind: GoalKind, amount = 1, cat?: Category): void {
+    for (const g of progressGoals(this.state.goals, kind, amount, cat)) {
+      this.state.money += g.reward;
+      gainReputation(this.state, 20);
+      sfx('fanfare');
+      this.ui.toast(t('goal.done', { name: goalText(g), v: money(g.reward) }));
+    }
+  }
+
+  /** Simulates days that passed while the page was closed (autopilot, capped at a week). */
+  private catchUp(): AwaySummary | null {
+    const elapsed = (Date.now() - (this.state.savedAt ?? Date.now())) / 1000;
+    const dayReal = (DAY_END - DAY_START) * SEC_PER_MIN + NIGHT_SECONDS;
+    const days = Math.min(7, Math.floor(elapsed / dayReal));
+    if (days < 1) return null;
+    const s = this.state;
+    const before = { money: s.money, rep: s.reputation.level, cat: s.cat.level, friends: s.friends, gifts: Object.values(s.gifts).reduce((a, b) => a + b, 0) };
+    let revenue = 0;
+    let customers = 0;
+    for (let d = 0; d < days; d++) {
+      const sim = new Sim(s);
+      sim.speed = 4;
+      s.nightRestock += sim.restockAll();
+      sim.startDay();
+      sim.stats.restock += s.nightRestock;
+      s.nightRestock = 0;
+      let steps = 0;
+      while (!sim.done && steps < 40000) {
+        // offline days skip the manual-service windows entirely
+        sim.tickReal(10);
+        sim.update(1);
+        steps += 1;
+      }
+      sim.endDayCosts();
+      s.history.push(sim.stats);
+      if (s.history.length > 30) s.history.shift();
+      revenue += sim.stats.revenue;
+      customers += sim.stats.customers;
+      s.day += 1;
+      s.candidates = [];
+    }
+    checkAchievements(s);
+    return {
+      days, revenue, customers, money: s.money - before.money, rep: [before.rep, s.reputation.level], cat: [before.cat, s.cat.level],
+      friends: s.friends - before.friends, gifts: Object.values(s.gifts).reduce((a, b) => a + b, 0) - before.gifts,
+    };
+  }
+
+  /** Opens a branch: a fresh, mirrored small store that keeps the owner's experience. */
+  openBranch(): void {
+    const old = this.state;
+    const fresh = newGame((old.seed * 31 + old.branch * 7 + 11) % 1e9);
+    const s: GameState = {
+      ...fresh,
+      branch: old.branch + 1,
+      money: fresh.money + Math.round(old.money * 0.1),
+      owner: old.owner,
+      staff: old.staff,
+      former: old.former,
+      products: old.products,
+      suppliers: Object.fromEntries(Object.entries(old.suppliers).map(([k, v]) => [k, { level: Math.max(1, Math.ceil(v.level / 2)), exp: 0 }])) as GameState['suppliers'],
+      npcs: old.npcs,
+      gifts: old.gifts,
+      friends: old.friends,
+      lifetime: old.lifetime,
+      achievements: old.achievements,
+      history: [],
+      reputation: { level: Math.max(1, Math.floor(old.reputation.level / 4)), exp: 0 },
+      day: old.day,
+    };
+    if (s.branch % 2 === 1) {
+      const w = LEVELS[0].w;
+      for (const f of s.fixtures) f.x = w - f.x - (f.vertical || f.kind === 'decor' ? 1 : 2);
+    }
+    this.state = s;
+    saveGame(s);
+    this.enterNight(false);
+    this.fit();
   }
 
   checkAchievements(): void {

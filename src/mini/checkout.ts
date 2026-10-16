@@ -1,5 +1,6 @@
 import { drawSprite, drawText, rect, textWidth } from '../core/assets';
 import { Rng } from '../core/rng';
+import { sfx } from '../core/audio';
 import { t } from '../i18n';
 import { COINS, DRAWER_BILLS, greedy, roundCash, sum, type CashPayment } from '../game/rules';
 import { accuracyLabel, inRect, MiniGame, panel, type MiniResult } from './base';
@@ -187,6 +188,7 @@ export class CheckoutGame extends MiniGame {
     for (const s of this.drawerSlots()) {
       if (inRect(x, y, s.r)) {
         this.tray.push(s.v);
+        sfx('coin');
         this.tray.sort((a, b) => b - a);
         return;
       }

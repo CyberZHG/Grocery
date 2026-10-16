@@ -4,6 +4,8 @@ import type { Game } from '../game/game';
 import type { DayStats } from '../game/state';
 import type { Prompt } from '../render/world';
 import { achievementsPanel, spriteIcon } from './achievements';
+import { audioSettings, setAudio, setMusic, sfx, unlockAudio } from '../core/audio';
+import { goalsPanel } from './goals';
 import { storePanel } from './store';
 import { dateOf, holidayOf, weatherOf } from '../game/calendar';
 import { BuildMode } from './build';
@@ -39,6 +41,17 @@ export function charIcon(row: number, scale = 1): HTMLElement {
   });
 }
 
+export interface AwaySummary {
+  days: number;
+  revenue: number;
+  customers: number;
+  money: number;
+  rep: [number, number];
+  cat: [number, number];
+  friends: number;
+  gifts: number;
+}
+
 export class UI {
   canvas: HTMLCanvasElement;
   overlay: HTMLElement;
@@ -60,6 +73,11 @@ export class UI {
   private promptEls = new Map<string, { el: HTMLButtonElement; bar: HTMLElement }>();
 
   constructor(root: HTMLElement) {
+    // audio may only start after a user gesture; any button press also plays a soft click
+    window.addEventListener('pointerdown', () => unlockAudio(), { capture: true });
+    window.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.btn, .chip, .pcard, .slot-btn')) sfx('click');
+    }, { capture: true });
     this.canvas = h('canvas', { class: 'world' });
     this.dayEl = h('div', { class: 'hud-day' });
     this.timeEl = h('div', { class: 'hud-time' });
@@ -126,7 +144,20 @@ export class UI {
         h('button', { class: 'btn small primary', onclick: () => g.startDay() }, [t('hud.skip')]),
       );
     }
-    this.controls.append(h('button', { class: 'btn small icon', title: t('hud.menu'), onclick: () => this.showMenu() }, ['☰']));
+    const muted = audioSettings().muted;
+    this.controls.append(
+      h('button', {
+        class: 'btn small icon', title: t('menu.sound'),
+        onclick: () => {
+          setAudio({ muted: !audioSettings().muted });
+          this.refresh();
+        },
+      }, [muted ? '🔇' : '🔊']),
+      h('button', { class: 'btn small lang', title: t('menu.language'), onclick: () => this.showLanguages() }, [LOCALES.find((l) => l.code === locale())!.label]),
+      h('button', { class: 'btn small icon', title: t('hud.menu'), onclick: () => this.showMenu() }, ['☰']),
+    );
+    const rain = weatherOf(g.state.seed, g.state.day) === 'rain';
+    setMusic(g.phase === 'day' ? 'day' : 'night', rain);
     if (!this.buildMode) this.renderBar();
     requestAnimationFrame(() => g.cam.auto && g.fit());
   }
@@ -148,6 +179,7 @@ export class UI {
     this.bottom.append(
       btn('bar.staff', () => this.openPanel('staff.title', () => staffPanel(g, this))),
       btn('bar.customers', () => this.openPanel('npc.title', () => regularsPanel(g))),
+      btn('bar.goals', () => this.openPanel('goal.title', () => goalsPanel(g))),
       btn('bar.store', () => this.openPanel('store.title', () => storePanel(g, this))),
       btn('bar.achievements', () => this.openPanel('ach.title', () => achievementsPanel(g.state))),
     );
@@ -298,6 +330,48 @@ export class UI {
     ]);
   }
 
+  private showLanguages(): void {
+    const langs = h('div', { class: 'stack' }, LOCALES.map((l) =>
+      h('button', { class: `btn${l.code === locale() ? ' primary' : ''}`, onclick: () => { setLocale(l.code); this.closeModal(); } }, [l.label]),
+    ));
+    this.modal(t('menu.language'), langs);
+  }
+
+  private audioControls(): HTMLElement {
+    const a = audioSettings();
+    const slider = (key: 'master' | 'music' | 'sfx', label: Key) => h('label', { class: 'row slider' }, [
+      h('span', {}, [t(label)]),
+      h('input', {
+        type: 'range', min: 0, max: 1, step: 0.05, value: String(a[key]),
+        oninput: (e: Event) => setAudio({ [key]: Number((e.target as HTMLInputElement).value) }),
+      }),
+    ]);
+    return h('div', { class: 'stack' }, [
+      h('label', { class: 'row' }, [
+        h('input', { type: 'checkbox', checked: a.muted, onchange: (e: Event) => { setAudio({ muted: (e.target as HTMLInputElement).checked }); this.refresh(); } }),
+        h('span', {}, [t('menu.mute')]),
+      ]),
+      slider('master', 'menu.volume'),
+      slider('music', 'menu.music'),
+      slider('sfx', 'menu.sfx'),
+    ]);
+  }
+
+  showAway(a: AwaySummary): void {
+    const row = (k: Key, v: string) => h('div', { class: 'kv' }, [h('span', {}, [t(k)]), h('strong', {}, [v])]);
+    const body = h('div', { class: 'report' }, [
+      h('p', {}, [t('away.intro', { n: a.days })]),
+      row('report.revenue', money(a.revenue)),
+      row('away.money', money(a.money)),
+      row('report.customers', String(a.customers)),
+      row('store.reputation', `Lv ${a.rep[0]} → ${a.rep[1]}`),
+      row('store.catName', `Lv ${a.cat[0]} → ${a.cat[1]}`),
+      row('away.friends', String(a.friends)),
+      row('away.gifts', String(a.gifts)),
+    ]);
+    this.modal(t('away.title'), body, [h('button', { class: 'btn primary', onclick: () => this.closeModal() }, [t('common.continue')])]);
+  }
+
   private showMenu(): void {
     const g = this.game;
     const langs = h('div', { class: 'row wrap' }, LOCALES.map((l) =>
@@ -307,6 +381,8 @@ export class UI {
       h('p', { class: 'muted' }, [t('menu.about')]),
       h('h3', {}, [t('menu.language')]),
       langs,
+      h('h3', {}, [t('menu.sound')]),
+      this.audioControls(),
       h('h3', {}, [t('menu.data')]),
       h('div', { class: 'row wrap' }, [
         h('button', { class: 'btn primary', onclick: () => void openShare(g, this) }, [t('menu.share')]),

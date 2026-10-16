@@ -1,4 +1,5 @@
 import { drawSprite, drawText } from '../core/assets';
+import { sfx } from '../core/audio';
 import { t, type Key } from '../i18n';
 import { COFFEE_STEPS, type CoffeeStep, type DrinkDef } from '../game/defs';
 import { accuracyLabel, inRect, MiniGame, panel } from './base';
@@ -73,6 +74,7 @@ export class CoffeeGame extends MiniGame {
       return;
     }
     this.made.push(c.s);
+    sfx('steam');
     if (this.made.length === this.drink.steps.length) {
       const accuracy = this.mistakes === 0 ? 1 : this.mistakes === 1 ? 0.6 : 0.3;
       this.finish({ accuracy, seconds: this.elapsed, manual: true, amount: this.drink.steps.length }, accuracyLabel(accuracy));

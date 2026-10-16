@@ -1,5 +1,6 @@
 import { drawSprite, drawText, textWidth } from '../core/assets';
 import { Rng } from '../core/rng';
+import { sfx } from '../core/audio';
 import { t } from '../i18n';
 import type { Meat } from '../game/defs';
 import { MiniGame, panel } from './base';
@@ -87,6 +88,7 @@ export class DeliGame extends MiniGame {
       while (this.acc >= SLICE_EVERY) {
         this.acc -= SLICE_EVERY;
         this.weight += this.rng.range(0.035, 0.055);
+        sfx('slice');
         this.slices.push({ x: this.slicer.x + 30 + this.rng.range(-4, 4), y: this.slicer.y + 70, vy: 0, landed: false });
       }
     }

@@ -3,12 +3,12 @@ import { Mover, type Dir } from './agent';
 import {
   BREAD_COST_RATIO, BREAD_PRICE, BREADS, COFFEE_COST_RATIO, DAY_END, DAY_START, DRINKS, FIXTURES, LAST_ENTRY,
   LEVELS, MEAT_COST_RATIO, MEAT_PRICE_LB, MEATS, NPC_ROW0, NPCS, ODEN_COST_RATIO, ODEN_ITEMS, ODEN_PRICE,
-  OWNER_ROW, PRODUCT_BY_ID, STAFF_ROW0, TRAIT_BY_ID, type Bread, type Category, type BreadQuality, type DrinkDef, type Meat, type NpcDef,
+  OWNER_ROW, PRODUCT_BY_ID, STAFF_ROW0, TRAIT_BY_ID, CATEGORIES, GIFT_KINDS, GIFT_LEVELS, unlockedSkills, type Bread, type Category, type BreadQuality, type DrinkDef, type Meat, type NpcDef,
   type OdenItem, type Skill, type StationKind,
 } from './defs';
 import { demandMult, holidayOf, stationMult, trafficMult, weatherOf } from './calendar';
 import {
-  catAppeal, catLover, costOf, equipSpeed, gainCat, gainEquipment, gainReputation, gainSupplier, giftChance, PETS_PER_DAY, repTraffic, type EquipKind,
+  catAppeal, catLover, costOf, equipSpeed, gainCat, gainEquipment, gainReputation, gainSupplier, giftChance, PETS_PER_DAY, repTraffic, rosterSize, type EquipKind,
 } from './growth';
 import { priceMult, productExpToNext, UNLOCK_ORDER, unlockedCount } from './progress';
 import { accessTiles, buildLayout, entryTile, Grid, spawnTile, type Layout, type P, type StationSpot } from './layout';
@@ -110,13 +110,25 @@ export type Task =
   | { type: 'line'; line: Line }
   | { type: 'restock'; fixture: number; slot: number; phase: 'toStock' | 'pickup' | 'toShelf' | 'stocking'; timer: number }
   | { type: 'oven'; phase: 'load' | 'unload'; timer: number }
+  | { type: 'clean'; spill: number; timer: number }
   | { type: 'none' };
+
+export interface Spill {
+  id: number;
+  x: number;
+  y: number;
+  kind: 'puddle' | 'crumbs';
+  age: number;
+}
+
+export type DayEvent = { kind: 'tour'; at: number } | { kind: 'blogger' } | { kind: 'late'; cat: Category; until: number };
 
 export class Worker {
   mover: Mover;
   task: Task = { type: 'none' };
   carrying = false;
   bubble: Bubble | null = null;
+  idleFor = 0;
 
   constructor(
     readonly staffId: number,
@@ -137,7 +149,7 @@ export class Worker {
 
 export class CatAgent {
   mover: Mover;
-  mode: 'walk' | 'sit' | 'sleep' = 'sleep';
+  mode: 'walk' | 'sit' | 'sleep' | 'groom' | 'stretch' | 'loaf' = 'sleep';
   timer = 0;
   bubble: Bubble | null = null;
 
@@ -161,6 +173,13 @@ export type SimEvent =
   | { type: 'productLevel'; id: string; level: number }
   | { type: 'growth'; what: 'reputation' | 'cat' | EquipKind | Category; level: number }
   | { type: 'gift'; id: string; units: number; value: number }
+  | { type: 'reliefGift'; units: number; value: number }
+  | { type: 'npcGift'; npc: string; kind: string }
+  | { type: 'friend'; by: string; friend: string }
+  | { type: 'sold'; cat: Category; qty: number }
+  | { type: 'served' }
+  | { type: 'event'; event: DayEvent }
+  | { type: 'tourArrived' }
   | { type: 'unlock'; id: string }
   | { type: 'closed' };
 
@@ -192,10 +211,15 @@ export class Sim {
   done = false;
   listeners: ((e: SimEvent) => void)[] = [];
   cat: CatAgent;
+  spills: Spill[] = [];
+  event: DayEvent | null = null;
+  sold = new Map<string, number>();
+  stockouts = new Map<string, number>();
+  private nextSpill = 1;
   private nextCust = 1;
 
   constructor(readonly state: GameState) {
-    this.layout = buildLayout(state.level);
+    this.layout = buildLayout(state.level, state.branch % 2 === 1);
     this.grid = new Grid(this.layout, this.placed());
     this.rng = new Rng((state.seed + state.day * 7919) | 0);
     this.stats = {
@@ -205,11 +229,14 @@ export class Sim {
     this.cat = new CatAgent(this.catSpot());
   }
 
-  /** Random open floor tile in the store interior. */
+  /** Random open floor tile in the store interior, off the queues and away from where anyone is headed. */
   private catSpot(): P {
+    const taken = this.cat ? this.allMovers().filter((m) => m !== this.cat.mover).map((m) => m.dest) : [];
     for (let i = 0; i < 40; i++) {
       const p = { x: this.rng.int(0, this.layout.w - 1), y: this.rng.int(1, this.layout.h - 3) };
-      if (this.grid.walkable(p.x, p.y)) return p;
+      if (!this.grid.walkable(p.x, p.y) || this.layout.reserved[p.y * this.layout.w + p.x]) continue;
+      if (taken.some((t) => t.x === p.x && t.y === p.y)) continue;
+      return p;
     }
     return { x: 2, y: 1 };
   }
@@ -217,21 +244,22 @@ export class Sim {
   private updateCat(dt: number): void {
     const c = this.cat;
     const st = this.state.cat;
-    c.mover.step(dt, 0.5);
+    this.stepMover(c.mover, dt, 0.5);
     if (c.bubble && c.bubble.until < this.clock) c.bubble = null;
     st.mood += (50 - st.mood) * 0.0008 * dt;
     if (gainCat(this.state, dt * 0.02)) this.emit({ type: 'growth', what: 'cat', level: st.level });
     if (c.mode === 'walk') {
       if (c.mover.path.length === 0) {
-        c.mode = this.rng.chance(0.4) ? 'sleep' : 'sit';
-        c.timer = c.mode === 'sleep' ? this.rng.range(40, 120) : this.rng.range(15, 50);
+        const r = this.rng.next();
+        c.mode = r < 0.3 ? 'sit' : r < 0.55 ? 'sleep' : r < 0.7 ? 'groom' : r < 0.9 ? 'loaf' : 'stretch';
+        c.timer = { sit: [15, 50], sleep: [40, 120], groom: [8, 20], loaf: [30, 90], stretch: [3, 6] }[c.mode].reduce((a, b) => this.rng.range(a, b));
       }
       return;
     }
     c.timer -= dt;
     if (c.timer <= 0) {
       c.mode = 'walk';
-      c.mover.goTo(this.grid, this.catSpot());
+      this.walk(c.mover, this.catSpot());
     }
   }
 
@@ -297,12 +325,15 @@ export class Sim {
   // ---------- day lifecycle ----------
 
   startDay(): void {
+    const broke = this.state.money <= 0;
+    if (broke) this.supplierGifts(true);
     this.restockAll();
-    const roster = NPCS.slice(0, LEVELS[this.state.level].roster);
+    const roster = NPCS.slice(0, rosterSize(this.state));
     const appeal = Math.min(0.15, this.placed().length * 0.006);
     const rep = repTraffic(this.state.reputation.level);
     const traffic = trafficMult(this.state.seed, this.state.day);
-    this.supplierGifts();
+    if (!broke) this.supplierGifts(false);
+    this.rollEvent();
     for (const npc of roster) {
       const st = this.state.npcs[npc.id];
       const aff = affinityValue(st.fond.level);
@@ -367,6 +398,15 @@ export class Sim {
     this.customers = this.customers.filter((c) => !(c.state === 'leave' && c.mover.path.length === 0 && c.mover.y >= this.layout.h + 1));
     this.updateOven(dtMin);
     this.updateCat(dtMin);
+    for (const sp of this.spills) sp.age += dtMin;
+    const ev = this.event;
+    if (ev?.kind === 'tour' && this.clock >= ev.at && !this.closing) {
+      ev.at = Infinity;
+      const roster = NPCS.slice(0, rosterSize(this.state));
+      for (let i = 0; i < 8; i++) this.arrivals.push({ t: this.clock + i * 0.6, npc: this.rng.pick(roster) });
+      this.arrivals.sort((a, b) => a.t - b.t);
+      this.emit({ type: 'tourArrived' });
+    }
     this.assignTasks();
     for (const w of this.workers) this.updateWorker(w, dtMin);
     for (const line of this.allLines()) this.updateLine(line, dtMin);
@@ -395,7 +435,7 @@ export class Sim {
     this.customers.push(c);
     this.stats.customers += 1;
     this.state.lifetime.customers += 1;
-    c.mover.goTo(this.grid, entryTile(this.layout));
+    this.walk(c.mover, entryTile(this.layout));
   }
 
   private planTargets(c: Customer): Target[] {
@@ -467,15 +507,76 @@ export class Sim {
     return out;
   }
 
+  private allMovers(): Mover[] {
+    return [...this.customers.map((c) => c.mover), ...this.workers.map((w) => w.mover), this.cat.mover];
+  }
+
+  /** Tiles where others stand still, so walkers route around them. */
+  private standing(self: Mover): P[] {
+    return this.allMovers().filter((m) => m !== self && m.path.length === 0).map((m) => m.tile);
+  }
+
+  /** The stockroom door and the tiles beside it on the back corridor. */
+  private doorTiles(): P[] {
+    const d = this.layout.stockDoor;
+    return [0, -1, 1].map((dx) => ({ x: d.x + dx, y: d.y })).filter((p) => this.grid.walkable(p.x, p.y));
+  }
+
+  /** Back-corridor spots where staff with nothing to do wait, clear of the door and the counters. */
+  private posts(): P[] {
+    const d = this.layout.stockDoor;
+    const out: P[] = [];
+    for (let x = 0; x < this.layout.w; x++) {
+      if (Math.abs(x - d.x) < 2 || !this.grid.walkable(x, 0)) continue;
+      if (this.layout.stations.some((s) => s.staff.x === x)) continue;
+      out.push({ x, y: 0 });
+    }
+    return out;
+  }
+
+  private walk(m: Mover, p: P): void {
+    m.goTo(this.grid, p, this.standing(m));
+  }
+
+  /** The candidate nearest to `near` (default: the mover) that nobody else stands on or is heading to. */
+  private freeTile(m: Mover, cands: P[], near?: P): P | undefined {
+    const taken = new Set(this.allMovers().filter((o) => o !== m).map((o) => `${o.dest.x},${o.dest.y}`));
+    const t = near ?? m.tile;
+    const sorted = cands.slice().sort((a, b) => Math.abs(a.x - t.x) + Math.abs(a.y - t.y) - (Math.abs(b.x - t.x) + Math.abs(b.y - t.y)));
+    return sorted.find((p) => !taken.has(`${p.x},${p.y}`)) ?? sorted[0];
+  }
+
+  /** Steps a mover, detouring around or briefly waiting for anyone standing on its next tile. */
+  private stepMover(m: Mover, dt: number, speed: number): void {
+    const next = m.path[0];
+    const centered = Math.abs(m.x - Math.round(m.x)) < 0.001 && Math.abs(m.y - Math.round(m.y)) < 0.001;
+    if (next && centered && this.grid.inside(next.x, next.y)) {
+      const blocker = this.allMovers().find((o) => o !== m && o.path.length === 0 && o.tile.x === next.x && o.tile.y === next.y);
+      if (blocker) {
+        // the cat gets up and moves on when someone needs its spot
+        if (blocker === this.cat.mover && this.cat.mode !== 'walk' && m.path.length === 1) this.cat.timer = 0;
+        if (m.path.length > 1) {
+          this.walk(m, m.dest);
+        } else if (m.held < 1.5) {
+          m.held += dt;
+          m.moving = false;
+          return;
+        }
+      }
+    }
+    m.held = 0;
+    m.step(dt, speed);
+  }
+
   private updateCustomer(c: Customer, dt: number): void {
-    c.mover.step(dt, 0.85);
+    this.stepMover(c.mover, dt, 0.85);
     if (c.bubble && c.bubble.until < this.clock && c.state !== 'queue') c.bubble = null;
     if (c.state === 'leave') return;
     if (c.state === 'queue') {
       const held = c.line?.offerFor === c && c.line.offer > 0;
       if (c.mover.path.length === 0 && !held) c.wait += dt;
       const front = c.line?.front() === c;
-      if (front) c.mover.face(c.line!.kind === 'station' ? 'up' : 'left');
+      if (front) c.mover.face(c.line!.kind === 'station' ? 'up' : this.layout.mirrored ? 'right' : 'left');
       return;
     }
     if (c.state === 'browse') {
@@ -506,9 +607,7 @@ export class Sim {
           c.targets.shift();
           return;
         }
-        const t = c.mover.tile;
-        acc.sort((a, b) => Math.abs(a.x - t.x) + Math.abs(a.y - t.y) - (Math.abs(b.x - t.x) + Math.abs(b.y - t.y)));
-        c.mover.goTo(this.grid, acc[0]);
+        this.walk(c.mover, this.freeTile(c.mover, acc)!);
         return;
       }
       this.faceToward(c.mover, f.vertical ? { x: f.x, y: f.y + tg.slot } : { x: f.x + tg.slot, y: f.y });
@@ -522,7 +621,7 @@ export class Sim {
       const sp = this.stationSpot('bakery')!;
       const spot = sp.queue[0];
       if (!c.mover.at(spot)) {
-        c.mover.goTo(this.grid, spot);
+        this.walk(c.mover, spot);
         return;
       }
       c.mover.face('up');
@@ -556,6 +655,7 @@ export class Sim {
       c.affinityDelta -= fav ? 3 : 1.5;
       c.bubble = { icon: 'b_empty', until: this.clock + 4 };
       this.priority.add(`${f.id}:${slot}`);
+      this.stockouts.set(p.id, (this.stockouts.get(p.id) ?? 0) + 1);
       return;
     }
     const remaining = c.budget - c.spent;
@@ -566,6 +666,12 @@ export class Sim {
     c.spent += price * qty;
     c.basket.push({ kind: 'product', id: p.id, price, cost: costOf(this.state, p), qty });
     this.productSold(p.id, qty);
+    this.sold.set(p.id, (this.sold.get(p.id) ?? 0) + qty);
+    this.emit({ type: 'sold', cat: p.cat, qty });
+    if (this.spills.length < 5 && this.rng.chance(0.02)) {
+      const t = c.mover.tile;
+      this.spills.push({ id: this.nextSpill++, x: t.x, y: t.y, kind: this.rng.chance(0.5) ? 'puddle' : 'crumbs', age: 0 });
+    }
     if (fav) {
       c.affinityDelta += 1.5;
       c.bubble = { icon: 'b_heart', until: this.clock + 3 };
@@ -656,11 +762,43 @@ export class Sim {
     c.state = 'queue';
     c.line = line;
     line.members.push(c);
-    c.mover.goTo(this.grid, line.spot(line.members.length - 1));
+    const n = line.members.length - 1;
+    this.walk(c.mover, n < line.spots.length ? line.spot(n) : this.queueSpots(line)[n]);
   }
 
   private shiftLine(line: Line): void {
-    line.members.forEach((m, i) => m.mover.goTo(this.grid, line.spot(i)));
+    const spots = line.members.length > line.spots.length ? this.queueSpots(line) : line.spots;
+    line.members.forEach((m, i) => this.walk(m.mover, spots[Math.min(i, spots.length - 1)]));
+  }
+
+  /** The marked queue spots, then overflow that runs straight on and spills onto the nearest open floor. */
+  private queueSpots(line: Line): P[] {
+    const out = line.spots.slice();
+    const used = new Set<string>();
+    const key = (p: P) => `${p.x},${p.y}`;
+    for (const l of [...this.registers, ...this.stations.values(), ...(this.bagging ? [this.bagging] : [])]) {
+      for (const p of [...l.spots, l.staffSpot]) used.add(key(p));
+    }
+    const last = out[out.length - 1];
+    const prev = out[out.length - 2] ?? last;
+    const dx = last.x - prev.x;
+    const dy = last.y - prev.y;
+    let p = last;
+    while (dx || dy) {
+      p = { x: p.x + dx, y: p.y + dy };
+      if (!this.grid.walkable(p.x, p.y) || used.has(key(p)) || out.length >= line.spots.length + 6) break;
+      out.push(p);
+      used.add(key(p));
+    }
+    const end = out[out.length - 1];
+    const dist = this.grid.flood(end.x, end.y);
+    const rest: { p: P; d: number }[] = [];
+    for (let i = 0; i < dist.length; i++) {
+      const q = { x: i % this.grid.w, y: Math.floor(i / this.grid.w) };
+      if (dist[i] > 0 && dist[i] <= 6 && !used.has(key(q)) && !this.layout.reserved[i]) rest.push({ p: q, d: dist[i] });
+    }
+    rest.sort((a, b) => a.d - b.d);
+    return out.concat(rest.map((r) => r.p));
   }
 
   /** Front customer done being served at this line. */
@@ -729,9 +867,14 @@ export class Sim {
     if (wp.affinity < 0) c.bubble = { icon: 'b_wait', until: this.clock + 3 };
     const bought = c.basket.length > 0;
     const exp = bought ? (5 + c.spent * 0.6) * c.mult * wp.mult : 1;
-    const mood = c.affinityDelta + wp.affinity + (bought ? 1 : -0.5);
+    const mood = c.affinityDelta + wp.affinity + (bought ? 1 : -0.5) - this.spills.length * 0.15;
+    const fondBefore = st.fond.level;
     changeAffinity(st.fond, mood);
-    const repUps = gainReputation(this.state, Math.max(0, 1 + mood) * (c.manualServed ? 2 : 1));
+    this.giveGifts(c.npc.id, fondBefore, st.fond.level);
+    this.maybeBringFriend(c);
+    const repMult = (c.manualServed ? 2 : 1) * (this.event?.kind === 'blogger' ? 2 : 1);
+    const repUps = gainReputation(this.state, Math.max(0, 1 + mood) * repMult);
+    this.emit({ type: 'served' });
     if (repUps) this.emit({ type: 'growth', what: 'reputation', level: this.state.reputation.level });
     st.visits += 1;
     const ups = addExp(st, exp, npcExpToNext);
@@ -739,7 +882,41 @@ export class Sim {
       this.stats.levelUps += ups;
       this.emit({ type: 'npcLevel', npc: c.npc.id, level: st.level });
     }
-    c.mover.goTo(this.grid, spawnTile(this.layout, this.rng.chance(0.5)));
+    this.walk(c.mover, spawnTile(this.layout, this.rng.chance(0.5)));
+  }
+
+  /** Regulars hand over keepsakes when their affinity crosses gift levels. */
+  private giveGifts(npc: string, before: number, after: number): void {
+    if (after <= before) return;
+    const have = this.state.gifts[npc] ?? 0;
+    let n = have;
+    while (n < GIFT_LEVELS.length && after >= GIFT_LEVELS[n]) n += 1;
+    for (let i = have; i < n; i++) this.emit({ type: 'npcGift', npc, kind: GIFT_KINDS[i] });
+    if (n > have) this.state.gifts[npc] = n;
+  }
+
+  /** Close regulars sometimes introduce a new neighbor, who visits right away. */
+  private maybeBringFriend(c: Customer): void {
+    const lv = this.state.npcs[c.npc.id].fond.level;
+    const size = rosterSize(this.state);
+    if (lv < 5 || size >= NPCS.length || !this.rng.chance(0.015 * Math.log(lv))) return;
+    this.state.friends += 1;
+    const friend = NPCS[size];
+    this.emit({ type: 'friend', by: c.npc.id, friend: friend.id });
+    if (!this.closing) this.arrivals.push({ t: this.clock + 1, npc: friend });
+    this.arrivals.sort((a, b) => a.t - b.t);
+  }
+
+  // ---------- spills ----------
+
+  /** Player tap: clears the spill instantly. */
+  cleanSpill(id: number): boolean {
+    const i = this.spills.findIndex((s) => s.id === id);
+    if (i < 0) return false;
+    this.spills.splice(i, 1);
+    for (const w of this.workers) if (w.task.type === 'clean' && w.task.spill === id) w.task = { type: 'none' };
+    this.gainSkill(this.workers[0], 'clean', 3);
+    return true;
   }
 
   // ---------- lines ----------
@@ -762,12 +939,12 @@ export class Sim {
         line.offer = this.offerSeconds(OFFER_SECONDS);
       }
       if (line.offer > 0) {
-        if (w && w.mover.at(line.staffSpot)) w.mover.face(line.kind === 'station' ? 'down' : 'right');
+        if (w && w.mover.at(line.staffSpot)) w.mover.face(line.kind === 'station' ? 'down' : this.layout.mirrored ? 'left' : 'right');
         return;
       }
     }
     if (!w || !w.mover.at(line.staffSpot)) return;
-    w.mover.face(line.kind === 'station' ? 'down' : 'right');
+    w.mover.face(line.kind === 'station' ? 'down' : this.layout.mirrored ? 'left' : 'right');
     if (line.duration <= 0) line.duration = this.autoDuration(line, front, w);
     line.progress += dt;
     if (line.progress >= line.duration) {
@@ -894,14 +1071,14 @@ export class Sim {
     return s;
   }
 
-  private canDo(w: Worker, kind: 'register' | 'station' | 'bagging' | 'restock' | 'oven'): boolean {
+  private canDo(w: Worker, kind: 'register' | 'station' | 'bagging' | 'restock' | 'oven' | 'clean'): boolean {
     switch (w.role) {
       case 'auto':
         return true;
       case 'cashier':
         return kind === 'register' || kind === 'bagging';
       case 'stocker':
-        return kind === 'restock' || kind === 'oven';
+        return kind === 'restock' || kind === 'oven' || kind === 'clean';
       case 'service':
         return kind === 'station' || kind === 'bagging' || kind === 'oven';
     }
@@ -916,7 +1093,7 @@ export class Sim {
     const idle = this.workers.filter((w) => w.task.type === 'none' || (urgent && this.preemptable(w)));
     if (!idle.length) return;
     const claimed = this.claimed();
-    type Job = { score: number; kind: 'register' | 'station' | 'bagging' | 'restock' | 'oven'; pos: P; apply: (w: Worker) => void };
+    type Job = { score: number; kind: 'register' | 'station' | 'bagging' | 'restock' | 'oven' | 'clean'; pos: P; apply: (w: Worker) => void };
     const jobs: Job[] = [];
     for (const line of this.allLines()) {
       if (line.worker || line.members.length === 0) continue;
@@ -927,7 +1104,18 @@ export class Sim {
         apply: (w) => {
           line.worker = w;
           w.task = { type: 'line', line };
-          w.mover.goTo(this.grid, line.staffSpot);
+          this.walk(w.mover, line.staffSpot);
+        },
+      });
+    }
+    const cleaning = new Set(this.workers.map((w) => (w.task.type === 'clean' ? w.task.spill : -1)));
+    for (const sp of this.spills) {
+      if (cleaning.has(sp.id)) continue;
+      jobs.push({
+        score: 3 + Math.min(3, sp.age / 20), kind: 'clean', pos: sp,
+        apply: (w) => {
+          w.task = { type: 'clean', spill: sp.id, timer: 0 };
+          this.walk(w.mover, { x: sp.x, y: sp.y });
         },
       });
     }
@@ -940,7 +1128,7 @@ export class Sim {
           score: unload ? 9 : 5, kind: 'oven', pos: sp.staff,
           apply: (w) => {
             w.task = { type: 'oven', phase: unload ? 'unload' : 'load', timer: 0 };
-            w.mover.goTo(this.grid, sp.staff);
+            this.walk(w.mover, sp.staff);
           },
         });
       }
@@ -954,11 +1142,12 @@ export class Sim {
         if (s.stock > cap * 0.4 && !pri) return;
         const p = PRODUCT_BY_ID.get(s.product)!;
         if (this.state.money < p.cost) return;
+        if (this.event?.kind === 'late' && this.event.cat === p.cat && this.clock < this.event.until) return;
         jobs.push({
           score: 2 + (1 - s.stock / cap) * 3 + (pri ? 4 : 0), kind: 'restock', pos: { x: f.x, y: f.y },
           apply: (w) => {
             w.task = { type: 'restock', fixture: f.id, slot: i, phase: 'toStock', timer: 0 };
-            w.mover.goTo(this.grid, this.layout.stockDoor);
+            this.walk(w.mover, this.freeTile(w.mover, this.doorTiles(), this.layout.stockDoor) ?? this.layout.stockDoor);
           },
         });
       });
@@ -986,16 +1175,37 @@ export class Sim {
     for (const w of idle) {
       if (w.task.type === 'none' && w.mover.path.length === 0 && w.role === 'cashier') {
         const r = this.registers.find((l) => !l.worker);
-        if (r && !w.mover.at(r.staffSpot)) w.mover.goTo(this.grid, r.staffSpot);
+        if (r && !w.mover.at(r.staffSpot)) this.walk(w.mover, r.staffSpot);
+      } else if (w.task.type === 'none' && w.idleFor > 1.5) {
+        const post = this.freeTile(w.mover, this.posts(), this.layout.stockDoor);
+        if (post && !w.mover.at(post)) this.walk(w.mover, post);
+        w.idleFor = -Infinity;
       }
     }
   }
 
   private updateWorker(w: Worker, dt: number): void {
-    w.mover.step(dt, 1.0 * w.speed('walk'));
+    this.stepMover(w.mover, dt, 1.0 * w.speed('walk'));
+    w.idleFor = w.task.type === 'none' && w.mover.path.length === 0 ? w.idleFor + dt : 0;
     if (w.mover.moving) this.gainSkill(w, 'walk', dt * 0.05);
     if (w.bubble && w.bubble.until < this.clock) w.bubble = null;
     const t = w.task;
+    if (t.type === 'clean') {
+      if (w.mover.path.length) return;
+      const sp = this.spills.find((s) => s.id === t.spill);
+      if (!sp) {
+        w.task = { type: 'none' };
+        return;
+      }
+      w.mover.face('down');
+      t.timer += dt;
+      if (t.timer >= 1.2 / w.speed('clean')) {
+        this.spills = this.spills.filter((s) => s !== sp);
+        this.gainSkill(w, 'clean', 2);
+        w.task = { type: 'none' };
+      }
+      return;
+    }
     if (t.type === 'restock') this.updateRestock(w, t, dt);
     else if (t.type === 'oven') {
       if (w.mover.path.length) return;
@@ -1034,7 +1244,7 @@ export class Sim {
         w.carrying = true;
         const acc = accessTiles(this.grid, f, t.slot);
         t.phase = 'toShelf';
-        if (acc.length) w.mover.goTo(this.grid, acc[0]);
+        if (acc.length) this.walk(w.mover, this.freeTile(w.mover, acc)!);
       }
       return;
     }
@@ -1111,31 +1321,76 @@ export class Sim {
     if (gainEquipment(this.state, kind, amount)) this.emit({ type: 'growth', what: kind, level: this.state.equipment[kind].level });
   }
 
-  /** Suppliers occasionally send free goods; credited as a rebate since shelves start full. */
-  private supplierGifts(): void {
+  /** One calm random event on some days: a tour bus, a food blogger, or a late delivery. */
+  private rollEvent(): void {
+    const r = this.rng.next();
+    if (r < 0.1) this.event = { kind: 'tour', at: this.rng.range(10 * 60, 16 * 60) };
+    else if (r < 0.18) this.event = { kind: 'blogger' };
+    else if (r < 0.26) this.event = { kind: 'late', cat: this.rng.pick(CATEGORIES), until: 12 * 60 };
+    if (this.event) this.emit({ type: 'event', event: this.event });
+  }
+
+  /** Suppliers occasionally send free goods, credited as a rebate since shelves start full. When the store is out of money they send much more, so a broke store can always restock. */
+  private supplierGifts(broke: boolean): void {
     const seen = new Set<string>();
+    let units = 0;
+    let value = 0;
     for (const f of this.placed()) {
       for (const s of f.slots) {
         if (!s.product || seen.has(s.product)) continue;
         seen.add(s.product);
         const p = PRODUCT_BY_ID.get(s.product)!;
-        if (!this.rng.chance(giftChance(this.state.suppliers[p.cat].level) / 4)) continue;
-        const units = this.rng.int(2, 4);
-        const value = units * costOf(this.state, p);
-        this.state.money += value;
-        this.stats.restock -= value;
-        this.emit({ type: 'gift', id: p.id, units, value });
+        const chance = giftChance(this.state.suppliers[p.cat].level) / 4;
+        if (!this.rng.chance(broke ? Math.max(0.6, chance) : chance)) continue;
+        const n = broke ? this.rng.int(6, 10) : this.rng.int(2, 4);
+        const v = n * costOf(this.state, p);
+        this.state.money += v;
+        this.stats.restock -= v;
+        if (broke) {
+          units += n;
+          value += v;
+        } else this.emit({ type: 'gift', id: p.id, units: n, value: v });
       }
+    }
+    if (broke && units > 0) this.emit({ type: 'reliefGift', units, value });
+  }
+
+  /** Experienced coworkers pass on a little of each skill to lower-level staff every day. */
+  private mentor(): void {
+    const team = [{ skills: this.state.owner, id: -1 }, ...this.state.staff.map((s) => ({ skills: s.skills, id: s.id }))];
+    if (team.length < 2) return;
+    for (const skill of unlockedSkills(this.state.level)) {
+      const best = Math.max(...team.map((m) => m.skills[skill].level));
+      for (const m of team) {
+        const gap = best - m.skills[skill].level;
+        if (gap <= 0 || m.id < 0) continue;
+        if (addExp(m.skills[skill], Math.min(30, gap * 2), skillExpToNext)) this.emit({ type: 'staffLevel', staff: m.id, skill, level: m.skills[skill].level });
+      }
+    }
+  }
+
+  /** Staff standing near a hand-served counter watch and learn. */
+  watchLearn(skill: Skill, at: P): void {
+    for (const w of this.workers.slice(1)) {
+      const t = w.mover.tile;
+      if (Math.abs(t.x - at.x) + Math.abs(t.y - at.y) <= 5) this.gainSkill(w, skill, 2);
     }
   }
 
   endDayCosts(): void {
     const wages = this.state.staff.reduce((a, s) => a + s.wage, 0);
-    const rent = LEVELS[this.state.level].rent;
-    this.state.money -= wages + rent;
+    this.state.money -= wages;
+    const rent = this.state.money <= 0 ? 0 : LEVELS[this.state.level].rent;
+    this.state.money -= rent;
+    this.stats.rentWaived = rent === 0;
     this.stats.wages = wages;
     this.stats.rent = rent;
-    const vals = Object.values(this.state.npcs).slice(0, LEVELS[this.state.level].roster);
+    this.mentor();
+    const top = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    this.stats.topSold = top(this.sold);
+    this.stats.stockouts = top(this.stockouts);
+    this.stats.event = this.event?.kind ?? null;
+    const vals = Object.values(this.state.npcs).slice(0, rosterSize(this.state));
     this.stats.avgAffinity = vals.reduce((a, b) => a + b.fond.level, 0) / Math.max(1, vals.length);
     this.stats.reputation = this.state.reputation.level;
     this.stats.weather = weatherOf(this.state.seed, this.state.day);

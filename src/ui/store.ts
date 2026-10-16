@@ -1,5 +1,7 @@
 import { money, t, type Key } from '../i18n';
-import { CATEGORIES, LEVELS } from '../game/defs';
+import { CATEGORIES, FLOOR_STYLES, LEVELS, SIGN_STYLES, STYLE_UNLOCK, WALL_STYLES } from '../game/defs';
+import { catName } from '../game/names';
+import { saveGame } from '../game/state';
 import type { Game } from '../game/game';
 import {
   catExpToNext, EQUIPMENT, equipExpToNext, equipSpeed, PETS_PER_DAY, repExpToNext, repTraffic, stars, supplierDiscount,
@@ -46,7 +48,17 @@ export function storePanel(g: Game, ui: UI): HTMLElement {
   const s = g.state;
   const rep = s.reputation;
   const starRow = h('div', { class: 'row' }, Array.from({ length: 5 }, (_, i) => spriteIcon(i < stars(rep.level) ? 'star_on' : 'star_off', 2)));
+  const nameInput = h('input', {
+    class: 'search', maxLength: 20, value: s.storeName, placeholder: t('store.defaultName'),
+    onchange: (e: Event) => {
+      s.storeName = (e.target as HTMLInputElement).value.trim();
+      saveGame(s);
+    },
+  });
   const out = h('div', { class: 'stack' }, [
+    h('h3', {}, [t('store.name')]),
+    h('div', { class: 'row' }, [nameInput]),
+    h('button', { class: 'btn small', disabled: g.phase !== 'night', onclick: () => renovate(g, ui) }, [`${t('reno.title')}${g.phase === 'night' ? '' : ` · ${t('common.nightOnly')}`}`]),
     h('h3', {}, [t('store.reputation')]),
     h('div', { class: 'card' }, [
       starRow,
@@ -73,12 +85,21 @@ function catCard(g: Game, ui: UI): HTMLElement {
   const c = g.state.cat;
   const pets = c.petDay === g.state.day ? c.pets : 0;
   const fed = c.fedDay === g.state.day;
+  const nameInput = h('input', {
+    class: 'search', maxLength: 12, value: g.state.catName, placeholder: t('store.catDefault'),
+    onchange: (e: Event) => {
+      g.state.catName = (e.target as HTMLInputElement).value.trim();
+      saveGame(g.state);
+    },
+  });
+  const pose = g.sim.cat.mode === 'walk' ? 'sit' : g.sim.cat.mode;
   return h('div', { class: 'card' }, [
     h('div', { class: 'card-head' }, [
-      spriteIcon(g.sim.cat.mode === 'sleep' ? 'cat_sleep' : 'cat_sit', 2),
+      spriteIcon(`cat_${g.state.catCoat}_${pose}`, 2),
       h('div', { class: 'card-title' }, [
-        h('strong', {}, [t('store.catName')]),
-        h('span', { class: 'muted' }, [t('store.pets', { n: pets, max: PETS_PER_DAY })]),
+        h('strong', {}, [catName(g.state)]),
+        h('span', { class: 'muted' }, [`${t(`coat.${g.state.catCoat}` as Key)} · ${t('store.pets', { n: pets, max: PETS_PER_DAY })}`]),
+        h('label', { class: 'row' }, [h('span', { class: 'muted' }, [t('store.rename')]), nameInput]),
       ]),
     ]),
     row(t('store.cat'), c, catExpToNext, ''),
@@ -192,4 +213,37 @@ function trendChart(days: DayStats[], sr: Series): HTMLElement {
     latest,
     canvas,
   ]);
+}
+
+/** Night-only renovation: floor, wall and sign styles unlock with reputation. Purely cosmetic. */
+function renovate(g: Game, ui: UI): void {
+  const s = g.state;
+  const rep = s.reputation.level;
+  const section = (title: Key, key: 'floor' | 'wall' | 'sign', styles: readonly string[], unlock: number[], preview: (st: string) => string) =>
+    h('div', { class: 'stack' }, [
+      h('h3', {}, [t(title)]),
+      h('div', { class: 'reno-grid' }, styles.map((st, i) => {
+        const open = rep >= unlock[i];
+        return h('button', {
+          class: `reno${s.style[key] === st ? ' active' : ''}`, disabled: !open,
+          onclick: () => {
+            s.style[key] = st;
+            saveGame(s);
+            ui.closeModal();
+            renovate(g, ui);
+          },
+        }, [
+          spriteIcon(preview(st), key === 'wall' ? 1 : 2),
+          h('span', {}, [t(`reno.${key}.${st}` as Key)]),
+          open ? null : h('small', { class: 'muted' }, [t('reno.needs', { n: unlock[i] })]),
+        ]);
+      })),
+    ]);
+  const body = h('div', { class: 'stack' }, [
+    h('p', { class: 'muted' }, [t('reno.hint')]),
+    section('reno.floor', 'floor', FLOOR_STYLES, STYLE_UNLOCK.floor, (st) => `f_${st}_0`),
+    section('reno.wall', 'wall', WALL_STYLES, STYLE_UNLOCK.wall, (st) => `wall_${st}_1`),
+    section('reno.sign', 'sign', SIGN_STYLES, STYLE_UNLOCK.sign, (st) => `sign_${st}`),
+  ]);
+  ui.modal(t('reno.title'), body, [], true);
 }

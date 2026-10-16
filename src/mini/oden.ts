@@ -1,5 +1,6 @@
 import { drawSprite, drawText } from '../core/assets';
 import { t } from '../i18n';
+import { sfx } from '../core/audio';
 import { ODEN_ITEMS, type OdenItem } from '../game/defs';
 import { accuracyLabel, inRect, MiniGame, panel } from './base';
 
@@ -55,6 +56,7 @@ export class OdenGame extends MiniGame {
     for (let i = 0; i < ODEN_ITEMS.length; i++) {
       if (inRect(x, y, this.cell(i))) {
         if (this.cup.length < 12) this.cup.push(ODEN_ITEMS[i]);
+        sfx('pop');
         return;
       }
     }

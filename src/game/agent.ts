@@ -9,6 +9,8 @@ export class Mover {
   dir: Dir = 'down';
   walkT = 0;
   moving = false;
+  /** Minutes spent waiting for someone to clear the next tile. */
+  held = 0;
 
   constructor(p: P) {
     this.x = p.x;
@@ -19,13 +21,18 @@ export class Mover {
     return { x: Math.round(this.x), y: Math.round(this.y) };
   }
 
+  /** Where the mover will end up: its last path node, or its current tile. */
+  get dest(): P {
+    return this.path.length ? this.path[this.path.length - 1] : this.tile;
+  }
+
   at(p: P): boolean {
     return this.path.length === 0 && Math.abs(this.x - p.x) < 0.01 && Math.abs(this.y - p.y) < 0.01;
   }
 
-  goTo(grid: Grid, p: P): boolean {
+  goTo(grid: Grid, p: P, avoid?: P | readonly P[] | null): boolean {
     const t = this.tile;
-    const path = grid.path(t, p);
+    const path = grid.path(t, p, avoid);
     if (!path) {
       // Target unreachable (e.g. blocked during layout edits); jump to avoid stuck agents.
       this.path = [];

@@ -49,3 +49,44 @@ def make_name(rnd: random.Random, sex: str, kind: str, used_en: set, used_zh: se
             used_zh.add(zh)
             return en, zh
     raise RuntimeError('name pool exhausted')
+
+
+JA_SURNAMES = ['山田', '田中', '鈴木', '佐藤', '高橋', '伊藤', '渡辺', '中村', '小林', '加藤', '吉田', '松本', '井上', '木村', '林', '斎藤']
+JA_JOKE = {
+    'm': ['権兵衛', '熊五郎', '八兵衛', 'ゴン太', 'ポン吉', '鉄平', '大五郎', '与作', '留吉', '茂作', '寅次郎', '金太', 'カン太', '太助'],
+    'f': ['おハナ', 'タマ子', 'お松', '梅子', 'トメ', 'おツル', '花子', '菊乃', 'よね', 'ちよ', 'ポン子', 'お福', 'マメ子', 'カメ子'],
+}
+JA_NORMAL = {'m': ['翔太', '健太', '拓海', '大輝', '蓮', '悠真'], 'f': ['美咲', '結衣', '葵', '陽菜', '凛', '紗希']}
+JA_KID = ['けんちゃん', 'ゆうくん', 'はなちゃん', 'みいちゃん', 'こうちゃん', 'ぽんちゃん', 'まめちゃん', 'たっくん']
+JA_ELDER = {'m': ['じいちゃん', 'のおじさん'], 'f': ['ばあちゃん', 'のおばさん']}
+
+KO_SURNAMES = list('김이박최정강조윤장임한오서신권황')
+KO_JOKE = {
+    'm': ['똘이', '삼식이', '개똥이', '덕배', '영구', '맹구', '복동이', '칠복이', '순돌이', '만수', '갑돌이', '돌쇠', '봉팔이', '춘삼이'],
+    'f': ['막순이', '말순이', '끝순이', '꽃분이', '점순이', '옥분이', '복순이', '순자', '갑순이', '삼순이', '말자', '달래'],
+}
+KO_NORMAL = {'m': ['민준', '서준', '지호', '도윤', '하준', '시우'], 'f': ['서연', '지우', '하은', '수아', '지민', '예린']}
+KO_KID = ['콩이', '별이', '봄이', '두부', '찐빵', '꼬맹이', '방울이', '토리']
+KO_ELDER = {'m': [' 할아버지', ' 아저씨'], 'f': [' 할머니', ' 아줌마']}
+
+
+def make_name_jk(rnd: random.Random, sex: str, kind: str, used: set, joke_ratio=0.75):
+    """Japanese and Korean names, drawn independently so en/zh names stay stable."""
+    for _ in range(300):
+        joke = rnd.random() < joke_ratio
+        sj, sk = rnd.choice(JA_SURNAMES), rnd.choice(KO_SURNAMES)
+        if kind == 'kid':
+            ja, ko = sj + rnd.choice(JA_KID), sk + rnd.choice(KO_KID)
+        elif kind == 'elder' and rnd.random() < 0.7:
+            je = rnd.choice(JA_ELDER[sex])
+            ja = sj + ('の' + je if not je.startswith('の') else je)
+            ko = sk + rnd.choice(KO_ELDER[sex])
+        elif joke:
+            ja, ko = sj + rnd.choice(JA_JOKE[sex]), sk + rnd.choice(KO_JOKE[sex])
+        else:
+            ja, ko = sj + rnd.choice(JA_NORMAL[sex]), sk + rnd.choice(KO_NORMAL[sex])
+        if ja not in used and ko not in used:
+            used.add(ja)
+            used.add(ko)
+            return ja, ko
+    raise RuntimeError('name pool exhausted')

@@ -1,5 +1,6 @@
 import { drawSprite } from '../core/assets';
 import { Rng } from '../core/rng';
+import { sfx } from '../core/audio';
 import { t } from '../i18n';
 import type { Bread, BreadQuality } from '../game/defs';
 import { inRect, MiniGame, panel, type MiniResult } from './base';
@@ -72,6 +73,7 @@ export class BakeryGame extends MiniGame<BakeResult> {
     this.trays.forEach((tr, i) => {
       if (!tr.pulled && inRect(x, y, this.rowRect(i))) {
         tr.pulled = quality(tr.p);
+        sfx('pop');
         this.say(t(`bakery.${tr.pulled}`), tr.pulled === 'golden' ? 'good' : tr.pulled === 'good' ? '' : 'bad');
       }
     });

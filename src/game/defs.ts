@@ -48,7 +48,7 @@ export const STAFF_ROW0 = 1;
 export const STAFF_LOOKS = 12;
 export const NPC_ROW0 = STAFF_ROW0 + STAFF_LOOKS;
 
-export type FixtureKind = 'shelf' | 'produce' | 'fridge' | 'freezer';
+export type FixtureKind = 'shelf' | 'produce' | 'fridge' | 'freezer' | 'decor';
 
 export interface FixtureDef {
   kind: FixtureKind;
@@ -62,6 +62,7 @@ export const FIXTURES: Record<FixtureKind, FixtureDef> = {
   produce: { kind: 'produce', store: 'produce', price: 180, capacity: 10 },
   fridge: { kind: 'fridge', store: 'fridge', price: 450, capacity: 8 },
   freezer: { kind: 'freezer', store: 'freezer', price: 500, capacity: 8 },
+  decor: { kind: 'decor', store: 'shelf', price: 40, capacity: 0 },
 };
 
 export interface LevelDef {
@@ -84,8 +85,8 @@ export const LEVELS: LevelDef[] = [
   { w: 34, h: 16, registers: 3, stations: ['oden', 'deli', 'bakery', 'coffee'], bagging: true, cost: 60000, roster: 160, rent: 340 },
 ];
 
-export type Skill = 'restock' | 'checkout' | 'walk' | 'oden' | 'deli' | 'bakery' | 'coffee' | 'bagging';
-export const SKILLS: Skill[] = ['restock', 'checkout', 'walk', 'oden', 'deli', 'bakery', 'coffee', 'bagging'];
+export type Skill = 'restock' | 'checkout' | 'walk' | 'clean' | 'oden' | 'deli' | 'bakery' | 'coffee' | 'bagging';
+export const SKILLS: Skill[] = ['restock', 'checkout', 'walk', 'clean', 'oden', 'deli', 'bakery', 'coffee', 'bagging'];
 
 export const ODEN_ITEMS = ['egg', 'daikon', 'konjac', 'chikuwa', 'fishball', 'tofu', 'kelp', 'tendon', 'mochi', 'sausage'] as const;
 export type OdenItem = (typeof ODEN_ITEMS)[number];
@@ -144,12 +145,33 @@ export const TRAITS: TraitDef[] = [
   { id: 'early_bird', skill: 'bakery', mult: 1.2 },
   { id: 'latte_art', skill: 'coffee', mult: 1.2 },
   { id: 'neat_packer', skill: 'bagging', mult: 1.2 },
+  { id: 'tidy', skill: 'clean', mult: 1.25 },
 ];
 export const TRAIT_BY_ID = new Map(TRAITS.map((t) => [t.id, t]));
 
 export function unlockedSkills(level: number): Skill[] {
   const lv = LEVELS[level];
-  const out: Skill[] = ['restock', 'checkout', 'walk', ...lv.stations];
+  const out: Skill[] = ['restock', 'checkout', 'walk', 'clean', ...lv.stations];
   if (lv.bagging) out.push('bagging');
   return out;
 }
+
+export const CAT_COATS = ['orange', 'black', 'white', 'calico', 'gray', 'tuxedo', 'shorthair', 'siamese'] as const;
+export type CatCoat = (typeof CAT_COATS)[number];
+
+export const DECOR_KINDS = ['plant_small', 'flowers', 'bench', 'cactus', 'cat_tower'] as const;
+export type DecorKind = (typeof DECOR_KINDS)[number];
+/** Reputation level needed for each decor item and renovation style. */
+export const DECOR_UNLOCK: Record<DecorKind, number> = { plant_small: 1, flowers: 2, bench: 5, cactus: 8, cat_tower: 12 };
+export const FLOOR_STYLES = ['cream', 'wood', 'blue', 'terrazzo', 'mint'] as const;
+export const WALL_STYLES = ['beige', 'mint', 'brick', 'navy'] as const;
+export const SIGN_STYLES = ['wood', 'metal', 'chalk', 'neon'] as const;
+export const STYLE_UNLOCK = {
+  floor: [1, 3, 6, 10, 15],
+  wall: [1, 4, 8, 12],
+  sign: [1, 5, 10, 20],
+};
+
+/** Affinity levels at which a regular hands over a gift: postcard, sticker, craft, photo. */
+export const GIFT_KINDS = ['postcard', 'sticker', 'craft', 'photo'] as const;
+export const GIFT_LEVELS = [2, 5, 10, 20];

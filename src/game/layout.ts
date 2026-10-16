@@ -40,6 +40,7 @@ export interface Layout {
   reserved: Uint8Array;
   solid: Uint8Array;
   rows: number;
+  mirrored: boolean;
 }
 
 export interface FixturePlacement {
@@ -50,10 +51,38 @@ export interface FixturePlacement {
 }
 
 export function fixtureCells(f: FixturePlacement): P[] {
+  if (f.kind === 'decor') return [{ x: f.x, y: f.y }];
   return f.vertical ? [{ x: f.x, y: f.y }, { x: f.x, y: f.y + 1 }] : [{ x: f.x, y: f.y }, { x: f.x + 1, y: f.y }];
 }
 
-export function buildLayout(level: number): Layout {
+/** Odd-numbered branches use a mirrored floor plan so each store feels different. */
+export function buildLayout(level: number, mirrored = false): Layout {
+  const l = baseLayout(level);
+  return mirrored ? mirror(l) : l;
+}
+
+function mirror(l: Layout): Layout {
+  const { w, rows } = l;
+  const flip = (a: Uint8Array) => {
+    const out = new Uint8Array(a.length);
+    for (let y = 0; y < rows; y++) for (let x = 0; x < w; x++) out[y * w + (w - 1 - x)] = a[y * w + x];
+    return out;
+  };
+  const mp = (p: P): P => ({ x: w - 1 - p.x, y: p.y });
+  return {
+    ...l,
+    mirrored: true,
+    reserved: flip(l.reserved),
+    solid: flip(l.solid),
+    entrance: w - 2 - l.entrance,
+    stockDoor: mp(l.stockDoor),
+    registers: l.registers.map((r) => ({ ...r, x: w - 2 - r.x, cashier: mp(r.cashier), queue: r.queue.map(mp) })),
+    stations: l.stations.map((s) => ({ ...s, x: w - 2 - s.x, staff: mp(s.staff), queue: s.queue.map(mp) })),
+    bagging: l.bagging ? { ...l.bagging, x: w - 2 - l.bagging.x, staff: mp(l.bagging.staff), queue: l.bagging.queue.map(mp) } : null,
+  };
+}
+
+function baseLayout(level: number): Layout {
   const def = LEVELS[level];
   const { w, h } = def;
   const rows = h + 2;
@@ -123,7 +152,7 @@ export function buildLayout(level: number): Layout {
     stations.push({ kind, x: x0, y: 1, staff: { x: x0, y: 0 }, queue });
   });
 
-  return { level, w, h, registers, stations, bagging, entrance, stockDoor: { x: 1, y: 0 }, reserved, solid, rows };
+  return { level, w, h, registers, stations, bagging, entrance, stockDoor: { x: 1, y: 0 }, reserved, solid, rows, mirrored: false };
 }
 
 export class Grid {
@@ -169,9 +198,23 @@ export class Grid {
     return dist;
   }
 
-  path(from: P, to: P): P[] | null {
+  /** Tiles in `avoid` are treated as blocked unless they are the start or goal (used to step around standing agents). */
+  path(from: P, to: P, avoid?: P | readonly P[] | null): P[] | null {
     if (from.x === to.x && from.y === to.y) return [];
-    const dist = this.flood(to.x, to.y);
+    const restore: number[] = [];
+    for (const a of avoid ? (Array.isArray(avoid) ? avoid : [avoid as P]) : []) {
+      if ((a.x === to.x && a.y === to.y) || (a.x === from.x && a.y === from.y) || !this.inside(a.x, a.y)) continue;
+      const i = a.y * this.w + a.x;
+      if (!this.block[i]) {
+        this.block[i] = 1;
+        restore.push(i);
+      }
+    }
+    let dist = this.flood(to.x, to.y);
+    if (restore.length) {
+      for (const i of restore) this.block[i] = 0;
+      if (dist[from.y * this.w + from.x] < 0) dist = this.flood(to.x, to.y);
+    }
     if (dist[from.y * this.w + from.x] < 0) return null;
     const out: P[] = [];
     let cx = from.x;
@@ -231,6 +274,7 @@ export function canPlace(layout: Layout, others: FixturePlacement[], f: FixtureP
   const dist = grid.flood(e.x, e.y);
   const ok = (p: P) => dist[p.y * layout.w + p.x] >= 0;
   for (const fx of all) {
+    if (fx.kind === 'decor') continue;
     for (let s = 0; s < 2; s++) {
       if (!accessTiles(grid, fx, s).some(ok)) return false;
     }

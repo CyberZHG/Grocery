@@ -7,6 +7,10 @@ import { locale, t } from './i18n';
 import { Game } from './game/game';
 import { UI } from './ui/app';
 
+// iOS ignores user-scalable=no; block double-tap and pinch zoom on the page itself.
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false } as AddEventListenerOptions);
+
 async function boot(): Promise<void> {
   const root = document.getElementById('app')!;
   document.documentElement.lang = locale();
@@ -28,3 +32,9 @@ async function boot(): Promise<void> {
 }
 
 void boot();
+
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => undefined);
+  });
+}

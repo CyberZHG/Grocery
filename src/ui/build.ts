@@ -1,5 +1,6 @@
 import { money, productName, t, type Key } from '../i18n';
-import { CATEGORIES, FIXTURES, LEVELS, NPCS, PRODUCT_BY_ID, PRODUCTS, type Category, type FixtureKind, type ProductDef } from '../game/defs';
+import { CATEGORIES, DECOR_KINDS, DECOR_UNLOCK, FIXTURES, NPCS, PRODUCT_BY_ID, PRODUCTS, type Category, type DecorKind, type FixtureKind, type ProductDef } from '../game/defs';
+import { rosterSize } from '../game/growth';
 import { categoryLevels, isUnlocked, levelsNeeded, MAX_PRODUCT_LEVEL, priceMult, productExpToNext, unlockIndex } from '../game/progress';
 import type { Game } from '../game/game';
 import { canPlace, type FixturePlacement } from '../game/layout';
@@ -14,6 +15,8 @@ const KINDS: FixtureKind[] = ['shelf', 'produce', 'fridge', 'freezer'];
 export class BuildMode {
   private selected: number | null = null;
   private placing: FixtureState | null = null;
+  private undoStack: string[] = [];
+  private clip: { store: string; products: (string | null)[] } | null = null;
   private el: HTMLElement;
 
   constructor(private game: Game, private ui: UI, private host: HTMLElement, private onDone: () => void) {
@@ -75,6 +78,7 @@ export class BuildMode {
       const f = this.placing;
       const cand = { ...f, x: c.x, y: c.y };
       if (this.valid(cand)) {
+        this.snapshot();
         Object.assign(f, { x: c.x, y: c.y, placed: true });
         this.placing = null;
         this.selected = f.id;
@@ -99,6 +103,7 @@ export class BuildMode {
       const f = this.state.fixtures.find((x) => x.id === this.selected)!;
       if (c.x === f.x && c.y === f.y) return;
       if (this.valid({ ...f, x: c.x, y: c.y })) {
+        this.snapshot();
         f.x = c.x;
         f.y = c.y;
         this.game.rebuild();
@@ -109,16 +114,59 @@ export class BuildMode {
     }
   }
 
-  private buy(kind: FixtureKind): void {
+  /** Snapshot of fixtures and money taken before every edit, so mistakes can be undone. */
+  snapshot(): void {
+    this.undoStack.push(JSON.stringify({ fixtures: this.state.fixtures, money: this.state.money, nextId: this.state.nextId }));
+    if (this.undoStack.length > 40) this.undoStack.shift();
+  }
+
+  private undo(): void {
+    const raw = this.undoStack.pop();
+    if (!raw) return;
+    const s = JSON.parse(raw) as { fixtures: FixtureState[]; money: number; nextId: number };
+    this.state.fixtures = s.fixtures;
+    this.state.money = s.money;
+    this.state.nextId = s.nextId;
+    this.placing = null;
+    if (this.selected !== null && !s.fixtures.some((f) => f.id === this.selected)) this.selected = null;
+    this.game.rebuild();
+    this.sync();
+  }
+
+  private copy(f: FixtureState): void {
+    this.clip = { store: FIXTURES[f.kind].store, products: f.slots.map((s) => s.product) };
+    this.ui.toast(t('build.copied'));
+    this.render();
+  }
+
+  private paste(f: FixtureState): void {
+    const c = this.clip;
+    if (!c || c.store !== FIXTURES[f.kind].store) return;
+    this.snapshot();
+    f.slots.forEach((s, i) => {
+      const id = c.products[i] ?? null;
+      if (s.product === id) return;
+      if (s.product && s.stock > 0) this.state.money += s.stock * PRODUCT_BY_ID.get(s.product)!.cost;
+      s.product = id;
+      s.stock = 0;
+    });
+    this.game.rebuild();
+    this.game.restockNow();
+    this.render();
+  }
+
+  private buy(kind: FixtureKind, decor?: DecorKind): void {
     const price = FIXTURES[kind].price;
     if (this.state.money < price) {
       this.ui.toast(t('build.noMoney'));
       return;
     }
+    this.snapshot();
     this.state.money -= price;
     const f: FixtureState = {
       id: this.state.nextId++, kind, x: 0, y: 0, vertical: false, placed: false,
       slots: [{ product: null, stock: 0 }, { product: null, stock: 0 }],
+      decor,
     };
     this.state.fixtures.push(f);
     this.startPlacing(f);
@@ -131,6 +179,7 @@ export class BuildMode {
   }
 
   private rotate(f: FixtureState): void {
+    if (f.kind === 'decor') return;
     const cand = { ...f, vertical: !f.vertical };
     if (!f.placed) {
       f.vertical = !f.vertical;
@@ -138,6 +187,7 @@ export class BuildMode {
       return;
     }
     if (this.valid(cand)) {
+      this.snapshot();
       f.vertical = !f.vertical;
       this.game.rebuild();
       this.sync();
@@ -147,6 +197,7 @@ export class BuildMode {
   }
 
   private sell(f: FixtureState): void {
+    this.snapshot();
     const refund = this.refundValue(f);
     this.state.money += refund;
     this.state.fixtures = this.state.fixtures.filter((x) => x.id !== f.id);
@@ -168,7 +219,7 @@ export class BuildMode {
     openPicker(this.game, this.ui, f, slot, () => {
       this.game.rebuild();
       this.render();
-    });
+    }, () => this.snapshot());
   }
 
   render(): void {
@@ -176,6 +227,7 @@ export class BuildMode {
     const st = this.state;
     const head = h('div', { class: 'build-head' }, [
       h('div', { class: 'build-hint' }, [t(this.placing ? 'build.placeHint' : 'build.hint')]),
+      h('button', { class: 'btn small ghost', disabled: !this.undoStack.length, onclick: () => this.undo() }, [t('build.undo')]),
       h('button', { class: 'btn small primary', onclick: () => this.onDone() }, [t('common.done')]),
     ]);
     this.el.append(head);
@@ -189,6 +241,13 @@ export class BuildMode {
       return;
     }
     const sel = this.selected !== null ? st.fixtures.find((f) => f.id === this.selected) : null;
+    if (sel && sel.kind === 'decor') {
+      this.el.append(h('div', { class: 'row wrap' }, [
+        h('span', { class: 'tag' }, [t(`decor.${sel.decor}` as Key)]),
+        h('button', { class: 'btn small warn', onclick: () => this.sell(sel) }, [t('build.sell', { v: money(this.refundValue(sel)) })]),
+      ]));
+      return;
+    }
     if (sel) {
       const slots = sel.slots.map((s, i) => h('button', { class: 'slot-btn', onclick: () => this.pick(sel.id, i) }, [
         s.product ? productIcon(PRODUCT_BY_ID.get(s.product)!.index) : h('div', { class: 'slot-empty' }, ['+']),
@@ -201,6 +260,8 @@ export class BuildMode {
         h('span', { class: 'tag' }, [`${t(`fixture.${sel.kind}` as Key)} · ${t(`storage.${FIXTURES[sel.kind].store}` as Key)}`]),
         ...slots,
         h('button', { class: 'btn small', onclick: () => this.rotate(sel) }, [t('build.rotate')]),
+        h('button', { class: 'btn small', onclick: () => this.copy(sel) }, [t('build.copy')]),
+        h('button', { class: 'btn small', disabled: !this.clip || this.clip.store !== FIXTURES[sel.kind].store, onclick: () => this.paste(sel) }, [t('build.paste')]),
         h('button', { class: 'btn small warn', onclick: () => this.sell(sel) }, [t('build.sell', { v: money(this.refundValue(sel)) })]),
       ]));
       return;
@@ -209,11 +270,21 @@ export class BuildMode {
       `${t(`fixture.${k}` as Key)} ${money(FIXTURES[k].price)}`,
     ]));
     this.el.append(h('div', { class: 'row wrap' }, [h('span', { class: 'tag' }, [t('build.buy')]), ...shop]));
+    const rep = st.reputation.level;
+    this.el.append(h('div', { class: 'row wrap' }, [
+      h('span', { class: 'tag' }, [t('build.decor')]),
+      ...DECOR_KINDS.map((k) => {
+        const open = rep >= DECOR_UNLOCK[k];
+        return h('button', { class: 'btn small', disabled: !open || st.money < FIXTURES.decor.price, onclick: () => this.buy('decor', k) }, [
+          open ? `${t(`decor.${k}` as Key)} ${money(FIXTURES.decor.price)}` : `${t(`decor.${k}` as Key)} · ${t('reno.needs', { n: DECOR_UNLOCK[k] })}`,
+        ]);
+      }),
+    ]));
     const stored = st.fixtures.filter((f) => !f.placed);
     if (stored.length) {
       this.el.append(h('div', { class: 'row wrap' }, [
         h('span', { class: 'tag' }, [t('build.storage')]),
-        ...stored.map((f) => h('button', { class: 'btn small', onclick: () => this.startPlacing(f) }, [t(`fixture.${f.kind}` as Key)])),
+        ...stored.map((f) => h('button', { class: 'btn small', onclick: () => this.startPlacing(f) }, [f.kind === 'decor' ? t(`decor.${f.decor}` as Key) : t(`fixture.${f.kind}` as Key)])),
       ]));
     }
   }
@@ -230,9 +301,9 @@ function fans(cat: Category, id: string, roster: number): number {
 
 type SortKey = 'default' | 'profit' | 'margin' | 'level';
 
-export function openPicker(game: Game, ui: UI, f: FixtureState, slot: number, onPick: () => void): void {
+export function openPicker(game: Game, ui: UI, f: FixtureState, slot: number, onPick: () => void, beforeChange?: () => void): void {
   const store = FIXTURES[f.kind].store;
-  const roster = LEVELS[game.state.level].roster;
+  const roster = rosterSize(game.state);
   const prog = game.state.products;
   const inStore = new Set(game.state.fixtures.filter((x) => x.placed).flatMap((x) => x.slots.map((s) => s.product)));
   let cat: Category | 'all' = 'all';
@@ -250,6 +321,7 @@ export function openPicker(game: Game, ui: UI, f: FixtureState, slot: number, on
     }
   };
   const choose = (id: string | null) => {
+    beforeChange?.();
     const s = f.slots[slot];
     if (s.product && s.product !== id && s.stock > 0) game.state.money += s.stock * PRODUCT_BY_ID.get(s.product)!.cost;
     if (s.product !== id) s.stock = 0;
@@ -265,28 +337,41 @@ export function openPicker(game: Game, ui: UI, f: FixtureState, slot: number, on
     if (sort === 'level') return prog[p.id].level + prog[p.id].exp / 1000;
     return -CATEGORIES.indexOf(p.cat) * 1000 - unlockIndex(p.id);
   };
+  const card = (p: ProductDef): HTMLElement => {
+    const pr = prog[p.id];
+    const price = priceAt(p);
+    const margin = ((price - p.cost) / price) * 100;
+    const here = inStore.has(p.id);
+    return h('button', { class: `pcard${f.slots[slot].product === p.id ? ' active' : ''}`, onclick: () => choose(p.id) }, [
+      h('div', { class: `pin${here ? '' : ' off'}` }, [t(here ? 'picker.inStore' : 'picker.notInStore')]),
+      productIcon(p.index, 2),
+      h('div', { class: 'pname' }, [productName(p.id)]),
+      h('div', { class: 'pmeta' }, [`${money(price)} · ${margin.toFixed(0)}%`]),
+      h('div', { class: 'pprofit' }, [t('picker.profit', { v: money(price - p.cost) })]),
+      h('div', { class: 'plevel' }, [t('picker.levelBonus', { n: pr.level, p: Math.round((priceMult(pr.level) - 1) * 100) })]),
+      h('div', { class: 'meter' }, [h('div', { class: 'fill', style: { width: `${pr.level >= MAX_PRODUCT_LEVEL ? 100 : (pr.exp / productExpToNext(pr.level)) * 100}%` } })]),
+      h('div', { class: 'pfans' }, [t('picker.fans', { n: fans(p.cat, p.id, roster) })]),
+    ]);
+  };
+  // quick picks: most wanted, most wanted not yet stocked, most profitable not yet stocked
+  const candidates = PRODUCTS.filter((p) => p.store === store && isUnlocked(p.id, prog));
+  const byFans = candidates.slice().sort((a, b) => fans(b.cat, b.id, roster) - fans(a.cat, a.id, roster));
+  const recs: [Key, ProductDef[]][] = [
+    ['picker.recWanted', byFans.slice(0, 4)],
+    ['picker.recWantedNew', byFans.filter((p) => !inStore.has(p.id)).slice(0, 4)],
+    ['picker.recProfitNew', candidates.filter((p) => !inStore.has(p.id)).sort((a, b) => priceAt(b) - b.cost - (priceAt(a) - a.cost)).slice(0, 4)],
+  ];
+  const recEl = h('details', { class: 'recs', open: true }, [
+    h('summary', {}, [t('picker.recs')]),
+    ...recs.filter(([, list]) => list.length).map(([k, list]) => h('div', { class: 'stack' }, [h('h3', {}, [t(k)]), h('div', { class: 'rec-row' }, list.map(card))])),
+  ]);
   const renderGrid = () => {
     clear(grid);
     const q = query.trim().toLowerCase();
     const list = PRODUCTS.filter((p) => p.store === store && (cat === 'all' || p.cat === cat) && (!q || productName(p.id).toLowerCase().includes(q) || p.id.includes(q)));
     const open = list.filter((p) => isUnlocked(p.id, prog)).sort((a, b) => metric(b) - metric(a));
     const locked = list.filter((p) => !isUnlocked(p.id, prog)).sort((a, b) => levelsNeeded(a.id) - levelsNeeded(b.id));
-    for (const p of open) {
-      const pr = prog[p.id];
-      const price = priceAt(p);
-      const margin = ((price - p.cost) / price) * 100;
-      const here = inStore.has(p.id);
-      grid.append(h('button', { class: `pcard${f.slots[slot].product === p.id ? ' active' : ''}`, onclick: () => choose(p.id) }, [
-        h('div', { class: `pin${here ? '' : ' off'}` }, [t(here ? 'picker.inStore' : 'picker.notInStore')]),
-        productIcon(p.index, 2),
-        h('div', { class: 'pname' }, [productName(p.id)]),
-        h('div', { class: 'pmeta' }, [`${money(price)} · ${margin.toFixed(0)}%`]),
-        h('div', { class: 'pprofit' }, [t('picker.profit', { v: money(price - p.cost) })]),
-        h('div', { class: 'plevel' }, [t('picker.levelBonus', { n: pr.level, p: Math.round((priceMult(pr.level) - 1) * 100) })]),
-        h('div', { class: 'meter' }, [h('div', { class: 'fill', style: { width: `${pr.level >= MAX_PRODUCT_LEVEL ? 100 : (pr.exp / productExpToNext(pr.level)) * 100}%` } })]),
-        h('div', { class: 'pfans' }, [t('picker.fans', { n: fans(p.cat, p.id, roster) })]),
-      ]));
-    }
+    for (const p of open) grid.append(card(p));
     for (const p of locked) {
       const need = levelsNeeded(p.id) - categoryLevels(p.cat, prog);
       grid.append(h('div', { class: 'pcard locked' }, [
@@ -309,6 +394,7 @@ export function openPicker(game: Game, ui: UI, f: FixtureState, slot: number, on
   renderGrid();
   const body = h('div', { class: 'stack' }, [
     h('div', { class: 'muted' }, [`${t(`storage.${store}` as Key)} · ${t('build.restockNote')}`]),
+    recEl,
     h('div', { class: 'row' }, [search, h('label', { class: 'row' }, [h('span', { class: 'muted' }, [t('picker.sort')]), sortSel])]),
     chips,
     grid,

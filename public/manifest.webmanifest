@@ -2,6 +2,8 @@
   "name": "Grocery",
   "short_name": "Grocery",
   "start_url": "./",
+  "scope": "./",
+  "orientation": "any",
   "display": "standalone",
   "background_color": "#1e1a24",
   "theme_color": "#1e1a24",

@@ -2,7 +2,7 @@ import { LEVELS } from './defs';
 import type { GameState, MiniKind } from './state';
 
 export type AchCategory =
-  | 'expand' | 'revenue' | 'savings' | 'days' | 'customers' | 'friends' | 'unlocks' | 'hires' | 'reputation' | 'catLevel'
+  | 'expand' | 'revenue' | 'savings' | 'days' | 'customers' | 'friends' | 'unlocks' | 'hires' | 'reputation' | 'catLevel' | 'gifts' | 'introduced' | 'goals' | 'branches'
   | 'checkout' | 'change' | 'oden' | 'odenItems' | 'deli' | 'deliPounds'
   | 'bakery' | 'trays' | 'coffee' | 'coffeeSteps' | 'bagging' | 'bagItems';
 
@@ -38,6 +38,10 @@ const CATEGORIES: CategoryDef[] = [
   { cat: 'hires', tiers: [1, 3, 6], format: 'count', value: (s) => s.lifetime.hires },
   { cat: 'reputation', tiers: [5, 10, 25, 50], format: 'count', value: (s) => s.reputation.level },
   { cat: 'catLevel', tiers: [3, 10, 25], format: 'count', value: (s) => s.cat.level },
+  { cat: 'gifts', tiers: [5, 25, 100], format: 'count', value: (s) => Object.values(s.gifts).reduce((a, b) => a + b, 0) },
+  { cat: 'introduced', tiers: [1, 10, 30], format: 'count', value: (s) => s.friends },
+  { cat: 'goals', tiers: [1, 5, 10], format: 'count', value: (s) => s.goals.completed },
+  { cat: 'branches', tiers: [1, 3], format: 'count', value: (s) => s.branch },
   { cat: 'checkout', tiers: [1, 10, 50, 100], format: 'count', value: manual('checkout') },
   { cat: 'change', tiers: [1000, 10000, 30000, 50000], format: 'cents', value: amount('checkout') },
   { cat: 'oden', tiers: [1, 10, 50, 100], format: 'count', value: manual('oden') },

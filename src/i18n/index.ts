@@ -1,7 +1,11 @@
 import { en, type Key } from './locales/en';
 import { zh } from './locales/zh';
+import { ja } from './locales/ja';
+import { ko } from './locales/ko';
 import enNames from './generated/en.json';
 import zhNames from './generated/zh.json';
+import jaNames from './generated/ja.json';
+import koNames from './generated/ko.json';
 
 export type { Key };
 
@@ -22,6 +26,8 @@ interface Locale {
 export const LOCALES: Locale[] = [
   { code: 'en', label: 'English', ui: en, names: enNames },
   { code: 'zh', label: '中文', ui: zh, names: zhNames },
+  { code: 'ja', label: '日本語', ui: ja, names: jaNames },
+  { code: 'ko', label: '한국어', ui: ko, names: koNames },
 ];
 
 const STORAGE_KEY = 'grocery.locale';

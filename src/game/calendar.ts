@@ -156,3 +156,12 @@ export function highlights(seed: number, day: number): Category[] {
   if (h) for (const [c, m] of Object.entries(HOLIDAY_CAT[h])) if ((m ?? 1) > 1.15) out.add(c as Category);
   return [...out];
 }
+
+/** Holiday decorations go up three days before and come down the day after. */
+export function decorHoliday(day: number): HolidayId | null {
+  for (let i = -1; i <= 3; i++) {
+    const h = holidayOf(day + i);
+    if (h) return h;
+  }
+  return null;
+}
