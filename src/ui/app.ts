@@ -3,7 +3,8 @@ import { NIGHT_SECONDS } from '../game/defs';
 import type { Game } from '../game/game';
 import type { DayStats } from '../game/state';
 import type { Prompt } from '../render/world';
-import { achievementsPanel, spriteIcon } from './achievements';
+import { spriteIcon } from './achievements';
+import { trophiesPanel } from './collection';
 import { audioSettings, setAudio, setMusic, sfx, unlockAudio } from '../core/audio';
 import { goalsPanel } from './goals';
 import { storePanel } from './store';
@@ -35,7 +36,7 @@ export function charIcon(row: number, scale = 1): HTMLElement {
     style: {
       width: `${32 * scale}px`, height: `${40 * scale}px`,
       backgroundImage: `url(${base}assets/chars.png?v=${__BUILD__})`,
-      backgroundSize: `${480 * scale}px auto`,
+      backgroundSize: `${672 * scale}px auto`,
       backgroundPosition: `0 -${(row * 48 + 2) * scale}px`,
     },
   });
@@ -78,6 +79,14 @@ export class UI {
     window.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.btn, .chip, .pcard, .slot-btn')) sfx('click');
     }, { capture: true });
+    window.addEventListener('keydown', (e) => this.onKey(e));
+    window.addEventListener('contextmenu', (e) => {
+      if ((e.target as HTMLElement).closest('input, textarea')) return;
+      e.preventDefault();
+      // a long press on touch screens also fires this; only a real right click cancels
+      if ((e as PointerEvent).pointerType && (e as PointerEvent).pointerType !== 'mouse') return;
+      this.cancel();
+    });
     this.canvas = h('canvas', { class: 'world' });
     this.dayEl = h('div', { class: 'hud-day' });
     this.timeEl = h('div', { class: 'hud-time' });
@@ -102,6 +111,54 @@ export class UI {
     });
   }
 
+  private onKey(e: KeyboardEvent): void {
+    const g = this.game;
+    if (!g || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    if ((e.target as HTMLElement).closest('input, textarea, select')) return;
+    const click = (sel: string): boolean => {
+      const b = document.querySelector<HTMLButtonElement>(sel);
+      if (!b || b.disabled) return false;
+      b.click();
+      return true;
+    };
+    const mini = document.querySelector('.mini');
+    let done = true;
+    if (e.key === 'Escape') {
+      done = this.cancel();
+    } else if (e.key === 'Enter') {
+      done = !!mini && click('.mini-confirm .btn');
+    } else if (mini) {
+      done = false;
+    } else if (e.key === ' ') {
+      if (g.phase === 'day') g.userPaused = !g.userPaused;
+      else g.nightPaused = !g.nightPaused;
+      this.lastSig = '';
+    } else if (g.phase === 'day' && (e.key === '1' || e.key === '2' || e.key === '3')) {
+      g.speed = [1, 2, 4][Number(e.key) - 1];
+      g.userPaused = false;
+      this.lastSig = '';
+    } else done = false;
+    if (done) e.preventDefault();
+  }
+
+  /** Esc and right click: close the mini-game or dialog, else step back in build mode. */
+  private cancel(): boolean {
+    if (document.querySelector('.mini')) {
+      const b = document.querySelector<HTMLButtonElement>('.mini-bottom > .btn.ghost');
+      if (b && !b.disabled) b.click();
+      return true;
+    }
+    if (this.modalEl) {
+      this.closeModal();
+      return true;
+    }
+    if (this.buildMode) {
+      if (!this.buildMode.cancel()) this.closeBuild();
+      return true;
+    }
+    return false;
+  }
+
   attach(game: Game): void {
     this.game = game;
     this.refresh();
@@ -121,7 +178,7 @@ export class UI {
       const speeds: [number, string][] = [[0, '❚❚'], [1, '▶'], [2, '▶▶'], [4, '▶▶▶']];
       for (const [s, label] of speeds) {
         this.controls.append(h('button', {
-          class: 'btn small speed', 'data-speed': s, title: s === 0 ? t('hud.pause') : `${s}x`,
+          class: 'btn small speed', 'data-speed': s, title: s === 0 ? `${t('hud.pause')} (Space)` : `${s}x (${[1, 2, 4].indexOf(s) + 1})`,
           onclick: () => {
             if (s === 0) g.userPaused = !g.userPaused;
             else {
@@ -181,7 +238,7 @@ export class UI {
       btn('bar.customers', () => this.openPanel('npc.title', () => regularsPanel(g))),
       btn('bar.goals', () => this.openPanel('goal.title', () => goalsPanel(g))),
       btn('bar.store', () => this.openPanel('store.title', () => storePanel(g, this))),
-      btn('bar.achievements', () => this.openPanel('ach.title', () => achievementsPanel(g.state))),
+      btn('bar.achievements', () => this.openPanel('ach.title', () => trophiesPanel(g.state))),
     );
     if (night) {
       this.bottom.append(btn('bar.expand', () => this.openPanel('expand.title', () => expandPanel(g, this))));
@@ -393,6 +450,8 @@ export class UI {
       langs,
       h('h3', {}, [t('menu.sound')]),
       this.audioControls(),
+      h('h3', { class: 'keys-help' }, [t('menu.keys')]),
+      h('p', { class: 'muted keys-help' }, [t('menu.keysHelp')]),
       h('h3', {}, [t('menu.data')]),
       h('div', { class: 'row wrap' }, [
         h('button', { class: 'btn primary', onclick: () => void openShare(g, this) }, [t('menu.share')]),

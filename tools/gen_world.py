@@ -114,6 +114,32 @@ def door_stock():
     return cv
 
 
+def door_stock_open():
+    """The stock door swung inward: a lit back room with shelves of cartons."""
+    cv = door_stock()
+    cv.rect(6, 16, 25, 63, hexc('2e262c'))
+    cv.rect(6, 16, 25, 23, hexc('3e3436'))
+    cv.rect(6, 19, 25, 21, hexc('362e32'))
+    cv.rect(13, 17, 18, 18, hexc('f0e0a0'))
+    for y in (30, 44):
+        cv.hline(6, 25, y, hexc('6a5a50'))
+        cv.hline(6, 25, y + 1, hexc('3a3036'))
+    kraft = hexc('b08858')
+    for x0, x1, top in ((12, 17, 24), (19, 24, 26), (13, 18, 38), (20, 24, 37)):
+        cv.rect(x0, top, x1, 29 if top < 30 else 43, kraft)
+        cv.hline(x0, x1, top, W(kraft, 2))
+        cv.vline(x1, top, 29 if top < 30 else 43, W(kraft, -2))
+    cv.rect(14, 52, 22, 60, kraft)
+    cv.hline(14, 22, 52, W(kraft, 2))
+    cv.hline(14, 22, 56, W(kraft, -1))
+    cv.rect(6, 61, 25, 63, hexc('4a4044'))
+    leaf = hexc('8a6a50')
+    cv.rect(6, 16, 10, 63, W(leaf, -1))
+    cv.vline(10, 16, 63, W(leaf, -3))
+    cv.rect(7, 22, 9, 32, hexc('9ec8d8'))
+    return cv
+
+
 def entrance_frame():
     """Door frame with a transparent opening; the sliding panels are drawn separately."""
     cv = Canvas(64, T)
@@ -346,6 +372,48 @@ def register():
     cv.shade_box(36, 4, 58, 20, 0.5)
     cv.rect(26, 32, 37, 40, WHITE)
     fake_text(cv, 27, 36, 36, RED, 1)
+    return cv
+
+
+def card_counter():
+    """Card-only express counter: a short belt and a payment terminal, no cash drawer."""
+    cv = Canvas(64, 56)
+    counter_base(cv, top=hexc('dce6ee'), front=hexc('3a6a9a'))
+    cv.hline(0, 63, 28, hexc('e8f0f8'))
+    cv.hline(0, 63, 29, hexc('a8c0d8'))
+    cv.rect(4, 12, 24, 20, hexc('3a3a44'))
+    for x in range(6, 23, 4):
+        cv.vline(x, 12, 20, hexc('4a4a54'))
+    cv.rect(40, 6, 52, 21, hexc('2e2e38'))
+    cv.rect(42, 8, 50, 12, hexc('9ad8f0'))
+    cv.hline(43, 47, 10, hexc('3a7a9a'))
+    for yy in range(14, 20, 2):
+        for xx in range(42, 50, 3):
+            cv.rect(xx, yy, xx + 1, yy, hexc('c8ccd8'))
+    cv.vline(53, 14, 20, hexc('7ae07a'))
+    cv.shade_box(40, 6, 52, 21, 0.5)
+    card = hexc('3a8ad8')
+    cv.rrect(25, 31, 38, 40, card, 1)
+    cv.hline(25, 38, 34, hexc('1a3a5a'))
+    cv.rect(27, 37, 30, 38, hexc('f0c040'))
+    return cv
+
+
+def with_card_sign(base):
+    """Raises the card counter by a sign on a pole, so it reads differently from a cash register at a glance."""
+    cv = Canvas(64, base.h + 16)
+    sign = Canvas(64, base.h + 16)
+    sign.rect(45, 12, 46, 24, hexc('8a8e98'))
+    sign.rrect(32, 0, 60, 13, hexc('2a5a8a'), 1)
+    sign.rect(34, 2, 58, 11, WHITE)
+    sign.rrect(36, 3, 48, 10, hexc('3a8ad8'), 1)
+    sign.hline(36, 48, 5, hexc('1a3a5a'))
+    sign.rect(38, 7, 40, 8, hexc('f0c040'))
+    for i, x in enumerate((51, 53, 55)):
+        sign.vline(x, 5 - i, 8 + i, hexc('3a8ad8'))
+    sign.outline(0.5)
+    cv.blit(sign, 0, 0)
+    cv.blit(base, 0, 16)
     return cv
 
 
@@ -768,6 +836,10 @@ def upgraded(kind, base, tier):
             cv.rect(34, 2, 38, 20, hexc('c8ccd4'))
             cv.rect(35, 9, 37, 12, hexc('2a2a30'))
             cv.rect(9, 3, 31, 5, hexc('5ad0f0'))
+        elif kind == 'card':
+            cv.rect(55, 10, 61, 21, hexc('e8ecf0'))
+            cv.rect(56, 6, 60, 10, WHITE)
+            cv.hline(57, 59, 8, hexc('a8acb8'))
         elif kind == 'bagging':
             cv.rect(29, 0, 34, 14, hexc('8a8e98'))
             cv.ellipse(31.5, 3, 3, 3, hexc('e8dcc8'))
@@ -893,6 +965,23 @@ def selection():
     for i in range(6):
         for (x, y) in ((i, 0), (0, i), (31 - i, 0), (31, i), (i, 31), (0, 31 - i), (31 - i, 31), (31, 31 - i)):
             cv.px(x, y, c)
+    return cv
+
+
+def pillar():
+    """A square plaster column standing on one floor tile."""
+    cv = Canvas(T, 72)
+    wall = hexc('e8dcc8')
+    cv.rect(5, 4, 26, 67, wall)
+    cv.rect(5, 4, 8, 67, W(wall, 1))
+    cv.rect(22, 4, 26, 67, W(wall, -2))
+    cv.vline(15, 10, 60, W(wall, -1))
+    cv.rect(3, 0, 28, 5, W(wall, 2))
+    cv.hline(3, 28, 5, W(wall, -3))
+    cv.rect(4, 60, 27, 67, hexc('8a7060'))
+    cv.hline(4, 27, 60, hexc('a48a74'))
+    cv.rect(5, 68, 26, 71, hexc('5a4a44'))
+    cv.outline(0.5)
     return cv
 
 

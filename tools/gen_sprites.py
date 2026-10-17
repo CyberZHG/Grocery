@@ -196,7 +196,7 @@ def atlas():
         'floor0': GW.floor(0), 'floor1': GW.floor(1), 'sidewalk': GW.sidewalk(),
         'wall0': GW.wall_face(0), 'wall1': GW.wall_face(1), 'wall2': GW.wall_face(2), 'wall3': GW.wall_face(3),
         'wallcap': GW.wall_cap(), 'wallL': GW.wall_side(False), 'wallR': GW.wall_side(True),
-        'door_stock': GW.door_stock(), 'entrance_frame': GW.entrance_frame(), 'door_panel': GW.door_panel(), 'mat': GW.mat(),
+        'door_stock': GW.door_stock(), 'door_stock_open': GW.door_stock_open(), 'pillar': GW.pillar(), 'entrance_frame': GW.entrance_frame(), 'door_panel': GW.door_panel(), 'mat': GW.mat(),
         'shelf_h': outlined(GW.shelf_h()), 'shelf_v': outlined(GW.shelf_v()),
         'produce_h': outlined(GW.produce_h()), 'produce_v': outlined(GW.produce_v()),
         'fridge_h': outlined(GW.fridge_h()), 'fridge_v': outlined(GW.fridge_v()),
@@ -219,6 +219,10 @@ def atlas():
         'bake_sheet': GM.bake_sheet(), 'bake_sheet_end': GM.bake_sheet_end(), 'oven_wall': GM.oven_wall(), 'oven_coil': GM.oven_coil(), 'oven_rail': GM.oven_rail(), 'coffee_cup': GM.coffee_cup(), 'cafe_wall': GM.cafe_wall(), 'cafe_counter': GM.cafe_counter(), 'cafe_head': GM.cafe_head(), 'cafe_tray': GM.cafe_tray(),
         'bag_paper': GM.bag_bg('paper'), 'bag_cold': GM.bag_bg('cold'), 'font': GM.font_sheet(),
     }
+    card = outlined(GW.card_counter())
+    items['card_counter'] = GW.with_card_sign(card)
+    for tier in (1, 2):
+        items[f'card_counter_t{tier}'] = GW.with_card_sign(GW.upgraded('card', card, tier))
     for name, kind in (('register', 'register'), ('oden', 'oden'), ('deli', 'deli'), ('oven', 'oven'), ('coffee', 'coffee'), ('bagging', 'bagging')):
         for tier in (1, 2):
             items[f'{name}_t{tier}'] = GW.upgraded(kind, items[name], tier)

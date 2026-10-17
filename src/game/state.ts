@@ -1,8 +1,10 @@
-import { BREAD_UNLOCK, BREADS, CAT_COATS, NPCS, SKILLS, START_MONEY, type Bread, type Category, type CatCoat, type FixtureKind, type Skill } from './defs';
+import { BREAD_UNLOCK, BREADS, CAT_COATS, CATEGORIES, NPCS, SKILLS, START_MONEY, type Bread, type Category, type CatCoat, type FixtureKind, type Skill } from './defs';
 import type { GoalsState } from './goals';
 import { freshGrowth, type CatState, type EquipKind } from './growth';
-import { freshProducts, type ProductProgress } from './progress';
+import { collectionCount, freshProducts, UNLOCK_ORDER, type ProductProgress } from './progress';
 import type { Leveled } from './rules';
+import type { ChallengeId } from './chain';
+import type { LayoutVariant } from './layout';
 
 export interface SlotState {
   product: string | null;
@@ -65,6 +67,16 @@ export interface DayStats {
   event?: string | null;
   topSold?: [string, number][];
   stockouts?: [string, number][];
+  /** customers who left fed up with a long wait */
+  angry?: number;
+  /** customers who paid cash */
+  cash?: number;
+  cleaned?: number;
+  /** produce, dairy and meat units sold */
+  fresh?: number;
+  /** income from the other stores in the chain */
+  chain?: number;
+  spoiled?: number;
 }
 
 export type MiniKind = 'checkout' | 'oden' | 'deli' | 'bakery' | 'coffee' | 'bagging';
@@ -119,12 +131,37 @@ export interface GameState {
   friends: number;
   gifts: Record<string, number>;
   goals: GoalsState;
+  /** Branches opened so far. */
   branch: number;
+  /** Every store in the chain; the active one's data lives in the top-level fields. */
+  stores: StoreSlot[];
+  active: number;
   /** Breads the player has been told about, so each unlock is announced once. */
   breadsSeen: number;
   /** Day this store (or branch) opened; new stores draw extra curious visitors for two weeks. */
   openedDay: number;
+  /** Categories where every product has sold at least once. */
+  collections: Category[];
+  /** Units taken off shelves at night, already paid for; restocking uses them first. */
+  inventory: Record<string, number>;
   savedAt: number;
+}
+
+/** Fields that belong to one store; switching stores swaps them in and out. */
+export const STORE_KEYS = [
+  'level', 'fixtures', 'staff', 'candidates', 'former', 'bakery', 'history', 'reputation', 'equipment', 'style', 'storeName', 'openedDay', 'inventory', 'nightRestock',
+  'cat', 'catCoat', 'catName', 'catAcc',
+] as const;
+export type StoreData = Pick<GameState, (typeof STORE_KEYS)[number]>;
+
+export interface StoreSlot {
+  challenge: ChallengeId;
+  layout: LayoutVariant;
+  done: boolean;
+  /** challenge progress: a running total or a best day, depending on the challenge */
+  progress: number;
+  /** null for the active store */
+  saved: StoreData | null;
 }
 
 export const SAVE_VERSION = 1;
@@ -183,8 +220,12 @@ export function newGame(seed = Date.now() % 1e9): GameState {
     gifts: {},
     goals: { day: 0, daily: [], week: -1, weekly: [], completed: 0 },
     branch: 0,
+    stores: [{ challenge: 'main', layout: 'base', done: false, progress: 0, saved: null }],
+    active: 0,
     breadsSeen: 4,
     openedDay: 1,
+    collections: [],
+    inventory: {},
     savedAt: Date.now(),
   };
 }
@@ -245,8 +286,12 @@ export function migrate(data: unknown): GameState | null {
     s.gifts ??= {};
     s.goals ??= { day: 0, daily: [], week: -1, weekly: [], completed: 0 };
     s.branch ??= 0;
+    s.stores ??= [{ challenge: 'main', layout: s.branch % 2 === 1 ? 'mirror' : 'base', done: false, progress: 0, saved: null }];
+    s.active ??= 0;
     s.breadsSeen ??= unlockedBreads(s).length;
     s.openedDay ??= 1;
+    s.inventory ??= {};
+    s.collections ??= CATEGORIES.filter((c) => collectionCount(c, s.products) === UNLOCK_ORDER[c].length);
     s.savedAt ??= Date.now();
     const skills = freshSkills();
     s.owner = { ...skills, ...s.owner };
@@ -263,6 +308,19 @@ export function clearSave(): void {
   } catch {
     // ignore
   }
+}
+
+export function stash(s: GameState, id: string, n: number): void {
+  if (n > 0) s.inventory[id] = (s.inventory[id] ?? 0) + n;
+}
+
+/** Takes up to `n` stored units of a product; returns how many were taken. */
+export function takeStored(s: GameState, id: string, n: number): number {
+  const k = Math.min(n, s.inventory[id] ?? 0);
+  if (k <= 0) return 0;
+  if (k === s.inventory[id]) delete s.inventory[id];
+  else s.inventory[id] -= k;
+  return k;
 }
 
 /** Highest bakery skill on the team (owner or staff). */

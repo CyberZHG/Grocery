@@ -1,10 +1,10 @@
 import { money, productName, t, type Key } from '../i18n';
 import { CATEGORIES, DECOR_KINDS, DECOR_PRICE, DECOR_UNLOCK, FIXTURES, NPCS, PRODUCT_BY_ID, PRODUCTS, type Category, type DecorKind, type FixtureKind, type ProductDef } from '../game/defs';
 import { rosterSize } from '../game/growth';
-import { categoryLevels, isUnlocked, levelsNeeded, MAX_PRODUCT_LEVEL, priceMult, productExpToNext, unlockIndex } from '../game/progress';
+import { categoryLevels, collectionMult, isUnlocked, levelsNeeded, MAX_PRODUCT_LEVEL, priceMult, productExpToNext, unlockIndex } from '../game/progress';
 import type { Game } from '../game/game';
 import { canPlace, type FixturePlacement } from '../game/layout';
-import { saveGame, type FixtureState } from '../game/state';
+import { saveGame, stash, type FixtureState } from '../game/state';
 import type { Hit } from '../render/world';
 import type { UI } from './app';
 import { productIcon } from './app';
@@ -15,8 +15,11 @@ const KINDS: FixtureKind[] = ['shelf', 'produce', 'fridge', 'freezer'];
 export class BuildMode {
   private selected: number | null = null;
   private placing: FixtureState | null = null;
+  /** The fixture being placed was just bought, so cancelling refunds it instead of storing it. */
+  private fresh = false;
   private undoStack: string[] = [];
   private clip: { store: string; products: (string | null)[] } | null = null;
+  private drag: { id: number; dx: number; dy: number; x: number; y: number } | null = null;
   private el: HTMLElement;
 
   constructor(private game: Game, private ui: UI, private host: HTMLElement, private onDone: () => void) {
@@ -26,13 +29,20 @@ export class BuildMode {
     game.build = { selected: null, ghost: null };
     game.onBuildTap = (x, y, hit) => this.tap(x, y, hit);
     game.onBuildHover = (x, y) => this.hover(x, y);
+    game.onBuildDrag = {
+      start: (_x, _y, hit, touch) => this.dragStart(hit, touch),
+      move: (x, y) => this.dragMove(x, y),
+      end: (_x, _y, commit) => this.dragEnd(commit),
+    };
     this.render();
   }
 
   dispose(): void {
+    if (this.placing) this.cancelPlacing();
     this.game.build = null;
     this.game.onBuildTap = null;
     this.game.onBuildHover = null;
+    this.game.onBuildDrag = null;
     clear(this.host);
     saveGame(this.game.state);
   }
@@ -81,6 +91,7 @@ export class BuildMode {
         this.snapshot();
         Object.assign(f, { x: c.x, y: c.y, placed: true });
         this.placing = null;
+        this.fresh = false;
         this.selected = f.id;
         this.game.rebuild();
         this.sync();
@@ -114,20 +125,92 @@ export class BuildMode {
     }
   }
 
+  /** Mouse drags any fixture; on touch only the selected one, so a swipe elsewhere still pans. */
+  private dragStart(hit: Hit | null, touch: boolean): boolean {
+    if (this.placing || !hit || (hit.action.type !== 'slot' && hit.action.type !== 'fixture')) return false;
+    const id = hit.action.fixture;
+    const f = this.state.fixtures.find((x) => x.id === id);
+    if (!f || !f.placed || (touch && id !== this.selected)) return false;
+    const i = hit.action.type === 'slot' ? hit.action.slot : 0;
+    this.drag = { id, dx: f.vertical ? 0 : i, dy: f.vertical ? i : 0, x: f.x, y: f.y };
+    return true;
+  }
+
+  private dragMove(wx: number, wy: number): void {
+    const d = this.drag;
+    const f = d && this.state.fixtures.find((x) => x.id === d.id);
+    if (!d || !f || !this.game.build) return;
+    const c = this.game.cell(wx, wy);
+    d.x = c.x - d.dx;
+    d.y = c.y - d.dy;
+    this.game.build.hidden = f.id;
+    this.game.build.ghost = { kind: f.kind, x: d.x, y: d.y, vertical: f.vertical, ok: this.valid({ ...f, x: d.x, y: d.y }) };
+  }
+
+  private dragEnd(commit: boolean): void {
+    const d = this.drag;
+    this.drag = null;
+    if (this.game.build) {
+      this.game.build.hidden = null;
+      this.game.build.ghost = null;
+    }
+    const f = d && this.state.fixtures.find((x) => x.id === d.id);
+    if (!d || !f || !commit) return;
+    this.selected = f.id;
+    if (d.x !== f.x || d.y !== f.y) {
+      if (this.valid({ ...f, x: d.x, y: d.y })) {
+        this.snapshot();
+        f.x = d.x;
+        f.y = d.y;
+        this.game.rebuild();
+      } else {
+        this.ui.toast(t('build.invalid'));
+      }
+    }
+    this.sync();
+  }
+
+  /** Steps back one level: drag, placement, then selection. False when there is nothing left to cancel. */
+  cancel(): boolean {
+    if (this.game.cancelDrag()) return true;
+    if (this.placing) {
+      this.cancelPlacing();
+      return true;
+    }
+    if (this.selected !== null) {
+      this.select(null);
+      return true;
+    }
+    return false;
+  }
+
   /** Snapshot of fixtures and money taken before every edit, so mistakes can be undone. */
   snapshot(): void {
-    this.undoStack.push(JSON.stringify({ fixtures: this.state.fixtures, money: this.state.money, nextId: this.state.nextId }));
+    this.undoStack.push(JSON.stringify({ fixtures: this.state.fixtures, money: this.state.money, nextId: this.state.nextId, inventory: this.state.inventory }));
     if (this.undoStack.length > 40) this.undoStack.shift();
+  }
+
+  private cancelPlacing(): void {
+    if (this.fresh) {
+      // the purchase snapshot is still on top: rolling back refunds it
+      this.fresh = false;
+      this.undo();
+      return;
+    }
+    this.placing = null;
+    this.sync();
   }
 
   private undo(): void {
     const raw = this.undoStack.pop();
     if (!raw) return;
-    const s = JSON.parse(raw) as { fixtures: FixtureState[]; money: number; nextId: number };
+    const s = JSON.parse(raw) as { fixtures: FixtureState[]; money: number; nextId: number; inventory: Record<string, number> };
     this.state.fixtures = s.fixtures;
+    this.state.inventory = s.inventory;
     this.state.money = s.money;
     this.state.nextId = s.nextId;
     this.placing = null;
+    this.fresh = false;
     if (this.selected !== null && !s.fixtures.some((f) => f.id === this.selected)) this.selected = null;
     this.game.rebuild();
     this.sync();
@@ -146,7 +229,7 @@ export class BuildMode {
     f.slots.forEach((s, i) => {
       const id = c.products[i] ?? null;
       if (s.product === id) return;
-      if (s.product && s.stock > 0) this.state.money += s.stock * PRODUCT_BY_ID.get(s.product)!.cost;
+      if (s.product) stash(this.state, s.product, s.stock);
       s.product = id;
       s.stock = 0;
     });
@@ -170,10 +253,12 @@ export class BuildMode {
     };
     this.state.fixtures.push(f);
     this.startPlacing(f);
+    this.fresh = true;
   }
 
   private startPlacing(f: FixtureState): void {
     this.placing = f;
+    this.fresh = false;
     this.selected = null;
     this.sync();
   }
@@ -200,6 +285,7 @@ export class BuildMode {
     this.snapshot();
     const refund = this.refundValue(f);
     this.state.money += refund;
+    for (const s of f.slots) if (s.product) stash(this.state, s.product, s.stock);
     this.state.fixtures = this.state.fixtures.filter((x) => x.id !== f.id);
     this.selected = null;
     this.placing = null;
@@ -208,9 +294,7 @@ export class BuildMode {
   }
 
   private refundValue(f: FixtureState): number {
-    let v = (f.decor ? DECOR_PRICE[f.decor as DecorKind] ?? FIXTURES.decor.price : FIXTURES[f.kind].price) * 0.5;
-    for (const s of f.slots) if (s.product) v += s.stock * PRODUCT_BY_ID.get(s.product)!.cost;
-    return v;
+    return (f.decor ? DECOR_PRICE[f.decor as DecorKind] ?? FIXTURES.decor.price : FIXTURES[f.kind].price) * 0.5;
   }
 
   private pick(fixtureId: number, slot: number): void {
@@ -236,7 +320,7 @@ export class BuildMode {
       this.el.append(h('div', { class: 'row' }, [
         h('span', { class: 'tag' }, [t(`fixture.${f.kind}` as Key)]),
         h('button', { class: 'btn small', onclick: () => this.rotate(f) }, [t('build.rotate')]),
-        h('button', { class: 'btn small ghost', onclick: () => { this.placing = null; this.sync(); } }, [t('common.cancel')]),
+        h('button', { class: 'btn small ghost', onclick: () => this.cancelPlacing() }, [t('common.cancel')]),
       ]));
       return;
     }
@@ -323,14 +407,14 @@ export function openPicker(game: Game, ui: UI, f: FixtureState, slot: number, on
   const choose = (id: string | null) => {
     beforeChange?.();
     const s = f.slots[slot];
-    if (s.product && s.product !== id && s.stock > 0) game.state.money += s.stock * PRODUCT_BY_ID.get(s.product)!.cost;
+    if (s.product && s.product !== id) stash(game.state, s.product, s.stock);
     if (s.product !== id) s.stock = 0;
     s.product = id;
     ui.closeModal();
     onPick();
     game.restockNow();
   };
-  const priceAt = (p: ProductDef) => p.price * priceMult(prog[p.id].level);
+  const priceAt = (p: ProductDef) => p.price * priceMult(prog[p.id].level) * collectionMult(p.cat, game.state.collections);
   const metric = (p: ProductDef): number => {
     if (sort === 'profit') return priceAt(p) - p.cost;
     if (sort === 'margin') return (priceAt(p) - p.cost) / priceAt(p);
@@ -351,12 +435,14 @@ export function openPicker(game: Game, ui: UI, f: FixtureState, slot: number, on
       h('div', { class: 'plevel' }, [t('picker.levelBonus', { n: pr.level, p: Math.round((priceMult(pr.level) - 1) * 100) })]),
       h('div', { class: 'meter' }, [h('div', { class: 'fill', style: { width: `${pr.level >= MAX_PRODUCT_LEVEL ? 100 : (pr.exp / productExpToNext(pr.level)) * 100}%` } })]),
       h('div', { class: 'pfans' }, [t('picker.fans', { n: fans(p.cat, p.id, roster) })]),
+      game.state.inventory[p.id] ? h('div', { class: 'pstored' }, [t('picker.stored', { n: game.state.inventory[p.id] })]) : null,
     ]);
   };
   // quick picks: most wanted, most wanted not yet stocked, most profitable not yet stocked
   const candidates = PRODUCTS.filter((p) => p.store === store && isUnlocked(p.id, prog));
   const byFans = candidates.slice().sort((a, b) => fans(b.cat, b.id, roster) - fans(a.cat, a.id, roster));
   const recs: [Key, ProductDef[]][] = [
+    ['picker.recStored', candidates.filter((p) => game.state.inventory[p.id] && !inStore.has(p.id)).sort((a, b) => game.state.inventory[b.id] - game.state.inventory[a.id]).slice(0, 4)],
     ['picker.recWanted', byFans.slice(0, 4)],
     ['picker.recWantedNew', byFans.filter((p) => !inStore.has(p.id)).slice(0, 4)],
     ['picker.recProfitNew', candidates.filter((p) => !inStore.has(p.id)).sort((a, b) => priceAt(b) - b.cost - (priceAt(a) - a.cost)).slice(0, 4)],

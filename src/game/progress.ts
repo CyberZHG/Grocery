@@ -20,6 +20,17 @@ export function priceMult(level: number): number {
   return 1 + 0.03 * Math.log(Math.max(1, Math.min(level, MAX_PRODUCT_LEVEL)));
 }
 
+/** Selling every product in a category at least once raises its prices for good. */
+export const COLLECTION_BONUS = 0.03;
+
+export function collectionCount(cat: Category, products: Record<string, ProductProgress>): number {
+  return UNLOCK_ORDER[cat].filter((id) => products[id]?.sold > 0).length;
+}
+
+export function collectionMult(cat: Category, done: Category[]): number {
+  return done.includes(cat) ? 1 + COLLECTION_BONUS : 1;
+}
+
 export function profit(p: ProductDef): number {
   return p.price - p.cost;
 }

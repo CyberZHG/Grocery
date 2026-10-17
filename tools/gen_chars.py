@@ -462,6 +462,9 @@ TORSO = {
 }
 SIDE_ARM = ['CCc', 'CCc', 'CCc', 'CCc', 'cCc', 'SSs', 'sss']
 
+WORK_ARM = ['CCCCCcSS', 'ccccccSs', '......ss']
+RAISED_ARM = ['SS', 'sS', 'CC', 'CC', 'Cc', 'Cc', 'CC', 'CC']
+
 KID_TORSO_ROWS = [0, 1, 2, 4, 6, 7, 8]
 
 
@@ -545,8 +548,10 @@ EXPRESSION = {
 }
 
 
-def draw_frame(look, d, frame, expr=None):
+def draw_frame(look, d, frame, expr=None, work=None):
     pal = palette(look)
+    if work is not None:
+        frame = 0
     cv = Canvas(FW, FH)
     leg_len = 4 if look.kid else 6
     feet = 45
@@ -587,7 +592,16 @@ def draw_frame(look, d, frame, expr=None):
         swing = 0 if frame == 0 else (1 if frame == 1 else -1)
         if d == 'up':
             swing = -swing
-        for cols, dy in (((1, 2), swing), ((13, 14), -swing)):
+        dys = (swing, -swing)
+        if work is not None:
+            dys = (-4, 0) if work == 0 else (0, -4)
+            if d == 'up':
+                # one arm reaches up to the shelf; it's painted over the hair later
+                raised = ((1, 2), (13, 14))[work]
+                dys = tuple(None if cols == raised else 0 for cols in ((1, 2), (13, 14)))
+        for cols, dy in zip(((1, 2), (13, 14)), dys):
+            if dy is None:
+                continue
             arm = [''.join(r[c] for c in cols) for r in torso_rows[2:]]
             if dy < 0:
                 arm = arm[-dy:]
@@ -616,7 +630,9 @@ def draw_frame(look, d, frame, expr=None):
             cv.px(x, torso_top + 4, look.apron)
         cv.px(15, torso_top + 5, look.apron); cv.px(16, torso_top + 5, look.apron)
         cv.px(15, torso_top + 6, shade(look.apron, 0.2)); cv.px(16, torso_top + 6, shade(look.apron, 0.2))
-    if d == 'side':
+    if d == 'side' and work is not None:
+        paint(cv, 16 if work == 0 else 13, torso_top + 2, WORK_ARM if work == 0 else WORK_ARM[:1] + WORK_ARM[2:], tp)
+    elif d == 'side':
         swing = 0 if frame == 0 else (2 if frame == 1 else -2)
         arm_pal = dict(tp)
         rows = SIDE_ARM if not look.kid else SIDE_ARM[:2] + SIDE_ARM[3:]
@@ -646,15 +662,17 @@ def draw_frame(look, d, frame, expr=None):
         ox, oy, rows = GLASSES[d]
         paint(cv, face_x + ox, head_top + oy, rows, pal)
     cv.blit(hair, 0, 0)
+    if d == 'up' and work is not None:
+        paint(cv, 8 if work == 0 else 22, torso_top - 6, RAISED_ARM, tp)
     cv.outline(0.45)
     return cv
 
 
-FRAMES_PER_ROW = 15
+FRAMES_PER_ROW = 21
 
 
 def char_row(look):
-    """Columns: down 0-2, side 3-5, up 6-8, down happy 9-11, down upset 12-14."""
+    """Columns: down 0-2, side 3-5, up 6-8, down happy 9-11, down upset 12-14, working down 15-16, side 17-18, up 19-20."""
     frames = []
     for d in ('down', 'side', 'up'):
         for f in range(3):
@@ -662,6 +680,9 @@ def char_row(look):
     for expr in ('happy', 'sad'):
         for f in range(3):
             frames.append(draw_frame(look, 'down', f, expr))
+    for d in ('down', 'side', 'up'):
+        for w in range(2):
+            frames.append(draw_frame(look, d, 0, work=w))
     return frames
 
 

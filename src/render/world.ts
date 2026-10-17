@@ -7,6 +7,7 @@ import { dateOf, decorHoliday, weatherOf } from '../game/calendar';
 import { equipTier, stars, type EquipKind } from '../game/growth';
 import { OFFER_SECONDS, OVEN_OFFER_SECONDS, type Customer, type Line, type Sim, type Worker } from '../game/sim';
 import type { FixtureState } from '../game/state';
+import type { Dir } from '../game/agent';
 
 export const T = 32;
 
@@ -40,6 +41,8 @@ export interface Prompt {
 
 export interface BuildView {
   selected: number | null;
+  /** Fixture being dragged; drawn only as the ghost. */
+  hidden?: number | null;
   ghost: { kind: FixtureKind; x: number; y: number; vertical: boolean; ok: boolean } | null;
 }
 
@@ -108,7 +111,7 @@ export class WorldRenderer {
       if (x % 5 === 3) name = `wall_${style.wall}_1`;
       else if (x % 7 === 5) name = `wall_${style.wall}_p_${season}`;
       else if (x === l.w - 1 || x === 0) name = `wall_${style.wall}_3`;
-      if (x === l.stockDoor.x) name = 'door_stock';
+      if (x === l.stockDoor.x) name = sim && this.stockDoorOpen(sim) ? 'door_stock_open' : 'door_stock';
       drawSprite(ctx, name, x * T, -2 * T);
     }
     if (sim) this.drawWallDecor(ctx, sim);
@@ -269,31 +272,41 @@ export class WorldRenderer {
     this.drawFloor(ctx, l, sim);
     if (build) this.drawReserved(ctx, l);
     for (const sp of sim.spills) {
+      const w = sim.workers.find((x) => x.task.type === 'clean' && x.task.spill === sp.id && !x.mover.path.length);
+      const k = w && w.task.type === 'clean' ? Math.min(1, w.task.timer * w.speed('clean') / 1.2) : 0;
+      ctx.globalAlpha = 1 - 0.75 * k;
       drawSprite(ctx, `spill_${sp.kind}`, sp.x * T + 6, sp.y * T + 14);
+      ctx.globalAlpha = 1;
       this.hits.push({ x: sp.x * T, y: sp.y * T + 4, w: T, h: 28, action: { type: 'spill', id: sp.id } });
     }
     const list: Drawable[] = [];
     this.holidayFloor(sim, list, ctx);
     for (const f of sim.placed()) {
+      if (build?.hidden === f.id) continue;
       const bottom = f.vertical ? f.y + 1 : f.y;
       list.push({ y: bottom + 0.5, draw: () => this.drawFixture(ctx, f, build?.selected === f.id) });
     }
-    for (const r of l.registers) list.push({ y: r.y + 0.5, draw: () => drawSprite(ctx, this.equipSprite(sim, 'register'), r.x * T, (r.y + 1) * T - 56, l.mirrored) });
+    l.registers.forEach((r, i) => list.push({ y: r.y + 0.5, draw: () => this.drawRegister(ctx, sim, i) }));
     for (const s of l.stations) {
       if (s.kind === 'bakery') list.push({ y: s.y + 0.5, draw: () => this.drawBreadCase(ctx, sim, s.x, s.y) });
       else list.push({ y: s.y + 0.5, draw: () => drawSprite(ctx, this.equipSprite(sim, s.kind as EquipKind), s.x * T, (s.y + 1) * T - 56) });
     }
     if (l.bagging) {
       const b = l.bagging;
-      list.push({ y: b.y + 0.5, draw: () => drawSprite(ctx, this.equipSprite(sim, 'bagging'), b.x * T, (b.y + 1) * T - 56, l.mirrored) });
+      list.push({ y: b.y + 0.5, draw: () => {
+        drawSprite(ctx, this.equipSprite(sim, 'bagging'), b.x * T, (b.y + 1) * T - 56, l.mirrored);
+        if (sim.bagging) this.drawBaggingFx(ctx, sim, sim.bagging, b.x * T, (b.y + 1) * T - 56);
+      } });
     }
     list.push({ y: l.h - 1.4, draw: () => drawSprite(ctx, 'plant', (l.w - 1) * T, (l.h - 1) * T - 16) });
-    for (const w of sim.workers) list.push({ y: w.mover.y, draw: () => this.drawWorker(ctx, w) });
+    for (const p of l.pillars) list.push({ y: p.y + 0.5, draw: () => drawSprite(ctx, 'pillar', p.x * T, (p.y + 1) * T - 72) });
+    for (const w of sim.workers) list.push({ y: w.mover.y, draw: () => this.drawWorker(ctx, sim, w) });
     list.push({ y: sim.cat.mover.y + 0.2, draw: () => this.drawCat(ctx, sim) });
-    for (const c of sim.customers) list.push({ y: c.mover.y, draw: () => this.drawCustomer(ctx, c) });
+    for (const c of sim.customers) list.push({ y: c.mover.y, draw: () => this.drawCustomer(ctx, sim, c) });
     list.sort((a, b) => a.y - b.y);
     for (const d of list) d.draw();
     if (!this.night && !build) this.drawStationFx(ctx, sim);
+    if (!build) this.drawPicks(ctx, sim);
     this.drawLight(ctx, sim);
     this.drawWeather(ctx, sim);
     if (build?.ghost) this.drawGhost(ctx, build.ghost);
@@ -309,6 +322,20 @@ export class WorldRenderer {
   /** Small idle animations on the counters: oden steam, a blinking espresso light, a slicer glint, the oven glow. */
   private drawStationFx(ctx: CanvasRenderingContext2D, sim: Sim): void {
     const t = this.time;
+    for (const id of sim.tidy.keys()) {
+      const f = sim.state.fixtures.find((x) => x.id === id);
+      if (!f) continue;
+      const a = Math.sin(t * 2.2 + id * 1.7);
+      if (a <= 0.2) continue;
+      const [hh, hv] = FIX_H[f.kind];
+      const w = f.vertical ? T : 2 * T;
+      const top = (f.y + (f.vertical ? 2 : 1)) * T - (f.vertical ? hv : hh);
+      const x = f.x * T + ((id * 13) % (w - 8)) + 4;
+      const y = top + 4 + ((id * 7) % 10);
+      ctx.fillStyle = `rgba(255, 255, 240, ${a})`;
+      ctx.fillRect(x, y - 2, 1, 5);
+      ctx.fillRect(x - 2, y, 5, 1);
+    }
     for (const s of sim.layout.stations) {
       const px = s.x * T;
       const top = (s.y + 1) * T - 56;
@@ -338,7 +365,199 @@ export class WorldRenderer {
       } else if (s.kind === 'bakery' && sim.oven.phase === 'baking') {
         ctx.fillStyle = `rgba(255, 150, 60, ${0.18 + 0.1 * Math.sin(t * 4)})`;
         for (let i = 0; i < 2; i++) ctx.fillRect(px + 8, 16 - 72 + 8 + i * 30 + 4, 48, 18);
+      } else if (s.kind === 'bakery' && sim.oven.phase === 'ready') {
+        this.puffs(ctx, px + 14, -58, 4, 12, 1.2);
+        ctx.fillStyle = `rgba(255, 200, 90, ${0.2 + 0.15 * Math.sin(t * 9)})`;
+        for (let i = 0; i < 2; i++) ctx.fillRect(px + 8, 16 - 72 + 8 + i * 30 + 4, 48, 18);
       }
+      if (s.kind !== 'bakery') this.drawServingFx(ctx, sim, s.kind, px, top);
+    }
+  }
+
+  /** Rising steam: n wisps spread over w pixels, starting at (x, y). */
+  private puffs(ctx: CanvasRenderingContext2D, x: number, y: number, n: number, rise: number, rate: number, w = 36): void {
+    for (let i = 0; i < n; i++) {
+      const ph = (this.time * rate + i / n) % 1;
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.55 * (1 - ph)})`;
+      const sz = ph > 0.5 ? 3 : 2;
+      ctx.fillRect(Math.round(x + (i * w) / n + Math.sin(ph * 5 + i) * 2), Math.round(y - ph * rise), sz, sz);
+    }
+  }
+
+  private serving(line: Line | null | undefined): Customer | null {
+    if (!line?.worker || line.progress <= 0) return null;
+    return line.front();
+  }
+
+  /** Counter work while a staff member serves, and the finished order handed over. */
+  private drawServingFx(ctx: CanvasRenderingContext2D, sim: Sim, kind: string, px: number, top: number): void {
+    const line = sim.stations.get(kind as never);
+    if (!line) return;
+    const t = this.time;
+    if (this.serving(line)) {
+      if (kind === 'coffee') {
+        ctx.fillStyle = '#6a3a20';
+        const drip = Math.floor(t * 12) % 3;
+        ctx.fillRect(px + 15, top + 13 + drip, 1, 2);
+        ctx.fillRect(px + 15, top + 19, 1, 1);
+        this.puffs(ctx, px + 8, top + 2, 3, 12, 1.4, 16);
+        if (Math.floor(t * 10) % 2) {
+          ctx.fillStyle = '#ff6060';
+          ctx.fillRect(px + 9, top + 5, 1, 1);
+        }
+      } else if (kind === 'deli') {
+        const a = t * 14;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        for (let k = 0; k < 2; k++) ctx.fillRect(Math.round(px + 44 + Math.cos(a + k * Math.PI) * 6), Math.round(top + 9 + Math.sin(a + k * Math.PI) * 6), 2, 1);
+        const ph = (t * 2.5) % 1;
+        ctx.fillStyle = '#f0a0a8';
+        ctx.fillRect(Math.round(px + 50 + ph * 8), Math.round(top + 8 + ph * ph * 4), 3, 1);
+      } else if (kind === 'oden') {
+        this.puffs(ctx, px + 8, top + 4, 6, 18, 1.1, 48);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        [12, 26, 39, 52].forEach((cx, i) => {
+          if (Math.floor(t * 6 + i * 1.7) % 3 === 0) ctx.fillRect(px + cx + ((i * 5 + Math.floor(t * 3)) % 4), top + 6 + (i % 2), 1, 1);
+        });
+      }
+    }
+    const since = sim.clock - line.doneAt;
+    if (line.doneAt >= 0 && since >= 0 && since < 1.5) {
+      const u = since / 1.5;
+      const x = px + 28;
+      const y = Math.round(top + 4 + u * 18 - Math.sin(u * Math.PI) * 10);
+      this.drawOrderItem(ctx, kind, x, y);
+    }
+  }
+
+  private drawOrderItem(ctx: CanvasRenderingContext2D, kind: string, x: number, y: number): void {
+    if (kind === 'coffee') {
+      ctx.fillStyle = '#2a2430';
+      ctx.fillRect(x - 1, y - 1, 7, 8);
+      ctx.fillStyle = '#f4efe6';
+      ctx.fillRect(x, y, 5, 6);
+      ctx.fillStyle = '#7a4a2a';
+      ctx.fillRect(x, y, 5, 1);
+      ctx.fillStyle = '#c89060';
+      ctx.fillRect(x, y + 2, 5, 2);
+    } else if (kind === 'deli') {
+      ctx.fillStyle = '#2a2430';
+      ctx.fillRect(x - 1, y - 1, 9, 6);
+      ctx.fillStyle = '#e8a0a0';
+      ctx.fillRect(x, y, 7, 4);
+      ctx.fillStyle = '#f8f4ec';
+      ctx.fillRect(x + 2, y + 1, 3, 2);
+    } else {
+      ctx.fillStyle = '#2a2430';
+      ctx.fillRect(x - 1, y - 1, 9, 6);
+      ctx.fillStyle = '#f0e0b0';
+      ctx.fillRect(x, y, 7, 2);
+      ctx.fillStyle = '#9a5a3a';
+      ctx.fillRect(x, y + 2, 7, 2);
+    }
+  }
+
+  /** Belt items slide past the scanner while staff ring up; the drawer pops open on payment. */
+  private drawRegister(ctx: CanvasRenderingContext2D, sim: Sim, i: number): void {
+    const l = sim.layout;
+    const r = l.registers[i];
+    const px = r.x * T;
+    const top = (r.y + 1) * T - 56;
+    const m = l.mirrored;
+    const line = sim.registers[i];
+    if (r.card) {
+      // taller sprite (sign on a pole), bottom-aligned with the regular counters
+      const name = this.equipSprite(sim, 'register').replace('register', 'card_counter');
+      drawSprite(ctx, name, px, top + 56 - rect(name)[3], m);
+    } else drawSprite(ctx, this.equipSprite(sim, 'register'), px, top, m);
+    if (!line) return;
+    const X = (lx: number, w = 1) => (m ? px + 64 - lx - w : px + lx);
+    const c = this.serving(line);
+    if (c && line.duration > 0) {
+      const items = c.basket.flatMap((b) => (b.kind === 'product' ? Array<string>(Math.min(b.qty, 3)).fill(b.id) : [])).slice(0, 8);
+      const k = Math.min(0.999, line.progress / line.duration);
+      if (items.length) {
+        const f = k * items.length;
+        const n = Math.floor(f);
+        const u = f - n;
+        const p = PRODUCT_BY_ID.get(items[n])!;
+        const [from, len, scan] = r.card ? [15, 12, 14] : [19, 18, 16];
+        drawProductSmall(ctx, p.index, X(from - u * len, 16), top + 3 - Math.round(Math.sin(u * Math.PI) * 2));
+        if (Math.abs(u - 0.5) < 0.15) {
+          ctx.fillStyle = 'rgba(255, 70, 70, 0.9)';
+          ctx.fillRect(X(scan), top + 12, 1, 9);
+          ctx.fillRect(X(scan - 2, 5), top + 16, 5, 1);
+        }
+      }
+      if (Math.floor(this.time * 6) % 2) {
+        ctx.fillStyle = 'rgba(200, 255, 190, 0.9)';
+        if (r.card) ctx.fillRect(X(43, 6), top + 9, 6, 1);
+        else ctx.fillRect(X(41 + (Math.floor(this.time * 3) % 3) * 5, 4), top + 9, 4, 1);
+      }
+    }
+    const since = sim.clock - line.doneAt;
+    if (r.card) {
+      // a green tick on the terminal when the card goes through
+      if (line.doneAt >= 0 && since >= 0 && since < 1) {
+        ctx.fillStyle = '#7ae07a';
+        ctx.fillRect(X(42, 9), top + 8, 9, 5);
+        ctx.fillStyle = '#ffffff';
+        for (const [dx, dy] of [[2, 2], [3, 3], [4, 2], [5, 1], [6, 0]]) ctx.fillRect(X(42 + dx), top + 9 + dy, 1, 1);
+      }
+      return;
+    }
+    if (line.doneAt >= 0 && since >= 0 && since < 1.6) {
+      const out = Math.min(1, since * 4) * (since > 1.2 ? (1.6 - since) / 0.4 : 1);
+      const d = Math.round(out * 4);
+      ctx.fillStyle = '#2a2430';
+      ctx.fillRect(X(36, 22), top + 22, 22, 2 + d);
+      ctx.fillStyle = '#5a5464';
+      ctx.fillRect(X(37, 20), top + 22, 20, 1 + d);
+      if (d > 1) {
+        ctx.fillStyle = '#f0c848';
+        for (const cx of [39, 44, 49]) ctx.fillRect(X(cx, 3), top + 22, 3, 1);
+        ctx.fillStyle = '#8ed07a';
+        ctx.fillRect(X(52, 4), top + 22, 4, 1);
+      }
+      if (since < 0.8) {
+        const a = Math.sin((since / 0.8) * Math.PI);
+        ctx.fillStyle = `rgba(255, 240, 170, ${a})`;
+        const sy = top + 2 - Math.round(since * 6);
+        ctx.fillRect(X(47), sy - 2, 1, 5);
+        ctx.fillRect(X(45, 5), sy, 5, 1);
+      }
+    }
+  }
+
+  private drawBaggingFx(ctx: CanvasRenderingContext2D, sim: Sim, line: Line, px: number, top: number): void {
+    const c = this.serving(line);
+    if (!c) return;
+    const m = sim.layout.mirrored;
+    const ids = c.basket.filter((b) => b.kind === 'product').map((b) => b.id);
+    if (!ids.length) return;
+    const ph = (this.time * 2.2) % 1;
+    const p = PRODUCT_BY_ID.get(ids[Math.floor(this.time * 2.2) % ids.length])!;
+    const lx = 8;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(px - 8, top - 24, 80, 24 + 6);
+    ctx.clip();
+    drawProductSmall(ctx, p.index, m ? px + 64 - lx - 16 : px + lx, Math.round(top - 14 + ph * ph * 18));
+    ctx.restore();
+  }
+
+  /** Items taken off shelves arc into the shopper's basket. */
+  private drawPicks(ctx: CanvasRenderingContext2D, sim: Sim): void {
+    for (const c of sim.customers) {
+      const pk = c.pick;
+      if (!pk) continue;
+      const u = (sim.clock - pk.at) / 0.9;
+      if (u < 0 || u >= 1) continue;
+      const [cx, cy] = this.charPos(c.mover.x, c.mover.y);
+      const x0 = pk.x * T + 8;
+      const y0 = pk.y * T - 14;
+      const x1 = cx + 8;
+      const y1 = cy + 22;
+      drawProductSmall(ctx, pk.index, Math.round(x0 + (x1 - x0) * u), Math.round(y0 + (y1 - y0) * u - Math.sin(u * Math.PI) * 10));
     }
   }
 
@@ -398,6 +617,17 @@ export class WorldRenderer {
     ctx.stroke();
   }
 
+  private doorUntil = 0;
+
+  /** Open while a worker fetches stock nearby, held briefly so it doesn't flicker. */
+  private stockDoorOpen(sim: Sim): boolean {
+    const d = sim.layout.stockDoor;
+    const near = sim.workers.some((w) => w.task.type === 'restock' && w.task.phase !== 'stocking'
+      && (w.task.phase === 'pickup' || Math.abs(w.mover.x - d.x) + Math.abs(w.mover.y - d.y) < 1.6));
+    if (near) this.doorUntil = this.time + 0.5;
+    return this.time < this.doorUntil;
+  }
+
   private spriteName(kind: FixtureKind, vertical: boolean): string {
     return `${kind}_${vertical ? 'v' : 'h'}`;
   }
@@ -451,7 +681,10 @@ export class WorldRenderer {
         ctx.fillRect(bx + 1, by + 1, Math.max(1, Math.round(18 * ratio)), 1);
       }
     });
-    if (f.kind === 'fridge' || f.kind === 'freezer') drawSprite(ctx, `${f.kind}_glass_${f.vertical ? 'v' : 'h'}`, px, top);
+    if (f.kind === 'fridge' || f.kind === 'freezer') {
+      drawSprite(ctx, `${f.kind}_glass_${f.vertical ? 'v' : 'h'}`, px, top);
+      if (alpha === 1) this.glint(ctx, f, px, top, sh);
+    }
     ctx.globalAlpha = 1;
     if (selected) {
       for (const c of fixtureCells(f)) drawSprite(ctx, 'select', c.x * T, c.y * T);
@@ -459,6 +692,25 @@ export class WorldRenderer {
     for (let i = 0; i < 2; i++) {
       const c = fixtureCells(f)[i];
       this.hits.push({ x: c.x * T, y: c.y * T - (f.vertical ? 0 : sh - T), w: T, h: f.vertical ? T : sh, action: { type: 'slot', fixture: f.id, slot: i } });
+    }
+  }
+
+  /** A light sheen sweeps across fridge and freezer glass now and then. */
+  private glint(ctx: CanvasRenderingContext2D, f: FixtureState, px: number, top: number, sh: number): void {
+    const w = f.vertical ? T : 2 * T;
+    const ph = (this.time / 7 + f.id * 0.37) % 1;
+    if (ph > 0.25) return;
+    const x0 = px + 3;
+    const y0 = top + 4;
+    const gw = w - 6;
+    const gh = (f.kind === 'fridge' ? sh - 12 : sh - 22);
+    const off = (ph / 0.25) * (gw + gh) - gh;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+    for (let y = 0; y < gh; y++) {
+      const x = Math.round(off + (gh - y) * 0.6);
+      const a = Math.max(0, x);
+      const b = Math.min(gw, x + 3);
+      if (b > a) ctx.fillRect(x0 + a, y0 + y, b - a, 1);
     }
   }
 
@@ -536,27 +788,136 @@ export class WorldRenderer {
     return [Math.round(x * T), Math.round(y * T) - 18];
   }
 
-  private drawWorker(ctx: CanvasRenderingContext2D, w: Worker): void {
+  private beat(seed: number, rate = 5): 0 | 1 {
+    return (Math.floor(this.time * rate + seed * 0.37) % 2) as 0 | 1;
+  }
+
+  private working(w: Worker): boolean {
+    if (w.mover.path.length) return false;
+    const t = w.task;
+    if (t.type === 'line') return t.line.worker === w && t.line.progress > 0;
+    if (t.type === 'restock') return t.phase === 'pickup' || t.phase === 'stocking';
+    if (t.type === 'clean' || t.type === 'tidy' || t.type === 'cat' || t.type === 'oven') return t.timer > 0;
+    return false;
+  }
+
+  /** Idle people glance around now and then instead of standing frozen. */
+  private glance(seed: number, dir: Dir): Dir {
+    const k = Math.floor(this.time / 2.3 + seed * 0.61) % 5;
+    return k === 1 ? 'down' : k === 3 ? (dir === 'left' ? 'right' : 'left') : dir;
+  }
+
+  private drawWorker(ctx: CanvasRenderingContext2D, sim: Sim, w: Worker): void {
     const [px, py] = this.charPos(w.mover.x, w.mover.y);
+    const t = w.task;
+    const work = this.working(w) ? this.beat(w.staffId, t.type === 'clean' ? 4 : 5) : null;
+    const frame = w.mover.frame();
+    let dir = w.mover.dir;
+    if (t.type === 'none' && !w.mover.path.length && w.idleFor > 4) dir = this.glance(w.staffId + 3, dir);
     drawSprite(ctx, 'shadow', px + 4, py + 42);
-    drawChar(ctx, w.row, w.mover.dir, w.mover.frame(), px, py, w.bubble?.icon === 'b_heart' ? 'happy' : null);
-    if (w.carrying) drawSprite(ctx, 'carton', px + 6, py + 22);
+    const stocking = t.type === 'restock' && t.phase === 'stocking' && work !== null;
+    if (stocking) drawSprite(ctx, 'carton', dir === 'left' ? px + 14 : px - 2, py + 34);
+    if (t.type === 'clean' && work !== null) this.drawMop(ctx, px, py, true);
+    drawChar(ctx, w.row, dir, frame, px, py, w.bubble?.icon === 'b_heart' ? 'happy' : null, work);
+    if (t.type === 'clean' && work !== null) this.drawMop(ctx, px, py, false);
+    if (w.carrying && !stocking) drawSprite(ctx, 'carton', px + 6, py + 22 + (frame ? 1 : 0));
+    if (work !== null) this.drawWorkFx(ctx, sim, w, px, py);
     if (w.bubble) this.bubble(ctx, w.bubble.icon, w.mover.x, w.mover.y, false);
   }
 
-  private drawCustomer(ctx: CanvasRenderingContext2D, c: Customer): void {
+  /** Mop handle behind the body, head swishing on the floor in front. */
+  private drawMop(ctx: CanvasRenderingContext2D, px: number, py: number, back: boolean): void {
+    const sw = Math.round(Math.sin(this.time * 9) * 5);
+    if (back) {
+      ctx.fillStyle = '#8a6a4a';
+      for (let i = 0; i < 18; i++) ctx.fillRect(px + 22 + Math.round(((sw - 6) * i) / 18), py + 22 + i, 1, 1);
+      return;
+    }
+    ctx.fillStyle = '#2a2430';
+    ctx.fillRect(px + 13 + sw, py + 40, 10, 4);
+    ctx.fillStyle = '#d8dce4';
+    ctx.fillRect(px + 14 + sw, py + 40, 8, 3);
+    ctx.fillStyle = '#aab0bc';
+    ctx.fillRect(px + 14 + sw, py + 42, 8, 1);
+    for (let i = 0; i < 3; i++) {
+      const ph = (this.time * 1.3 + i / 3) % 1;
+      ctx.fillStyle = `rgba(230, 245, 255, ${0.8 * (1 - ph)})`;
+      ctx.fillRect(px + 8 + i * 8 + Math.round(Math.sin(ph * 6 + i) * 2), Math.round(py + 42 - ph * 14), 2, 2);
+    }
+  }
+
+  private drawWorkFx(ctx: CanvasRenderingContext2D, sim: Sim, w: Worker, px: number, py: number): void {
+    const t = w.task;
+    if (t.type === 'restock' && t.phase === 'stocking') {
+      const f = sim.state.fixtures.find((x) => x.id === t.fixture);
+      const id = f?.slots[t.slot].product;
+      if (!f || !id) return;
+      const sx = (f.vertical ? f.x : f.x + t.slot) * T + 8;
+      const sy = (f.vertical ? f.y + t.slot : f.y) * T - 16;
+      const u = (this.time * 2.6 + w.staffId * 0.3) % 1;
+      const x0 = w.mover.dir === 'left' ? px + 14 : px - 2;
+      const y0 = py + 30;
+      drawProductSmall(ctx, PRODUCT_BY_ID.get(id)!.index, Math.round(x0 + (sx - x0) * u), Math.round(y0 + (sy - y0) * u - Math.sin(u * Math.PI) * 12));
+    } else if (t.type === 'tidy') {
+      for (let i = 0; i < 3; i++) {
+        const ph = (this.time * 1.6 + i / 3) % 1;
+        const a = Math.sin(ph * Math.PI);
+        const x = px + 6 + ((i * 11 + Math.floor(this.time * 1.6 + i / 3) * 7) % 20);
+        const y = py + 6 + ((i * 5 + Math.floor(this.time * 1.6) * 3) % 14);
+        ctx.fillStyle = `rgba(255, 250, 210, ${a})`;
+        ctx.fillRect(x, y - 1, 1, 3);
+        ctx.fillRect(x - 1, y, 3, 1);
+      }
+    } else if (t.type === 'cat') {
+      const [cx, cy] = this.charPos(sim.cat.mover.x, sim.cat.mover.y);
+      for (let i = 0; i < 2; i++) {
+        const ph = (this.time * 0.9 + i / 2) % 1;
+        this.heart(ctx, cx + 10 + i * 8 + Math.round(Math.sin(ph * 6 + i) * 2), Math.round(cy + 30 - ph * 18), 1 - ph);
+      }
+    } else if (t.type === 'oven') {
+      const u = Math.min(1, t.timer * w.speed('bakery') / 2);
+      const k = t.phase === 'load' ? u : 1 - u;
+      const x = px + 8;
+      const y = Math.round(py + 16 - k * 22);
+      ctx.globalAlpha = k > 0.85 ? (1 - k) / 0.15 : 1;
+      ctx.fillStyle = '#2a2430';
+      ctx.fillRect(x - 1, y - 1, 18, 5);
+      ctx.fillStyle = '#9aa0ac';
+      ctx.fillRect(x, y + 2, 16, 1);
+      ctx.fillStyle = t.phase === 'load' ? '#f0dcb0' : '#d89848';
+      for (let i = 0; i < 3; i++) ctx.fillRect(x + 1 + i * 5, y, 4, 2);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  private heart(ctx: CanvasRenderingContext2D, x: number, y: number, a: number): void {
+    ctx.fillStyle = `rgba(240, 90, 120, ${a})`;
+    ctx.fillRect(x, y, 2, 1);
+    ctx.fillRect(x + 3, y, 2, 1);
+    ctx.fillRect(x - 1, y + 1, 7, 1);
+    ctx.fillRect(x, y + 2, 5, 1);
+    ctx.fillRect(x + 1, y + 3, 3, 1);
+    ctx.fillRect(x + 2, y + 4, 1, 1);
+  }
+
+  private drawCustomer(ctx: CanvasRenderingContext2D, sim: Sim, c: Customer): void {
     const [px, py] = this.charPos(c.mover.x, c.mover.y);
     drawSprite(ctx, 'shadow', px + 4, py + 42);
-    const dir = c.mover.dir;
+    const still = !c.mover.path.length;
+    const reaching = still && c.state === 'browse' && c.pick !== null && sim.clock - c.pick.at < 0.5;
+    const paying = still && c.line?.kind === 'register' && this.serving(c.line) === c;
+    const work = reaching ? 0 : paying ? this.beat(c.id, 3) : null;
+    let dir = c.mover.dir;
+    if (still && c.state === 'queue' && c.line?.front() !== c && c.wait > 2) dir = this.glance(c.id, dir);
     const showBasket = c.basket.length > 0 && c.state !== 'leave';
     if (showBasket && dir === 'up') drawSprite(ctx, 'basket', px + 16, py + 26);
     const icon = c.bubble?.icon;
     const tired = c.state === 'queue' && c.wait > 8 * c.npc.patience;
     const expr = icon === 'b_heart' ? 'happy' : icon === 'b_sad' || icon === 'b_wait' || icon === 'b_empty' || tired ? 'sad' : null;
-    drawChar(ctx, c.row, dir, c.mover.frame(), px, py, expr);
+    drawChar(ctx, c.row, dir, c.mover.frame(), px, py, work === null ? expr : null, work);
     this.hits.push({ x: px + 6, y: py + 4, w: 20, h: 40, action: { type: 'customer', customer: c } });
     if (showBasket && dir !== 'up') drawSprite(ctx, 'basket', dir === 'left' ? px + 2 : px + 14, py + 28);
-    if (c.state === 'leave' && c.basket.length) drawSprite(ctx, 'carton', dir === 'left' ? px + 2 : px + 12, py + 24);
+    if (c.state === 'leave' && c.basket.length) drawSprite(ctx, 'carton', dir === 'left' ? px + 2 : px + 12, py + 24 + (c.mover.frame() ? 1 : 0));
   }
 
   bubble(ctx: CanvasRenderingContext2D, icon: string, x: number, y: number, pulse: boolean, action?: HitAction): void {

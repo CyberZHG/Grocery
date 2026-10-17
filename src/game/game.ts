@@ -10,16 +10,18 @@ import { DeliGame } from '../mini/deli';
 import { OdenGame } from '../mini/oden';
 import { T, worldBounds, WorldRenderer, type BuildView, type Hit, type HitAction } from '../render/world';
 import type { UI } from '../ui/app';
-import { DAY_END, DAY_START, FIXTURES, LEVELS, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF_LOOKS, TRAITS, type Category, type Skill } from './defs';
+import { DAY_END, DAY_START, FIXTURES, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF_LOOKS, TRAITS, unlockedSkills, type Category, type Skill } from './defs';
 import { BATCH, Sim, type Line } from './sim';
 import { checkAchievements } from './achievements';
+import { chainIncome, checkChallenge, fitFixtures, openBranch as openChainBranch, recordDay, spoil, STORE_BONUS, switchStore as switchChainStore } from './chain';
 import { sfx } from '../core/audio';
 import { progressGoals, refreshGoals, type GoalKind } from './goals';
+import { COLLECTION_BONUS } from './progress';
 import { gainReputation } from './growth';
 import { eventText, goalText } from '../ui/goals';
 import type { AwaySummary } from '../ui/app';
 import { achName } from '../ui/achievements';
-import { freshSkills, loadGame, unlockedBreads, newGame, saveGame, type GameState, type MiniKind, type StaffState } from './state';
+import { freshSkills, loadGame, unlockedBreads, newGame, saveGame, type DayStats, type GameState, type MiniKind, type StaffState } from './state';
 
 export type Phase = 'day' | 'night';
 
@@ -28,6 +30,13 @@ interface Camera {
   y: number;
   zoom: number;
   auto: boolean;
+}
+
+export interface BuildDrag {
+  /** Returns true when the press grabbed a fixture. */
+  start(wx: number, wy: number, hit: Hit | null, touch: boolean): boolean;
+  move(wx: number, wy: number): void;
+  end(wx: number, wy: number, commit: boolean): void;
 }
 
 export class Game {
@@ -42,6 +51,7 @@ export class Game {
   build: BuildView | null = null;
   onBuildTap: ((x: number, y: number, hit: Hit | null) => void) | null = null;
   onBuildHover: ((x: number, y: number) => void) | null = null;
+  onBuildDrag: BuildDrag | null = null;
   renderer = new WorldRenderer();
   cam: Camera = { x: 0, y: 0, zoom: 2, auto: true };
   canvas: HTMLCanvasElement;
@@ -51,14 +61,19 @@ export class Game {
   private pointers = new Map<number, { x: number; y: number; sx: number; sy: number }>();
   private panned = false;
   private pinchDist = 0;
+  /** A build-mode press that landed on a fixture: moving it drags the fixture instead of the camera. */
+  private drag: { armed: boolean; moving: boolean } | null = null;
 
   constructor(readonly ui: UI) {
     this.canvas = ui.canvas;
     this.ctx = this.canvas.getContext('2d')!;
     this.state = loadGame() ?? newGame();
+    // floor plans can gain counters between versions; anything now in the way goes to storage
+    const moved = fitFixtures(this.state);
     const away = this.catchUp();
     this.enterNight(false);
     if (away) requestAnimationFrame(() => this.ui.showAway(away));
+    if (moved) requestAnimationFrame(() => this.ui.toast(t('expand.moved')));
     this.bindInput();
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -76,6 +91,7 @@ export class Game {
       else if (e.type === 'reliefGift') this.ui.toast(t('toast.reliefGift', { n: e.units, v: money(e.value) }));
       else if (e.type === 'productLevel') this.ui.toast(t('toast.productLevel', { name: productName(e.id), n: e.level }), 'productLevel');
       else if (e.type === 'unlock') this.ui.toast(t('toast.unlock', { name: productName(e.id) }));
+      else if (e.type === 'collection') this.ui.toast(t('toast.collection', { cat: t(`cat.${e.cat}` as Key), p: Math.round(COLLECTION_BONUS * 100) }));
       else if (e.type === 'npcLevel') this.ui.toast(t('toast.npcLevel', { name: npcName(e.npc), n: e.level }), 'npcLevel');
       else if (e.type === 'npcGift') this.ui.toast(t('toast.npcGift', { name: npcName(e.npc), gift: t(`gift.${e.kind}` as Key) }));
       else if (e.type === 'friend') this.ui.toast(t('toast.friend', { name: npcName(e.by), friend: npcName(e.friend) }));
@@ -99,6 +115,7 @@ export class Game {
     this.state.nightRestock += this.sim.restockAll();
     if (!this.state.candidates.length) this.state.candidates = this.makeCandidates();
     refreshGoals(this.state.goals, this.state.seed, this.state.day, this.state.level);
+    this.checkChain();
     this.checkAchievements();
     this.forecast();
     saveGame(this.state);
@@ -121,6 +138,7 @@ export class Game {
 
   private endDay(): void {
     this.sim.endDayCosts();
+    this.closeBooks(this.sim.stats);
     this.state.history.push(this.sim.stats);
     if (this.state.history.length > 30) this.state.history.shift();
     this.state.day += 1;
@@ -143,9 +161,7 @@ export class Game {
     const rng = new Rng((this.state.seed ^ (this.state.day * 104729)) | 0);
     const used = new Set([...this.state.staff, ...this.state.former].map((s) => s.name));
     const out: StaffState[] = [];
-    const lv = LEVELS[this.state.level];
-    const open: Skill[] = ['restock', 'checkout', 'walk', ...lv.stations];
-    if (lv.bagging) open.push('bagging');
+    const open: Skill[] = unlockedSkills(this.state.level).filter((s) => s !== 'clean');
     const takenLooks = new Set([...this.state.staff, ...this.state.former].map((s) => s.look));
     const looks = rng.shuffle([...Array(STAFF_LOOKS).keys()].filter((l) => !takenLooks.has(l)));
     for (let i = 0; i < Math.min(3, looks.length); i++) {
@@ -302,10 +318,19 @@ export class Game {
   private bindInput(): void {
     const c = this.canvas;
     c.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       c.setPointerCapture(e.pointerId);
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
-      if (this.pointers.size === 1) this.panned = false;
+      if (this.pointers.size === 1) {
+        this.panned = false;
+        this.drag = null;
+        if (this.onBuildDrag && !this.miniOpen) {
+          const [wx, wy] = this.toWorld(e.clientX, e.clientY);
+          if (this.onBuildDrag.start(wx, wy, this.hitAt(wx, wy), e.pointerType !== 'mouse')) this.drag = { armed: true, moving: false };
+        }
+      }
       if (this.pointers.size === 2) {
+        this.cancelDrag();
         const [a, b] = [...this.pointers.values()];
         this.pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
         this.panned = true;
@@ -333,6 +358,16 @@ export class Game {
         return;
       }
       if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 8) this.panned = true;
+      if (this.drag) {
+        if (this.panned) {
+          this.drag.moving = true;
+          const [wx, wy] = this.toWorld(e.clientX, e.clientY);
+          this.onBuildDrag?.move(wx, wy);
+        }
+        p.x = e.clientX;
+        p.y = e.clientY;
+        return;
+      }
       if (this.panned) {
         this.cam.x -= ((e.clientX - p.x) * dpr) / this.cam.zoom;
         this.cam.y -= ((e.clientY - p.y) * dpr) / this.cam.zoom;
@@ -344,6 +379,16 @@ export class Game {
     const up = (e: PointerEvent) => {
       const had = this.pointers.has(e.pointerId);
       this.pointers.delete(e.pointerId);
+      if (had && this.drag?.moving) {
+        const [wx, wy] = this.toWorld(e.clientX, e.clientY);
+        this.drag = null;
+        this.onBuildDrag?.end(wx, wy, e.type === 'pointerup');
+        return;
+      }
+      if (had && this.drag) {
+        this.drag = null;
+        this.onBuildDrag?.end(0, 0, false);
+      }
       if (had && !this.panned && this.pointers.size === 0 && e.type === 'pointerup') this.tap(e.clientX, e.clientY);
     };
     c.addEventListener('pointerup', up);
@@ -352,6 +397,16 @@ export class Game {
       e.preventDefault();
       this.zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.25 : 0.8);
     }, { passive: false });
+  }
+
+  /** Drops a fixture drag in progress; true if there was one. */
+  cancelDrag(): boolean {
+    if (!this.drag) return false;
+    const moving = this.drag.moving;
+    this.drag = null;
+    this.panned = true;
+    this.onBuildDrag?.end(0, 0, false);
+    return moving;
   }
 
   private hitAt(wx: number, wy: number): Hit | null {
@@ -513,6 +568,8 @@ export class Game {
         steps += 1;
       }
       sim.endDayCosts();
+      this.closeBooks(sim.stats);
+      checkChallenge(s);
       s.history.push(sim.stats);
       if (s.history.length > 30) s.history.shift();
       revenue += sim.stats.revenue;
@@ -527,37 +584,42 @@ export class Game {
     };
   }
 
-  /** Opens a branch: a fresh, mirrored small store that keeps the owner's experience. */
+  /** Opens the next branch and starts running it. */
   openBranch(): void {
-    const old = this.state;
-    const fresh = newGame((old.seed * 31 + old.branch * 7 + 11) % 1e9);
-    const s: GameState = {
-      ...fresh,
-      branch: old.branch + 1,
-      money: fresh.money + Math.round(old.money * 0.1),
-      owner: old.owner,
-      staff: old.staff,
-      former: old.former,
-      products: old.products,
-      suppliers: Object.fromEntries(Object.entries(old.suppliers).map(([k, v]) => [k, { level: Math.max(1, Math.ceil(v.level / 2)), exp: 0 }])) as GameState['suppliers'],
-      npcs: old.npcs,
-      gifts: old.gifts,
-      friends: old.friends,
-      lifetime: old.lifetime,
-      achievements: old.achievements,
-      history: [],
-      reputation: { level: Math.max(1, Math.floor(old.reputation.level / 4)), exp: 0 },
-      day: old.day,
-      openedDay: old.day,
-    };
-    if (s.branch % 2 === 1) {
-      const w = LEVELS[0].w;
-      for (const f of s.fixtures) f.x = w - f.x - (f.vertical || f.kind === 'decor' ? 1 : 2);
-    }
-    this.state = s;
-    saveGame(s);
+    openChainBranch(this.state);
+    this.afterStoreChange();
+  }
+
+  switchStore(i: number): void {
+    switchChainStore(this.state, i);
+    this.afterStoreChange();
+  }
+
+  private afterStoreChange(): void {
+    this.state.candidates = [];
+    if (fitFixtures(this.state)) this.ui.toast(t('expand.moved'));
+    this.checkAchievements();
+    saveGame(this.state);
     this.enterNight(false);
     this.fit();
+  }
+
+  /** Finishes the running store's challenge once its goal is met. */
+  checkChain(): void {
+    const id = checkChallenge(this.state);
+    if (!id) return;
+    sfx('fanfare');
+    this.ui.toast(t('chain.finished', { name: t(`challenge.${id}.name` as Key), p: Math.round(STORE_BONUS * 100) }), 'ach');
+    this.checkAchievements();
+    this.makeSim();
+  }
+
+  /** Spoilage, the other stores' income and challenge progress, folded into a finished day. */
+  private closeBooks(st: DayStats): void {
+    st.spoiled = spoil(this.state);
+    st.chain = chainIncome(this.state);
+    this.state.money += st.chain;
+    recordDay(this.state, st);
   }
 
   /** Announces breads that a higher bakery skill has just unlocked. */

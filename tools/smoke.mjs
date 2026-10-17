@@ -72,6 +72,145 @@ for (const vp of VIEWPORTS) {
     }
   }, page);
 
+  await step(vp.name, 'collection', async () => {
+    await page.evaluate(() => [...document.querySelectorAll('.bar .btn')].find((b) => b.textContent === 'Achievements')?.click());
+    await wait(150);
+    await page.evaluate(() => document.querySelectorAll('.tabs .btn')[1]?.click());
+    await wait(150);
+    const n = await page.$$eval('.col-grid', (g) => g.length);
+    if (n !== 12) throw new Error(`expected 12 categories, got ${n}`);
+    await page.click('.col-cell');
+    check('collection');
+    await page.evaluate(() => window.game.ui.closeModal());
+  }, page);
+
+  if (!vp.isMobile) {
+    await step(vp.name, 'keyboard', async () => {
+      const paused = () => page.evaluate(() => window.game.paused());
+      const before = await paused();
+      await page.keyboard.press('Space');
+      if ((await paused()) === before) throw new Error('space did not toggle pause');
+      await page.keyboard.press('Space');
+      await page.evaluate(() => window.debug.checkout());
+      await wait(300);
+      await page.keyboard.press('Escape');
+      await wait(100);
+      if (await page.$('.mini')) throw new Error('escape did not close the mini-game');
+      check('keyboard');
+    }, page);
+
+  }
+
+  await step(vp.name, vp.isMobile ? 'drag fixture' : 'drag fixture and right click', async () => {
+    const plan = await page.evaluate(async () => {
+      const g = window.game;
+      const { canPlace } = await import('/src/game/layout.ts');
+      g.ui.openBuild(null);
+      const f = g.state.fixtures.find((x) => x.placed && x.kind !== 'decor');
+      const others = g.state.fixtures.filter((x) => x.placed && x.id !== f.id);
+      let to = null;
+      for (let dy = 1; dy < 6 && !to; dy++) for (let dx = -3; dx <= 3 && !to; dx++) {
+        if (canPlace(g.sim.layout, others, { ...f, x: f.x + dx, y: f.y + dy })) to = { x: f.x + dx, y: f.y + dy };
+      }
+      const dpr = window.devicePixelRatio || 1;
+      const screen = (x, y) => [((x * 32 + 16 - g.cam.x) * g.cam.zoom) / dpr, ((y * 32 + 16 - g.cam.y) * g.cam.zoom) / dpr];
+      return { id: f.id, from: screen(f.x, f.y), to: to && screen(to.x, to.y), want: to };
+    });
+    if (!plan.to) throw new Error('no free spot to drag to');
+    await wait(100);
+    const path = (i) => [plan.from[0] + ((plan.to[0] - plan.from[0]) * i) / 8, plan.from[1] + ((plan.to[1] - plan.from[1]) * i) / 8];
+    if (vp.isMobile) {
+      // on touch a fixture must be selected before it can be dragged
+      await page.touchscreen.tap(...plan.from);
+      await wait(100);
+      await page.touchscreen.touchStart(...plan.from);
+      for (let i = 1; i <= 8; i++) {
+        await page.touchscreen.touchMove(...path(i));
+        await wait(20);
+      }
+      await page.touchscreen.touchEnd();
+    } else {
+      await page.mouse.move(...plan.from);
+      await page.mouse.down();
+      for (let i = 1; i <= 8; i++) {
+        await page.mouse.move(...path(i));
+        await wait(20);
+      }
+      await page.mouse.up();
+    }
+    await wait(100);
+    const at = await page.evaluate((id) => { const f = window.game.state.fixtures.find((x) => x.id === id); return { x: f.x, y: f.y }; }, plan.id);
+    if (at.x !== plan.want.x || at.y !== plan.want.y) throw new Error(`fixture at ${at.x},${at.y}, expected ${plan.want.x},${plan.want.y}`);
+    if (vp.isMobile) {
+      await page.evaluate(() => window.game.ui.closeBuild());
+      check('drag');
+      return;
+    }
+    const clickRight = () => page.mouse.click(5, 300, { button: 'right' });
+    await clickRight();
+    await wait(50);
+    if (await page.evaluate(() => window.game.build?.selected !== null)) throw new Error('right click did not clear the selection');
+    await clickRight();
+    await wait(50);
+    if (await page.evaluate(() => !!window.game.build)) throw new Error('right click did not leave build mode');
+    await page.evaluate(() => [...document.querySelectorAll('.bar .btn')].find((b) => b.textContent === 'Staff')?.click());
+    await wait(150);
+    await clickRight();
+    await wait(100);
+    if (await page.$('.modal')) throw new Error('right click did not close the dialog');
+    check('drag');
+  }, page);
+
+  await step(vp.name, 'cancel a purchase', async () => {
+    const before = await page.evaluate(() => {
+      const g = window.game;
+      g.state.money = 5000;
+      g.ui.openBuild(null);
+      return { money: g.state.money, n: g.state.fixtures.length };
+    });
+    await wait(100);
+    await page.evaluate(() => document.querySelector('.build .row.wrap .btn.small:not([disabled])').click());
+    await wait(50);
+    if (await page.evaluate(() => window.game.state.money) >= before.money) throw new Error('nothing was bought');
+    await page.evaluate(() => [...document.querySelectorAll('.build .btn.ghost')].pop().click());
+    await wait(50);
+    const after = await page.evaluate(() => ({ money: window.game.state.money, n: window.game.state.fixtures.length }));
+    await page.evaluate(() => window.game.ui.closeBuild());
+    if (after.money !== before.money || after.n !== before.n) throw new Error(`not refunded: ${JSON.stringify({ before, after })}`);
+    check('cancel purchase');
+  }, page);
+
+  await step(vp.name, 'store chain', async () => {
+    await page.evaluate(() => {
+      const g = window.game;
+      g.state.level = 5;
+      g.state.reputation.level = 20;
+      g.state.money = 1e6;
+      g.rebuild();
+      g.checkChain();
+      g.ui.refresh();
+    });
+    const openExpand = () => page.evaluate(() => [...document.querySelectorAll('.bar .btn')].find((b) => b.textContent === 'Expand').click());
+    await openExpand();
+    await wait(150);
+    await page.evaluate(() => [...document.querySelectorAll('.modal .btn.primary')].pop().click());
+    await wait(100);
+    await page.evaluate(() => document.querySelector('.modal .btn.warn').click());
+    await wait(200);
+    if (await page.evaluate(() => window.game.state.active) !== 1) throw new Error('branch did not open');
+    await openExpand();
+    await wait(150);
+    await page.evaluate(() => document.querySelector('.chain-head .btn').click());
+    await wait(200);
+    const st = await page.evaluate(() => ({ active: window.game.state.active, level: window.game.state.level, stores: window.game.state.stores.length }));
+    if (st.active !== 0 || st.level !== 5 || st.stores !== 2) throw new Error(`switch back failed: ${JSON.stringify(st)}`);
+    await page.evaluate(() => [...document.querySelectorAll('.bar .btn')].find((b) => b.textContent === 'Goals').click());
+    await wait(150);
+    if (!(await page.$('.modal .challenge'))) throw new Error('goals panel has no store challenge');
+    await page.evaluate(() => window.game.ui.closeModal());
+    check('chain');
+  }, page);
+
   for (const m of MINIS) {
     await step(vp.name, `mini-game ${m}`, async () => {
       await page.evaluate((k) => window.debug[k](), m);

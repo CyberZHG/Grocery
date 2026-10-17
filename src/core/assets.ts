@@ -62,10 +62,10 @@ export const CHAR_H = 48;
 
 export type Expression = 'happy' | 'sad' | null;
 
-export function drawChar(ctx: CanvasRenderingContext2D, row: number, dir: 'down' | 'up' | 'left' | 'right', frame: number, x: number, y: number, expr: Expression = null): void {
-  // Expressions only exist for the front view: columns 9-11 happy, 12-14 upset.
+export function drawChar(ctx: CanvasRenderingContext2D, row: number, dir: 'down' | 'up' | 'left' | 'right', frame: number, x: number, y: number, expr: Expression = null, work: 0 | 1 | null = null): void {
+  // Expressions only exist for the front view: columns 9-11 happy, 12-14 upset; 15-20 are two working poses per view.
   const base = dir === 'down' ? (expr === 'happy' ? 9 : expr === 'sad' ? 12 : 0) : dir === 'up' ? 6 : 3;
-  const col = base + frame;
+  const col = work !== null ? 15 + (dir === 'down' ? 0 : dir === 'up' ? 4 : 2) + work : base + frame;
   blit(ctx, assets.chars, col * CHAR_W, row * CHAR_H, CHAR_W, CHAR_H, x, y, dir === 'left');
 }
 

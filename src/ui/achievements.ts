@@ -20,7 +20,8 @@ export function spriteIcon(name: string, scale = 1): HTMLElement {
 }
 
 export function achName(a: AchievementDef): string {
-  return `${t(`ach.cat.${a.cat}` as Key)} ${ROMAN[a.tier - 1]}`;
+  const single = ACHIEVEMENTS.filter((x) => x.cat === a.cat).length === 1;
+  return single ? t(`ach.cat.${a.cat}` as Key) : `${t(`ach.cat.${a.cat}` as Key)} ${ROMAN[a.tier - 1]}`;
 }
 
 export function formatAch(a: AchievementDef, v: number): string {
@@ -47,7 +48,7 @@ export function achievementsPanel(s: GameState): HTMLElement {
           spriteIcon('trophy'),
           h('div', { class: 'ach-text' }, [
             h('strong', {}, ['???']),
-            h('span', { class: 'muted' }, [t(categoryOpen(s, a.cat) ? 'ach.hiddenTier' : 'ach.hiddenStation')]),
+            h('span', { class: 'muted' }, [t(categoryOpen(s, a.cat) ? 'ach.hiddenTier' : a.cat.startsWith('ch_') ? 'ach.hiddenBranch' : 'ach.hiddenStation')]),
           ]),
         ]));
         continue;

@@ -2,14 +2,13 @@
 // reputation and size curves. Run with `npm run economy`; not part of `npm test`.
 import { it } from 'vitest';
 import { FIXTURES, LEVELS, PRODUCTS, type FixtureKind } from '../src/game/defs';
-import { buildLayout, canPlace } from '../src/game/layout';
+import { branchBlocker, chainIncome, checkChallenge, openBranch, progressOf, recordDay, spoil, storeLayout } from '../src/game/chain';
+import { canPlace } from '../src/game/layout';
 import { isUnlocked, profit } from '../src/game/progress';
 import { Sim } from '../src/game/sim';
 import { freshSkills, newGame, type GameState } from '../src/game/state';
 
 const DAYS = Number(process.env.DAYS ?? 120);
-const BRANCH_REP = 20;
-const BRANCH_MONEY = 50000;
 
 function runDay(s: GameState): Sim {
   const sim = new Sim(s);
@@ -19,6 +18,10 @@ function runDay(s: GameState): Sim {
     sim.update(0.2);
   }
   sim.endDayCosts();
+  sim.stats.spoiled = spoil(s);
+  sim.stats.chain = chainIncome(s);
+  s.money += sim.stats.chain;
+  recordDay(s, sim.stats);
   s.history.push(sim.stats);
   if (s.history.length > 30) s.history.shift();
   s.day += 1;
@@ -27,7 +30,7 @@ function runDay(s: GameState): Sim {
 
 /** Places one more fixture of the given kind with the most profitable unlocked products not yet shown. */
 function addFixture(s: GameState, kind: FixtureKind): boolean {
-  const layout = buildLayout(s.level, s.branch % 2 === 1);
+  const layout = storeLayout(s);
   const placed = s.fixtures.filter((f) => f.placed);
   const shown = new Set(placed.flatMap((f) => f.slots.map((x) => x.product)));
   const choices = PRODUCTS.filter((p) => p.store === FIXTURES[kind].store && !shown.has(p.id) && isUnlocked(p.id, s.products))
@@ -54,21 +57,17 @@ function night(s: GameState): string[] {
   if (next && s.money >= next.cost * 1.3) {
     s.money -= next.cost;
     s.level += 1;
-    const layout = buildLayout(s.level, s.branch % 2 === 1);
+    const layout = storeLayout(s);
     const kept: GameState['fixtures'] = [];
     for (const f of s.fixtures) if (f.placed && canPlace(layout, kept, f)) kept.push(f);
     for (const f of s.fixtures) f.placed = kept.includes(f);
     done.push(`expand→${s.level}`);
   }
-  if (!next && s.reputation.level >= BRANCH_REP && s.money >= BRANCH_MONEY) {
-    const old = s;
-    const fresh = newGame(old.seed + 1);
-    Object.assign(s, {
-      ...fresh, branch: old.branch + 1, money: fresh.money + Math.round(old.money * 0.1), owner: old.owner, staff: old.staff,
-      products: old.products, npcs: old.npcs, reputation: { level: Math.max(1, Math.floor(old.reputation.level / 4)), exp: 0 },
-      day: old.day, openedDay: old.day, lifetime: old.lifetime,
-    });
-    done.push(`branch ${s.branch}`);
+  const finished = checkChallenge(s);
+  if (finished) done.push(`challenge ${finished} done`);
+  if (!branchBlocker(s)) {
+    openBranch(s);
+    done.push(`branch ${s.branch} (${s.stores[s.active].challenge})`);
   }
   const kinds: FixtureKind[] = ['shelf', 'fridge', 'shelf', 'freezer', 'produce'];
   const reserve = 800 + (LEVELS[s.level + 1]?.cost ?? 0) * 0.5;
@@ -90,7 +89,9 @@ it('economy curve', () => {
   const events: string[] = [];
   let minMoney = Infinity;
   for (let d = 1; d <= DAYS; d++) {
+    const had = s.collections.length;
     const sim = runDay(s);
+    for (const c of s.collections.slice(had)) events.push(`day ${d}: collection ${c}`);
     minMoney = Math.min(minMoney, s.money);
     const st = sim.stats;
     const flow = st.revenue - st.restock - st.wages - st.rent;
@@ -98,10 +99,12 @@ it('economy curve', () => {
     const big = ev.filter((e) => e !== 'hire');
     if (big.length) events.push(`day ${d}: ${big.join(', ')}`);
     if (d <= 5 || d % 10 === 0) {
-      rows.push([d, s.branch, s.level, Math.round(s.money), Math.round(st.revenue), Math.round(flow), st.customers, s.reputation.level, s.staff.length, s.fixtures.filter((f) => f.placed).length].map(String).join('\t'));
+      rows.push([d, s.active, s.level, Math.round(s.money), Math.round(st.revenue), Math.round(flow), st.customers, st.angry ?? 0, s.reputation.level, s.staff.length, s.fixtures.filter((f) => f.placed).length, Math.round(progressOf(s).value)].map(String).join('\t'));
     }
   }
-  console.log(['day', 'branch', 'size', 'money', 'revenue', 'cashflow', 'cust', 'rep', 'staff', 'fixtures'].join('\t'));
+  console.log(['day', 'store', 'size', 'money', 'revenue', 'cashflow', 'cust', 'upset', 'rep', 'staff', 'fixtures', 'challenge'].join('\t'));
   console.log(rows.join('\n'));
   console.log(`\nlowest money: ${Math.round(minMoney)}\n${events.join('\n')}`);
+  const p = progressOf(s);
+  console.log(`running ${s.stores[s.active].challenge}: ${Math.round(p.value)} / ${p.target}`);
 });

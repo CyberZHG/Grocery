@@ -2,6 +2,8 @@ import { money, t, type Key } from '../i18n';
 import type { Game } from '../game/game';
 import type { Goal } from '../game/goals';
 import type { DayEvent } from '../game/sim';
+import { slotName } from '../game/names';
+import { challengeCard } from './chain';
 import { h } from './dom';
 
 export function goalText(g: Goal): string {
@@ -28,6 +30,8 @@ function goalRow(g: Goal): HTMLElement {
 export function goalsPanel(g: Game): HTMLElement {
   const s = g.state.goals;
   return h('div', { class: 'stack' }, [
+    h('h3', {}, [t('chain.thisStore', { name: slotName(g.state, g.state.active) })]),
+    h('div', { class: 'card' }, [challengeCard(g, g.state.active)]),
     h('p', { class: 'muted' }, [t('goal.hint')]),
     h('h3', {}, [t('goal.daily')]),
     h('div', { class: 'card' }, s.daily.map(goalRow)),

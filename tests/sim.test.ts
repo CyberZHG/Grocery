@@ -29,8 +29,14 @@ describe('layout', () => {
   it('every level builds without overlapping reserved areas', () => {
     for (let i = 0; i < LEVELS.length; i++) {
       const l = buildLayout(i);
-      expect(l.registers.length).toBe(LEVELS[i].registers);
-      expect(l.entrance).toBeGreaterThan(l.registers.length * 4 + (l.bagging ? 3 : -1));
+      const regular = l.registers.filter((r) => !r.card);
+      expect(regular.length).toBe(LEVELS[i].registers);
+      expect(l.registers.length - regular.length).toBe(LEVELS[i].cards);
+      expect(l.entrance).toBeGreaterThan(regular.length * 4 + (l.bagging ? 3 : -1));
+      for (const r of l.registers.filter((x) => x.card)) {
+        expect(r.cashier.x).toBeGreaterThan(l.entrance + 1);
+        expect(r.queue[0].x).toBeLessThan(l.w);
+      }
     }
   });
 });

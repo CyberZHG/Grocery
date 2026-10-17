@@ -10,13 +10,14 @@ import { demandMult, holidayOf, stationMult, trafficMult, weatherOf } from './ca
 import {
   catAppeal, catLover, costOf, equipSpeed, gainCat, gainEquipment, gainReputation, gainSupplier, giftChance, PETS_PER_DAY, repTraffic, rosterSize, type EquipKind,
 } from './growth';
-import { priceMult, productExpToNext, UNLOCK_ORDER, unlockedCount } from './progress';
-import { accessTiles, buildLayout, entryTile, Grid, spawnTile, type Layout, type P, type StationSpot } from './layout';
+import { collectionCount, collectionMult, isUnlocked, priceMult, productExpToNext, UNLOCK_ORDER, unlockedCount } from './progress';
+import { chainPriceMult, isFresh, peaksOf, perksOf, rulesOf, storeLayout, type Perks, type Rules } from './chain';
+import { accessTiles, entryTile, Grid, spawnTile, type Layout, type P, type StationSpot } from './layout';
 import {
   addExp, affinityValue, budgetMult, changeAffinity, makeCashPayment, npcExpToNext, roundCash, serviceReward, skillExpToNext, skillSpeed, waitPenalty,
   type CashPayment, type Leveled, type ServiceResult,
 } from './rules';
-import { openingBuzz, unlockedBreads, type DayStats, type FixtureState, type GameState, type Role } from './state';
+import { openingBuzz, takeStored, unlockedBreads, type DayStats, type FixtureState, type GameState, type Role } from './state';
 
 export interface BasketItem {
   kind: 'product' | 'oden' | 'deli' | 'coffee' | 'bread';
@@ -64,6 +65,10 @@ export class Customer {
   hurry = false;
   sawCat = false;
   manualServed = false;
+  /** Greeting strength of the worker who welcomed this customer; softens waiting. */
+  greet = 0;
+  /** Last item taken off a shelf, for the hand-to-basket animation. */
+  pick: { index: number; x: number; y: number; at: number } | null = null;
 
   constructor(readonly id: number, readonly npc: NpcDef, p: P, budget: number) {
     this.mover = new Mover(p);
@@ -94,6 +99,10 @@ export class Line {
   /** Real seconds left before staff takes over a service the player could do by hand. */
   offer = 0;
   offerFor: Customer | null = null;
+  /** Game minute the last customer here was served. */
+  doneAt = -1;
+  /** a card-only express counter */
+  card = false;
 
   constructor(readonly kind: LineKind, readonly spots: P[], readonly staffSpot: P, readonly index: number, readonly station?: StationKind) {}
 
@@ -112,6 +121,8 @@ export type Task =
   | { type: 'restock'; fixture: number; slot: number; phase: 'toStock' | 'pickup' | 'toShelf' | 'stocking'; timer: number }
   | { type: 'oven'; phase: 'load' | 'unload'; timer: number }
   | { type: 'clean'; spill: number; timer: number }
+  | { type: 'tidy'; fixture: number; timer: number }
+  | { type: 'cat'; timer: number }
   | { type: 'none' };
 
 export interface Spill {
@@ -121,6 +132,8 @@ export interface Spill {
   kind: 'puddle' | 'crumbs';
   age: number;
 }
+
+type JobKind = 'register' | 'station' | 'bagging' | 'restock' | 'oven' | 'clean' | 'tidy' | 'cat';
 
 export type DayEvent = { kind: 'tour'; at: number } | { kind: 'blogger' } | { kind: 'late'; cat: Category; until: number };
 
@@ -145,6 +158,11 @@ export class Worker {
   speed(s: Skill): number {
     const tr = this.trait ? TRAIT_BY_ID.get(this.trait) : undefined;
     return skillSpeed(this.skills[s].level) * (tr && tr.skill === s ? tr.mult : 1);
+  }
+
+  /** 0 at level 1, about 0.35 at level 10 and 0.7 at level 100. */
+  power(s: Skill): number {
+    return this.speed(s) - 1;
   }
 }
 
@@ -183,6 +201,7 @@ export type SimEvent =
   | { type: 'event'; event: DayEvent }
   | { type: 'tourArrived' }
   | { type: 'unlock'; id: string }
+  | { type: 'collection'; cat: Category }
   | { type: 'closed' };
 
 export interface Floater {
@@ -206,6 +225,8 @@ export class Sim {
   oven: OvenState = { phase: 'idle' };
   arrivals: { t: number; npc: NpcDef }[] = [];
   stats: DayStats;
+  readonly rules: Rules;
+  readonly perks: Perks;
   priority = new Set<string>();
   playerPriority = new Set<string>();
   floaters: Floater[] = [];
@@ -217,15 +238,21 @@ export class Sim {
   event: DayEvent | null = null;
   sold = new Map<string, number>();
   stockouts = new Map<string, number>();
+  /** Shelves a worker has faced up, with purchases left before they look picked over again. */
+  tidy = new Map<number, { left: number; power: number }>();
+  private catCareAt = -Infinity;
   private nextSpill = 1;
   private nextCust = 1;
 
   constructor(readonly state: GameState) {
-    this.layout = buildLayout(state.level, state.branch % 2 === 1);
+    this.layout = storeLayout(state);
+    this.rules = rulesOf(state);
+    this.perks = perksOf(state);
     this.grid = new Grid(this.layout, this.placed());
     this.rng = new Rng((state.seed + state.day * 7919) | 0);
     this.stats = {
       day: state.day, revenue: 0, goodsCost: 0, wages: 0, rent: 0, restock: 0, customers: 0, manual: 0, levelUps: 0, avgAffinity: 0,
+      angry: 0, cash: 0, cleaned: 0, fresh: 0,
     };
     this.buildLines();
     this.cat = new CatAgent(this.catSpot());
@@ -310,7 +337,11 @@ export class Sim {
   }
 
   private buildLines(): void {
-    this.registers = this.layout.registers.map((r) => new Line('register', r.queue, r.cashier, r.index));
+    this.registers = this.layout.registers.map((r) => {
+      const line = new Line('register', r.queue, r.cashier, r.index);
+      line.card = r.card;
+      return line;
+    });
     this.stations.clear();
     for (const s of this.layout.stations) {
       if (s.kind === 'bakery') continue;
@@ -333,7 +364,7 @@ export class Sim {
     const roster = NPCS.slice(0, rosterSize(this.state));
     const appeal = Math.min(0.15, this.placed().length * 0.006);
     const rep = repTraffic(this.state.reputation.level);
-    const traffic = trafficMult(this.state.seed, this.state.day) * (1 + openingBuzz(this.state));
+    const traffic = trafficMult(this.state.seed, this.state.day) * (1 + openingBuzz(this.state)) * this.rules.traffic;
     if (!broke) this.supplierGifts(false);
     this.rollEvent();
     const bakery = !!this.stationSpot('bakery');
@@ -357,11 +388,17 @@ export class Sim {
     });
   }
 
+  /** Each store has its own busy hours; whoever doesn't come at a peak drops in any time. */
   private arrivalTime(): number {
-    // two soft peaks: late morning and early evening
-    const r = this.rng.next();
-    const peak = r < 0.45 ? 11.5 * 60 : r < 0.9 ? 17.5 * 60 : this.rng.range(DAY_START, LAST_ENTRY);
-    const t = peak + (this.rng.next() + this.rng.next() + this.rng.next() - 1.5) * 150;
+    let r = this.rng.next();
+    let t = this.rng.range(DAY_START, LAST_ENTRY);
+    for (const [at, share, spread] of peaksOf(this.state)) {
+      if (r < share) {
+        t = at + (this.rng.next() + this.rng.next() - 1) * spread;
+        break;
+      }
+      r -= share;
+    }
     return Math.max(DAY_START + 2, Math.min(LAST_ENTRY, t));
   }
 
@@ -373,6 +410,7 @@ export class Sim {
         if (!s.product) continue;
         const p = PRODUCT_BY_ID.get(s.product)!;
         const unit = costOf(this.state, p);
+        s.stock += takeStored(this.state, p.id, cap - s.stock);
         const need = cap - s.stock;
         const afford = Math.min(need, Math.floor(this.state.money / unit));
         if (afford <= 0) continue;
@@ -435,13 +473,32 @@ export class Sim {
   private spawn(npc: NpcDef): void {
     const st = this.state.npcs[npc.id];
     const start = spawnTile(this.layout, this.rng.chance(0.5));
-    const budget = npc.budget * budgetMult(st.level) * this.rng.range(0.7, 1.2);
+    const budget = npc.budget * budgetMult(st.level) * this.rng.range(0.7, 1.2) * this.rules.budget * this.perks.budget;
     const c = new Customer(this.nextCust++, npc, start, budget);
     c.targets = this.planTargets(c);
     this.customers.push(c);
     this.stats.customers += 1;
     this.state.lifetime.customers += 1;
     this.walk(c.mover, entryTile(this.layout));
+    this.welcome(c);
+  }
+
+  /** The worker nearest the entrance says hello. */
+  private welcome(c: Customer): void {
+    const e = entryTile(this.layout);
+    let best: Worker | null = null;
+    let bd = Infinity;
+    for (const w of this.workers) {
+      const d = Math.abs(w.mover.x - e.x) + Math.abs(w.mover.y - e.y);
+      if (d < bd) {
+        bd = d;
+        best = w;
+      }
+    }
+    if (!best) return;
+    c.greet = best.power('greet');
+    c.affinityDelta += c.greet * 0.8;
+    this.gainSkill(best, 'greet', 0.6);
   }
 
   private planTargets(c: Customer): Target[] {
@@ -575,7 +632,7 @@ export class Sim {
   }
 
   private updateCustomer(c: Customer, dt: number): void {
-    this.stepMover(c.mover, dt, 0.85);
+    this.stepMover(c.mover, dt, 0.85 * this.rules.walk);
     if (c.bubble && c.bubble.until < this.clock && c.state !== 'queue') c.bubble = null;
     if (c.state === 'leave') return;
     if (c.state === 'queue') {
@@ -679,16 +736,22 @@ export class Sim {
       return;
     }
     let qty = 1;
-    if (this.rng.chance(fav ? 0.5 : 0.18) && s.stock >= 2 && price * 2 <= remaining) qty = 2;
+    const neat = this.tidy.get(f.id);
+    const two = (fav ? 0.5 : 0.18) + (neat ? 0.06 + neat.power * 0.15 : 0);
+    if (neat && --neat.left <= 0) this.tidy.delete(f.id);
+    if (this.rng.chance(two) && s.stock >= 2 && price * 2 <= remaining) qty = 2;
     s.stock -= qty;
+    c.pick = { index: p.index, x: f.vertical ? f.x : f.x + slot, y: f.vertical ? f.y + slot : f.y, at: this.clock };
     c.spent += price * qty;
     c.basket.push({ kind: 'product', id: p.id, price, cost: costOf(this.state, p), qty });
     this.productSold(p.id, qty);
     this.sold.set(p.id, (this.sold.get(p.id) ?? 0) + qty);
     this.emit({ type: 'sold', cat: p.cat, qty });
-    if (this.spills.length < 5 && this.rng.chance(0.02)) {
+    if (isFresh(p.cat)) this.stats.fresh! += qty;
+    if (this.spills.length < 5 && this.rng.chance(0.02 * this.rules.spill * this.perks.spill)) {
       const t = c.mover.tile;
-      this.spills.push({ id: this.nextSpill++, x: t.x, y: t.y, kind: this.rng.chance(0.5) ? 'puddle' : 'crumbs', age: 0 });
+      const at = [t, { x: t.x - 1, y: t.y }, { x: t.x + 1, y: t.y }, { x: t.x, y: t.y - 1 }].find((p) => this.spillVisible(p.x, p.y));
+      if (at) this.spills.push({ id: this.nextSpill++, x: at.x, y: at.y, kind: this.rng.chance(0.5) ? 'puddle' : 'crumbs', age: 0 });
     }
     if (fav) {
       c.affinityDelta += 1.5;
@@ -700,14 +763,19 @@ export class Sim {
 
   priceOf(id: string): number {
     const p = PRODUCT_BY_ID.get(id)!;
-    return Math.round(p.price * priceMult(this.state.products[id].level) * 100) / 100;
+    return Math.round(p.price * priceMult(this.state.products[id].level) * collectionMult(p.cat, this.state.collections) * chainPriceMult(this.perks, p.cat) * 100) / 100;
   }
 
   private productSold(id: string, qty: number): void {
     const prog = this.state.products[id];
     const cat = PRODUCT_BY_ID.get(id)!.cat;
     const before = unlockedCount(cat, this.state.products);
+    const first = prog.sold === 0;
     prog.sold += qty;
+    if (first && !this.state.collections.includes(cat) && collectionCount(cat, this.state.products) === UNLOCK_ORDER[cat].length) {
+      this.state.collections.push(cat);
+      this.emit({ type: 'collection', cat });
+    }
     const ups = addExp(prog, qty, productExpToNext);
     if (ups > 0) {
       this.emit({ type: 'productLevel', id, level: prog.level });
@@ -767,15 +835,39 @@ export class Sim {
     return { price: o.drink.price, cost: o.drink.price * COFFEE_COST_RATIO, id: o.drink.id };
   }
 
+  /** A cashier may suggest a small treat from the rack by the register. */
+  private upsell(c: Customer, line: Line): void {
+    const w = line.worker ?? this.workers.filter((x) => this.canDo(x, 'register')).sort((a, b) => b.skills.upsell.level - a.skills.upsell.level)[0];
+    if (!w) return;
+    const p = w.power('upsell');
+    this.gainSkill(w, 'upsell', 0.4);
+    if (!this.rng.chance(0.05 + p * 0.12)) return;
+    const treats = UNLOCK_ORDER.candy.filter((id) => isUnlocked(id, this.state.products));
+    const id = this.rng.pick(treats);
+    const prod = PRODUCT_BY_ID.get(id)!;
+    const price = this.priceOf(id);
+    if (price > c.budget - c.spent + 2) return;
+    c.basket.push({ kind: 'product', id, price, cost: costOf(this.state, prod), qty: 1 });
+    c.spent += price;
+    this.productSold(id, 1);
+    this.sold.set(id, (this.sold.get(id) ?? 0) + 1);
+    this.emit({ type: 'sold', cat: prod.cat, qty: 1 });
+    this.floaters.push({ text: `+$${price.toFixed(2)}`, x: c.mover.x, y: c.mover.y, t: 0, color: '#f0d060' });
+    this.gainSkill(w, 'upsell', 2);
+  }
+
   private goPay(c: Customer): void {
     if (c.basket.length === 0) {
       this.leave(c);
       return;
     }
-    let best = this.registers[0];
-    for (const r of this.registers) if (r.members.length < best.members.length) best = r;
     const npc = c.npc;
-    c.cash = this.rng.chance(npc.cash);
+    c.cash = this.rng.chance(this.rules.cash ?? npc.cash);
+    // cash payers can't use the card-only counters
+    const open = this.registers.filter((r) => !r.card || !c.cash);
+    let best = open[0];
+    for (const r of open) if (r.members.length < best.members.length) best = r;
+    this.upsell(c, best);
     if (c.cash) c.payment = makeCashPayment(Math.round(c.total() * 100), this.rng, npc);
     c.needsBag = !!this.bagging && c.itemCount() >= 3;
     this.join(c, best);
@@ -834,6 +926,7 @@ export class Sim {
     line.progress = 0;
     line.duration = 0;
     if (!c) return;
+    line.doneAt = this.clock;
     this.shiftLine(line);
     c.line = null;
     if (result.manual) this.stats.manual += 1;
@@ -855,6 +948,7 @@ export class Sim {
     if (line.kind === 'register') {
       const total = c.total();
       const paid = c.cash ? roundCash(Math.round(total * 100)) / 100 : total;
+      if (c.cash) this.stats.cash! += 1;
       this.state.money += paid;
       this.stats.revenue += paid;
       this.state.lifetime.revenue += paid;
@@ -868,7 +962,8 @@ export class Sim {
         c.affinityDelta += r.affinity;
         this.happyBubble(c, r.affinity);
       }
-      if (c.needsBag && this.bagging) {
+      // with a long bagging line the cashier bags at the register instead
+      if (c.needsBag && this.bagging && this.bagging.members.length < 3) {
         this.join(c, this.bagging);
         return;
       }
@@ -890,11 +985,13 @@ export class Sim {
   private leave(c: Customer): void {
     c.state = 'leave';
     const st = this.state.npcs[c.npc.id];
-    const wp = waitPenalty(c.wait, c.npc.patience);
+    const wp = waitPenalty(c.wait * (1 - Math.min(0.4, c.greet * 0.4)), c.npc.patience * this.rules.patience);
     if (wp.affinity < 0) c.bubble = { icon: 'b_wait', until: this.clock + 3 };
+    if (wp.affinity <= -2) this.stats.angry! += 1;
     const bought = c.basket.length > 0;
     const exp = bought ? (5 + c.spent * 0.6) * c.mult * wp.mult : 1;
-    const mood = c.affinityDelta + wp.affinity + (bought ? 1 : -0.5) - this.spills.length * 0.15;
+    let mood = c.affinityDelta + wp.affinity + (bought ? 1 : -0.5) - this.spills.length * 0.15;
+    if (mood > 0) mood *= this.perks.affinity;
     const fondBefore = st.fond.level;
     changeAffinity(st.fond, mood);
     this.giveGifts(c.npc.id, fondBefore, st.fond.level);
@@ -936,11 +1033,18 @@ export class Sim {
 
   // ---------- spills ----------
 
+  /** Anything standing on the tile below is drawn over the spill. */
+  private spillVisible(x: number, y: number): boolean {
+    const g = this.grid;
+    return g.walkable(x, y) && (!g.inside(x, y + 1) || g.walkable(x, y + 1)) && !this.spills.some((s) => s.x === x && s.y === y);
+  }
+
   /** Player tap: clears the spill instantly. */
   cleanSpill(id: number): boolean {
     const i = this.spills.findIndex((s) => s.id === id);
     if (i < 0) return false;
     this.spills.splice(i, 1);
+    this.stats.cleaned! += 1;
     for (const w of this.workers) if (w.task.type === 'clean' && w.task.spill === id) w.task = { type: 'none' };
     this.gainSkill(this.workers[0], 'clean', 3);
     return true;
@@ -960,7 +1064,9 @@ export class Sim {
       return;
     }
     line.idle = 0;
-    if (this.manualEligible(line, front)) {
+    // staff hold back for the player only while nobody else is waiting in this line
+    if (line.members.length > 1 && line.offerFor === front) line.offer = 0;
+    if (line.members.length <= 1 && this.manualEligible(line, front)) {
       if (line.offerFor !== front) {
         line.offerFor = front;
         line.offer = this.offerSeconds(OFFER_SECONDS);
@@ -997,10 +1103,11 @@ export class Sim {
   }
 
   private autoDuration(line: Line, c: Customer, w: Worker): number {
-    const sp = w.speed(this.lineSkill(line)) * equipSpeed(this.state.equipment[this.lineEquip(line)].level);
+    const sp = w.speed(this.lineSkill(line)) * equipSpeed(this.state.equipment[this.lineEquip(line)].level) * (line.kind === 'station' ? 1 : this.perks.service);
     if (line.kind === 'register') {
       const items = c.itemCount();
       const bagInline = this.bagging ? 0 : 0.12 * items;
+      if (line.card) return (0.8 + 0.18 * items + 0.2 + bagInline) / sp;
       return (1.2 + 0.22 * items + (c.cash ? 2.2 : 0.4) + bagInline) / sp;
     }
     if (line.kind === 'bagging') return (1 + 0.3 * c.itemCount()) / sp;
@@ -1098,14 +1205,14 @@ export class Sim {
     return s;
   }
 
-  private canDo(w: Worker, kind: 'register' | 'station' | 'bagging' | 'restock' | 'oven' | 'clean'): boolean {
+  private canDo(w: Worker, kind: JobKind): boolean {
     switch (w.role) {
       case 'auto':
         return true;
       case 'cashier':
         return kind === 'register' || kind === 'bagging';
       case 'stocker':
-        return kind === 'restock' || kind === 'oven' || kind === 'clean';
+        return kind === 'restock' || kind === 'oven' || kind === 'clean' || kind === 'tidy' || kind === 'cat';
       case 'service':
         return kind === 'station' || kind === 'bagging' || kind === 'oven';
     }
@@ -1120,7 +1227,7 @@ export class Sim {
     const idle = this.workers.filter((w) => w.task.type === 'none' || (urgent && this.preemptable(w)));
     if (!idle.length) return;
     const claimed = this.claimed();
-    type Job = { score: number; kind: 'register' | 'station' | 'bagging' | 'restock' | 'oven' | 'clean'; pos: P; apply: (w: Worker) => void };
+    type Job = { score: number; kind: JobKind; pos: P; apply: (w: Worker) => void };
     const jobs: Job[] = [];
     for (const line of this.allLines()) {
       if (line.worker || line.members.length === 0) continue;
@@ -1160,24 +1267,55 @@ export class Sim {
         });
       }
     }
+    // with nobody shopping, top up anything that isn't nearly full
+    const quiet = this.customers.every((c) => c.state === 'leave');
     for (const f of this.placed()) {
       const cap = FIXTURES[f.kind].capacity;
       f.slots.forEach((s, i) => {
         const key = `${f.id}:${i}`;
         if (!s.product || claimed.has(key)) return;
         const pri = this.priority.has(key);
-        if (s.stock > cap * 0.4 && !pri) return;
+        // below 40% it's a real job; up to 85% it's filler work for anyone with nothing better to do
+        if (s.stock > cap * 0.85 && !pri) return;
+        const filler = s.stock > cap * 0.4 && !pri && !quiet;
         const p = PRODUCT_BY_ID.get(s.product)!;
-        if (this.state.money < p.cost) return;
+        if (this.state.money < p.cost && !this.state.inventory[p.id]) return;
         if (this.event?.kind === 'late' && this.event.cat === p.cat && this.clock < this.event.until) return;
         jobs.push({
-          score: 2 + (1 - s.stock / cap) * 3 + (pri ? 4 : 0), kind: 'restock', pos: { x: f.x, y: f.y },
+          score: filler ? 1.2 + (1 - s.stock / cap) : 2 + (1 - s.stock / cap) * 3 + (pri ? 4 : 0), kind: 'restock', pos: { x: f.x, y: f.y },
           apply: (w) => {
             w.task = { type: 'restock', fixture: f.id, slot: i, phase: 'toStock', timer: 0 };
             this.walk(w.mover, this.freeTile(w.mover, this.doorTiles(), this.layout.stockDoor) ?? this.layout.stockDoor);
           },
         });
       });
+    }
+    const tidying = new Set(this.workers.map((w) => (w.task.type === 'tidy' ? w.task.fixture : -1)));
+    for (const f of this.placed()) {
+      if (f.kind === 'decor' || this.tidy.has(f.id) || tidying.has(f.id) || !f.slots.some((s) => s.product && s.stock > 0)) continue;
+      const acc = accessTiles(this.grid, f, 0);
+      if (!acc.length) continue;
+      jobs.push({
+        score: 0.5, kind: 'tidy', pos: { x: f.x, y: f.y },
+        apply: (w) => {
+          w.task = { type: 'tidy', fixture: f.id, timer: 0 };
+          this.walk(w.mover, this.freeTile(w.mover, acc) ?? acc[0]);
+        },
+      });
+    }
+    const cat = this.cat;
+    if (this.state.cat.mood < 80 && cat.mode !== 'walk' && cat.mode !== 'sleep' && this.clock - this.catCareAt > 90 && !this.workers.some((w) => w.task.type === 'cat')) {
+      const ct = cat.mover.tile;
+      const near = [[0, 1], [1, 0], [-1, 0], [0, -1]].map(([dx, dy]) => ({ x: ct.x + dx, y: ct.y + dy })).filter((p) => this.grid.walkable(p.x, p.y));
+      if (near.length) {
+        jobs.push({
+          score: 1, kind: 'cat', pos: ct,
+          apply: (w) => {
+            w.task = { type: 'cat', timer: 0 };
+            this.walk(w.mover, this.freeTile(w.mover, near) ?? near[0]);
+          },
+        });
+      }
     }
     jobs.sort((a, b) => b.score - a.score);
     for (const job of jobs) {
@@ -1228,7 +1366,46 @@ export class Sim {
       t.timer += dt;
       if (t.timer >= 1.2 / w.speed('clean')) {
         this.spills = this.spills.filter((s) => s !== sp);
+        this.stats.cleaned! += 1;
         this.gainSkill(w, 'clean', 2);
+        w.task = { type: 'none' };
+      }
+      return;
+    }
+    if (t.type === 'tidy') {
+      if (w.mover.path.length) return;
+      const f = this.fixture(t.fixture);
+      if (!f || !f.placed) {
+        w.task = { type: 'none' };
+        return;
+      }
+      this.faceToward(w.mover, { x: f.x, y: f.y });
+      t.timer += dt;
+      if (t.timer >= 1.5 / w.speed('display')) {
+        this.tidy.set(f.id, { left: 10, power: w.power('display') });
+        this.gainSkill(w, 'display', 2);
+        w.task = { type: 'none' };
+      }
+      return;
+    }
+    if (t.type === 'cat') {
+      if (w.mover.path.length) return;
+      const ct = this.cat.mover.tile;
+      const wt = w.mover.tile;
+      if (Math.abs(ct.x - wt.x) + Math.abs(ct.y - wt.y) > 2) {
+        w.task = { type: 'none' };
+        return;
+      }
+      this.faceToward(w.mover, ct);
+      t.timer += dt;
+      if (this.cat.mode !== 'walk') this.cat.timer = Math.max(this.cat.timer, 3);
+      if (t.timer >= 1.2) {
+        const st = this.state.cat;
+        st.mood = Math.min(100, st.mood + 4 + w.power('petcare') * 8);
+        if (gainCat(this.state, 1)) this.emit({ type: 'growth', what: 'cat', level: st.level });
+        this.cat.bubble = { icon: 'b_heart', until: this.clock + 2 };
+        this.catCareAt = this.clock;
+        this.gainSkill(w, 'petcare', 3);
         w.task = { type: 'none' };
       }
       return;
@@ -1267,7 +1444,8 @@ export class Sim {
     }
     if (t.phase === 'pickup') {
       t.timer += dt;
-      if (t.timer >= 0.8) {
+      if (t.timer >= 0.8 / w.speed('storage')) {
+        this.gainSkill(w, 'storage', 1);
         w.carrying = true;
         const acc = accessTiles(this.grid, f, t.slot);
         t.phase = 'toShelf';
@@ -1286,23 +1464,41 @@ export class Sim {
     const units = cap - s.stock;
     t.timer += dt;
     if (t.timer >= (0.8 + 0.12 * units) / w.speed('restock')) {
-      const p = PRODUCT_BY_ID.get(s.product!)!;
-      const unit = costOf(this.state, p);
-      const n = Math.min(units, Math.floor(this.state.money / unit));
-      const key = `${f.id}:${t.slot}`;
-      if (n > 0) {
-        s.stock += n;
-        const c = n * unit;
-        this.state.money -= c;
-        this.stats.restock += c;
-        this.supplierExp(p.id, n * (this.playerPriority.has(key) ? 2 : 1));
+      let moved = this.fillSlot(f, t.slot);
+      // a well-organised worker brings enough for the shelf's other slot too
+      const other = 1 - t.slot;
+      const os = f.slots[other];
+      const busy = this.workers.some((x) => x !== w && x.task.type === 'restock' && x.task.fixture === f.id && x.task.slot === other);
+      if (os?.product && os.stock < cap && !busy && this.rng.chance(0.2 + w.power('storage') * 0.8)) {
+        moved += this.fillSlot(f, other);
+        this.gainSkill(w, 'storage', 1);
       }
-      this.priority.delete(key);
-      this.playerPriority.delete(key);
-      this.gainSkill(w, 'restock', 1 + n * 0.25);
+      this.gainSkill(w, 'restock', 1 + moved * 0.25);
       w.carrying = false;
       w.task = { type: 'none' };
     }
+  }
+
+  /** Tops a slot up from storage first, then buys the rest; returns units added. */
+  private fillSlot(f: FixtureState, slot: number): number {
+    const s = f.slots[slot];
+    const units = FIXTURES[f.kind].capacity - s.stock;
+    const p = PRODUCT_BY_ID.get(s.product!)!;
+    const unit = costOf(this.state, p);
+    const stored = takeStored(this.state, p.id, units);
+    s.stock += stored;
+    const n = Math.max(0, Math.min(units - stored, Math.floor(this.state.money / unit)));
+    const key = `${f.id}:${slot}`;
+    if (n > 0) {
+      s.stock += n;
+      const c = n * unit;
+      this.state.money -= c;
+      this.stats.restock += c;
+      this.supplierExp(p.id, n * (this.playerPriority.has(key) ? 2 : 1));
+    }
+    this.priority.delete(key);
+    this.playerPriority.delete(key);
+    return n + stored;
   }
 
   gainSkill(w: Worker, skill: Skill, amount: number): void {

@@ -3,10 +3,9 @@ import { favBread, GIFT_KINDS, GIFT_LEVELS, LEVELS, NPC_ROW0, NPCS, OWNER_ROW, P
 import { rosterSize } from '../game/growth';
 import { spriteIcon } from './achievements';
 
-export const BRANCH_REP = 20;
-export const BRANCH_MONEY = 50000;
 import type { Game } from '../game/game';
-import { buildLayout, canPlace, type FixturePlacement } from '../game/layout';
+import { fitFixtures } from '../game/chain';
+import { chainPanel } from './chain';
 import { affinityExpToNext, npcExpToNext, skillExpToNext, skillSpeed, type Leveled } from '../game/rules';
 import { saveGame, type DayStats, type Role, type StaffState } from '../game/state';
 import { charIcon, productIcon, type UI } from './app';
@@ -21,7 +20,7 @@ function skillRows(skills: Record<Skill, Leveled>, level: number): HTMLElement {
   return h('div', { class: 'skills' }, SKILLS.filter((s) => unlocked.has(s)).map((s) => {
     const sk = skills[s];
     return h('div', { class: 'skill' }, [
-      h('span', { class: 'sname' }, [t(`skill.${s}`)]),
+      h('span', { class: 'sname', title: t(`skill.desc.${s}`) }, [t(`skill.${s}`)]),
       h('span', { class: 'slv' }, [`${t('common.level', { n: sk.level })} ×${skillSpeed(sk.level).toFixed(2)}`]),
       bar(sk.exp / skillExpToNext(sk.level)),
     ]);
@@ -39,6 +38,10 @@ export function staffPanel(g: Game, ui: UI): HTMLElement {
     ]);
   const night = g.phase === 'night';
   const out = h('div', { class: 'stack' }, [
+    h('details', { class: 'recs' }, [
+      h('summary', {}, [t('staff.skillHelp')]),
+      h('dl', { class: 'skill-help' }, unlockedSkills(st.level).flatMap((s) => [h('dt', {}, [t(`skill.${s}`)]), h('dd', {}, [t(`skill.desc.${s}`)])])),
+    ]),
     card(OWNER_ROW, t('staff.owner'), [], st.owner),
     h('h3', {}, [t('staff.hired')]),
     h('p', { class: 'muted' }, [t('staff.payNote')]),
@@ -158,27 +161,15 @@ export function expandPanel(g: Game, ui: UI): HTMLElement {
     h('div', { class: 'kv' }, [h('span', {}, [t('expand.current')]), h('span', {}, [t('expand.size', { w: cur.w, h: cur.h })])]),
   ]);
   if (!next) {
-    out.append(h('p', {}, [t('expand.max')]));
-    const ok = st.reputation.level >= BRANCH_REP && st.money >= BRANCH_MONEY;
-    out.append(
-      h('h3', {}, [t('branch.title')]),
-      h('p', { class: 'muted' }, [t('branch.hint', { rep: BRANCH_REP, v: money(BRANCH_MONEY) })]),
-      h('button', {
-        class: 'btn primary', disabled: !ok || g.phase !== 'night',
-        onclick: () => ui.confirm(t('branch.confirm'), () => {
-          g.openBranch();
-          ui.closeModal();
-          ui.refresh();
-          ui.toast(t('branch.opened', { n: g.state.branch + 1 }));
-        }),
-      }, [t('branch.open')]),
-    );
+    out.append(h('p', {}, [t('expand.max')]), chainPanel(g, ui));
     return out;
   }
+  const chain = chainPanel(g, ui);
   const unlocks: string[] = [];
   for (const s of next.stations) if (!cur.stations.includes(s)) unlocks.push(t(`station.${s}`));
   if (next.bagging && !cur.bagging) unlocks.push(t('station.bagging'));
   if (next.registers > cur.registers) unlocks.push(t('expand.registers', { n: next.registers }));
+  if (next.cards > cur.cards) unlocks.push(t('expand.cards', { n: next.cards }));
   unlocks.push(t('expand.more', { n: next.roster - cur.roster }));
   out.append(
     h('div', { class: 'kv' }, [h('span', {}, [t('expand.next')]), h('span', {}, [t('expand.size', { w: next.w, h: next.h })])]),
@@ -191,7 +182,8 @@ export function expandPanel(g: Game, ui: UI): HTMLElement {
     onclick: () => {
       st.money -= next.cost;
       st.level += 1;
-      const moved = relocate(g);
+      const moved = fitFixtures(st);
+      g.checkChain();
       g.checkAchievements();
       saveGame(st);
       g.rebuild();
@@ -202,23 +194,8 @@ export function expandPanel(g: Game, ui: UI): HTMLElement {
     },
   }, [t('expand.buy', { v: money(next.cost) })]));
   if (g.phase !== 'night') out.append(h('p', { class: 'muted' }, [t('common.nightOnly')]));
+  out.append(chain);
   return out;
-}
-
-/** After a layout change, fixtures that no longer fit go back to storage. */
-function relocate(g: Game): number {
-  const layout = buildLayout(g.state.level, g.state.branch % 2 === 1);
-  const kept: FixturePlacement[] = [];
-  let moved = 0;
-  for (const f of g.state.fixtures) {
-    if (!f.placed) continue;
-    if (canPlace(layout, kept, f)) kept.push(f);
-    else {
-      f.placed = false;
-      moved += 1;
-    }
-  }
-  return moved;
 }
 
 export function reportPanel(s: DayStats): HTMLElement {
@@ -230,6 +207,8 @@ export function reportPanel(s: DayStats): HTMLElement {
     ['report.wages', money(-s.wages)],
     ['report.rent', s.rentWaived ? t('report.rentWaived') : money(-s.rent)],
     ['report.cashflow', money(flow), flow >= 0 ? 'pos' : 'neg'],
+    ...(s.chain ? [['report.chain', money(s.chain), 'pos'] as [Key, string, string]] : []),
+    ...(s.spoiled ? [['report.spoiled', String(s.spoiled)] as [Key, string]] : []),
     ['report.customers', String(s.customers)],
     ['report.manual', String(s.manual)],
     ['report.affinity', `${t('common.level', { n: s.avgAffinity.toFixed(1) })}`],

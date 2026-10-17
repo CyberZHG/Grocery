@@ -10,7 +10,7 @@
     "test": "vitest run",
     "sprites": "python3 tools/gen_sprites.py",
     "smoke": "node tools/smoke.mjs",
-    "economy": "vitest run --config tools/economy.config.ts"
+    "economy": "vitest run --config tools/economy.config.ts --silent=false"
   },
   "devDependencies": {
     "puppeteer-core": "25.12.0",

@@ -69,6 +69,8 @@ export interface LevelDef {
   w: number;
   h: number;
   registers: number;
+  /** card-only express counters */
+  cards: number;
   stations: StationKind[];
   bagging: boolean;
   cost: number;
@@ -77,16 +79,20 @@ export interface LevelDef {
 }
 
 export const LEVELS: LevelDef[] = [
-  { w: 14, h: 10, registers: 1, stations: [], bagging: false, cost: 0, roster: 60, rent: 30 },
-  { w: 18, h: 12, registers: 2, stations: ['oden'], bagging: false, cost: 1500, roster: 80, rent: 80 },
-  { w: 22, h: 13, registers: 2, stations: ['oden', 'deli'], bagging: false, cost: 4500, roster: 100, rent: 130 },
-  { w: 26, h: 14, registers: 2, stations: ['oden', 'deli', 'bakery'], bagging: false, cost: 12000, roster: 120, rent: 190 },
-  { w: 30, h: 15, registers: 3, stations: ['oden', 'deli', 'bakery', 'coffee'], bagging: false, cost: 25000, roster: 140, rent: 260 },
-  { w: 34, h: 16, registers: 3, stations: ['oden', 'deli', 'bakery', 'coffee'], bagging: true, cost: 45000, roster: 160, rent: 340 },
+  { w: 14, h: 10, registers: 1, cards: 0, stations: [], bagging: false, cost: 0, roster: 60, rent: 30 },
+  { w: 18, h: 12, registers: 2, cards: 0, stations: ['oden'], bagging: false, cost: 1500, roster: 80, rent: 80 },
+  { w: 22, h: 13, registers: 2, cards: 1, stations: ['oden', 'deli'], bagging: false, cost: 4500, roster: 100, rent: 130 },
+  { w: 26, h: 14, registers: 2, cards: 1, stations: ['oden', 'deli', 'bakery'], bagging: false, cost: 12000, roster: 120, rent: 190 },
+  { w: 30, h: 15, registers: 3, cards: 1, stations: ['oden', 'deli', 'bakery', 'coffee'], bagging: false, cost: 25000, roster: 140, rent: 260 },
+  { w: 34, h: 16, registers: 3, cards: 2, stations: ['oden', 'deli', 'bakery', 'coffee'], bagging: true, cost: 45000, roster: 160, rent: 340 },
 ];
 
-export type Skill = 'restock' | 'checkout' | 'walk' | 'clean' | 'oden' | 'deli' | 'bakery' | 'coffee' | 'bagging';
-export const SKILLS: Skill[] = ['restock', 'checkout', 'walk', 'clean', 'oden', 'deli', 'bakery', 'coffee', 'bagging'];
+export type Skill =
+  | 'restock' | 'checkout' | 'walk' | 'clean' | 'greet' | 'upsell' | 'storage' | 'display' | 'petcare'
+  | 'oden' | 'deli' | 'bakery' | 'coffee' | 'bagging';
+export const SKILLS: Skill[] = ['restock', 'checkout', 'walk', 'clean', 'greet', 'upsell', 'storage', 'display', 'petcare', 'oden', 'deli', 'bakery', 'coffee', 'bagging'];
+/** Skills every store has from the start. */
+export const BASE_SKILLS: Skill[] = ['restock', 'checkout', 'walk', 'clean', 'greet', 'upsell', 'storage', 'display', 'petcare'];
 
 export const ODEN_ITEMS = ['egg', 'daikon', 'konjac', 'chikuwa', 'fishball', 'tofu', 'kelp', 'tendon', 'mochi', 'sausage'] as const;
 export type OdenItem = (typeof ODEN_ITEMS)[number];
@@ -153,12 +159,17 @@ export const TRAITS: TraitDef[] = [
   { id: 'latte_art', skill: 'coffee', mult: 1.2 },
   { id: 'neat_packer', skill: 'bagging', mult: 1.2 },
   { id: 'tidy', skill: 'clean', mult: 1.25 },
+  { id: 'warm_smile', skill: 'greet', mult: 1.25 },
+  { id: 'smooth_talker', skill: 'upsell', mult: 1.25 },
+  { id: 'organized', skill: 'storage', mult: 1.2 },
+  { id: 'eye_for_detail', skill: 'display', mult: 1.25 },
+  { id: 'cat_whisperer', skill: 'petcare', mult: 1.3 },
 ];
 export const TRAIT_BY_ID = new Map(TRAITS.map((t) => [t.id, t]));
 
 export function unlockedSkills(level: number): Skill[] {
   const lv = LEVELS[level];
-  const out: Skill[] = ['restock', 'checkout', 'walk', 'clean', ...lv.stations];
+  const out: Skill[] = [...BASE_SKILLS, ...lv.stations];
   if (lv.bagging) out.push('bagging');
   return out;
 }
