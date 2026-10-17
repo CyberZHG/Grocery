@@ -12,6 +12,7 @@ import { dateOf, holidayOf, weatherOf } from '../game/calendar';
 import { BuildMode } from './build';
 import { openShare } from './share';
 import { decodeSave, encodeSave } from '../game/savecode';
+import { chainNotices, expandNotices, goalNotices, markSeen, unseen } from './notices';
 import { clear, h, ICON_MUTED, ICON_SOUND, ICON_STORE, pixelIcon } from './dom';
 import { isCafe } from '../game/chain';
 import { slotName } from '../game/names';
@@ -228,14 +229,19 @@ export class UI {
     requestAnimationFrame(() => g.cam.auto && g.fit());
   }
 
+  /** Redraws the bottom bar, e.g. after a red-dot notice has been seen. */
+  refreshBar(): void {
+    if (!this.buildMode) this.renderBar();
+  }
+
   private renderBar(): void {
     const g = this.game;
     clear(this.bottom);
     const night = g.phase === 'night';
     // At night, opening anything from the bottom bar pauses the countdown.
-    const btn = (key: Key, fn: () => void, enabled = true) =>
+    const btn = (key: Key, fn: () => void, enabled = true, dot = false) =>
       h('button', {
-        class: 'btn bar-btn', disabled: !enabled,
+        class: `btn bar-btn${dot ? ' has-dot' : ''}`, disabled: !enabled,
         onclick: () => {
           if (g.phase === 'night') g.nightPaused = true;
           fn();
@@ -245,12 +251,17 @@ export class UI {
     this.bottom.append(
       btn('bar.staff', () => this.openPanel('staff.title', () => staffPanel(g, this))),
       btn('bar.customers', () => this.openPanel('npc.title', () => regularsPanel(g))),
-      btn('bar.goals', () => this.openPanel('goal.title', () => goalsPanel(g))),
+      btn('bar.goals', () => {
+        markSeen(g.state, goalNotices(g.state));
+        this.refreshBar();
+        this.openPanel('goal.title', () => goalsPanel(g));
+      }, true, unseen(g.state, goalNotices(g.state))),
       btn('bar.store', () => this.openPanel('store.title', () => storePanel(g, this))),
       btn('bar.achievements', () => this.openPanel('ach.title', () => trophiesPanel(g.state))),
     );
     if (night) {
-      this.bottom.append(btn('bar.expand', () => this.openPanel('expand.title', () => growPanel(g, this))));
+      this.bottom.append(btn('bar.expand', () => this.openPanel('expand.title', () => growPanel(g, this)), true,
+        unseen(g.state, [...expandNotices(g.state), ...chainNotices(g.state)])));
       if (g.state.history.length) this.bottom.append(btn('bar.report', () => this.showReport(g.state.history[g.state.history.length - 1])));
     }
   }
@@ -337,13 +348,16 @@ export class UI {
   }
 
   /** Toasts sharing a key replace each other instead of stacking up. */
-  toast(text: string, key?: string): void {
+  /** A message at the top right; `icon` is a sprite shown before the text, e.g. a trophy for achievements. */
+  toast(text: string, key?: string, icon?: string): void {
     const old = key ? ([...this.toasts.children] as HTMLElement[]).find((e) => e.dataset.key === key) : undefined;
     old?.remove();
-    const el = h('div', { class: 'toast' }, [text]);
+    const el = h('div', { class: `toast${icon ? ' with-icon' : ''}` }, [icon ? spriteIcon(icon, 1) : null, h('span', {}, [text])]);
     if (key) el.dataset.key = key;
     this.toasts.append(el);
-    while (this.toasts.children.length > 3) this.toasts.firstChild!.remove();
+    // a desktop screen has room for a longer stack than a phone
+    const max = window.matchMedia('(max-width: 560px)').matches ? 3 : 6;
+    while (this.toasts.children.length > max) this.toasts.firstChild!.remove();
     setTimeout(() => el.classList.add('out'), 2600);
     setTimeout(() => el.remove(), 3000);
   }

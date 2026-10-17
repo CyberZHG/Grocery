@@ -282,7 +282,7 @@ export function tiersDone(s: GameState): number {
 
 /** Why the next branch can't open yet, or null when it can. */
 /** Stores counted toward opening branches; the cafe isn't one of them. */
-function branchCount(s: GameState): number {
+export function branchCount(s: GameState): number {
   return s.stores.filter((x) => !isCafe(x)).length;
 }
 

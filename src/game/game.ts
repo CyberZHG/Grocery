@@ -10,7 +10,7 @@ import { DeliGame } from '../mini/deli';
 import { OdenGame } from '../mini/oden';
 import { T, worldBounds, WorldRenderer, type BuildView, type Hit, type HitAction } from '../render/world';
 import type { UI } from '../ui/app';
-import { DAY_END, DAY_START, FIXTURES, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF_LOOKS, TRAITS, unlockedSkills, type Category, type Skill } from './defs';
+import { DAY_END, DAY_START, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF_LOOKS, TRAITS, unlockedSkills, type Category, type Skill } from './defs';
 import { BATCH, Sim, type Line } from './sim';
 import { checkAchievements } from './achievements';
 import { catName, slotName } from './names';
@@ -18,7 +18,7 @@ import { chainIncome, checkChallenge, ensureCafe, fitFixtures, inCafe, openBranc
 import { sfx } from '../core/audio';
 import { fitGoals, progressGoals, refreshGoals, type GoalKind, type GoalScope } from './goals';
 import { COLLECTION_BONUS } from './progress';
-import { gainReputation } from './growth';
+import { capacityOf, gainReputation } from './growth';
 import { eventText, goalText } from '../ui/goals';
 import type { AwaySummary } from '../ui/app';
 import { achName } from '../ui/achievements';
@@ -468,7 +468,7 @@ export class Game {
         this.ui.toast(`${npcName(c.npc.id)} · ${t('common.level', { n: st.level })} · ${t('npc.affinity')} ${t('common.level', { n: st.fond.level })}`);
       } else if (a.type === 'slot') {
         const f = this.sim.fixture(a.fixture);
-        if (f && f.slots[a.slot].product && f.slots[a.slot].stock < FIXTURES[f.kind].capacity) {
+        if (f && f.slots[a.slot].product && f.slots[a.slot].stock < capacityOf(this.state, f.kind)) {
           this.sim.prioritize(a.fixture, a.slot);
           this.goal('priority');
           this.ui.toast(t('toast.restockSoon', { name: productName(f.slots[a.slot].product!) }));
@@ -632,12 +632,12 @@ export class Game {
   checkChain(): void {
     if (ensureCafe(this.state)) {
       sfx('fanfare');
-      this.ui.toast(t('cafe.opened'), 'ach');
+      this.ui.toast(t('cafe.opened'), 'ach', 'trophy');
     }
     const id = checkChallenge(this.state);
     if (!id) return;
     sfx('fanfare');
-    this.ui.toast(t('chain.finished', { name: t(`challenge.${id}.name` as Key), p: Math.round(STORE_BONUS * 100) }), 'ach');
+    this.ui.toast(t('chain.finished', { name: t(`challenge.${id}.name` as Key), p: Math.round(STORE_BONUS * 100) }), 'ach', 'trophy');
     this.checkAchievements();
     this.makeSim();
   }
@@ -659,10 +659,10 @@ export class Game {
 
   checkAchievements(): void {
     const got = checkAchievements(this.state);
-    if (got.length === 1) this.ui.toast(t('ach.unlocked', { name: achName(got[0]) }));
+    if (got.length === 1) this.ui.toast(t('ach.unlocked', { name: achName(got[0]) }), undefined, 'trophy');
     else if (got.length > 1) {
       const names = got.slice(0, 2).map(achName).join(', ') + (got.length > 2 ? ', …' : '');
-      this.ui.toast(t('ach.unlockedMany', { n: got.length, names }), 'ach');
+      this.ui.toast(t('ach.unlockedMany', { n: got.length, names }), 'ach', 'trophy');
     }
   }
 

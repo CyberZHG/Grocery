@@ -4,7 +4,7 @@ import { catName, slotName } from '../game/names';
 import { inCafe } from '../game/chain';
 import { saveGame } from '../game/state';
 import type { Game } from '../game/game';
-import {
+import { capacityOf, rackExpToNext, RACKS,
   catExpToNext, EQUIPMENT, equipExpToNext, equipSpeed, PETS_PER_DAY, repExpToNext, repTraffic, stars, supplierDiscount,
   supplierExpToNext, type EquipKind,
 } from '../game/growth';
@@ -18,6 +18,7 @@ export function growthName(what: string): string {
   if (what === 'reputation') return t('store.reputation');
   if (what === 'cat') return t('store.catName');
   if ((EQUIPMENT as string[]).includes(what)) return t(`equip.${what}` as Key);
+  if ((RACKS as string[]).includes(what)) return t('store.rackOf', { name: t(`fixture.${what}` as Key) });
   return t('store.supplierOf', { cat: t(`cat.${what}` as Key) });
 }
 
@@ -73,6 +74,10 @@ export function storePanel(g: Game, ui: UI): HTMLElement {
     h('div', { class: 'card' }, EQUIPMENT.filter((k) => equipOpen(s.level, k)).map((k) =>
       row(t(`equip.${k}` as Key), s.equipment[k], equipExpToNext, t('store.equipEffect', { v: equipSpeed(s.equipment[k].level).toFixed(2) })),
     ).concat([h('p', { class: 'muted' }, [t('store.equipHint')])])),
+    h('h3', {}, [t('store.racks')]),
+    h('div', { class: 'card' }, RACKS.map((k) =>
+      row(t(`fixture.${k}` as Key), s.racks[k], rackExpToNext, t('store.rackEffect', { n: capacityOf(s, k) })),
+    ).concat([h('p', { class: 'muted' }, [t('store.rackHint')])])),
     h('h3', {}, [t('store.suppliers')]),
     h('div', { class: 'card' }, CATEGORIES.map((c) =>
       row(t(`cat.${c}` as Key), s.suppliers[c], supplierExpToNext, s.suppliers[c].level > 1 ? t('store.supplierEffect', { p: (supplierDiscount(s.suppliers[c].level) * 100).toFixed(1) }) : '—'),

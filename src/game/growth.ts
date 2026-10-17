@@ -1,5 +1,5 @@
 import { streetFx } from './street';
-import { CATEGORIES, LEVELS, NPCS, PRODUCT_BY_ID, type Category, type ProductDef } from './defs';
+import { CATEGORIES, FIXTURES, LEVELS, NPCS, PRODUCT_BY_ID, type Category, type FixtureKind, type ProductDef } from './defs';
 import { addExp, type Leveled } from './rules';
 import type { GameState } from './state';
 
@@ -14,12 +14,36 @@ export interface CatState extends Leveled {
   fedDay: number;
 }
 
-export function freshGrowth(): Pick<GameState, 'reputation' | 'suppliers' | 'equipment' | 'cat'> {
+export type RackKind = Exclude<FixtureKind, 'decor'>;
+export const RACKS: RackKind[] = ['shelf', 'produce', 'fridge', 'freezer'];
+
+export function freshGrowth(): Pick<GameState, 'reputation' | 'suppliers' | 'equipment' | 'cat' | 'racks'> {
   const suppliers = {} as Record<Category, Leveled>;
   for (const c of CATEGORIES) suppliers[c] = { level: 1, exp: 0 };
   const equipment = {} as Record<EquipKind, Leveled>;
   for (const e of EQUIPMENT) equipment[e] = { level: 1, exp: 0 };
-  return { reputation: { level: 1, exp: 0 }, suppliers, equipment, cat: { level: 1, exp: 0, mood: 60, pets: 0, petDay: 0, fedDay: 0 } };
+  const racks = {} as Record<RackKind, Leveled>;
+  for (const r of RACKS) racks[r] = { level: 1, exp: 0 };
+  return { reputation: { level: 1, exp: 0 }, suppliers, equipment, cat: { level: 1, exp: 0, mood: 60, pets: 0, petDay: 0, fedDay: 0 }, racks };
+}
+
+// ---------- fixture capacity ----------
+
+/** Items customers take from a kind of fixture, needed for its next capacity level. */
+export const rackExpToNext = (lv: number) => 30 + 15 * (lv - 1);
+
+/** How many items one slot holds: one more every 3 levels of that fixture kind, up to double. */
+export function capacityOf(s: Pick<GameState, 'racks'>, kind: FixtureKind): number {
+  const base = FIXTURES[kind].capacity;
+  if (kind === 'decor') return base;
+  const lv = s.racks?.[kind]?.level ?? 1;
+  return base + Math.min(base, Math.floor((lv - 1) / 3));
+}
+
+/** All fixtures of a kind in this store share one level; true when it went up. */
+export function gainRack(s: GameState, kind: FixtureKind, amount: number): boolean {
+  if (kind === 'decor') return false;
+  return addExp(s.racks[kind], amount, rackExpToNext) > 0;
 }
 
 // ---------- reputation ----------

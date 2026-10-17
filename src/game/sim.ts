@@ -2,7 +2,7 @@ import { Rng } from '../core/rng';
 import { cashSet, deliOrderSizes, locale, money } from '../i18n';
 import { Mover, type Dir } from './agent';
 import {
-  BREAD_COST_RATIO, BREAD_PRICE, BREADS, COFFEE_COST_RATIO, favBread, DAY_END, DAY_START, DRINKS, FIXTURES, LAST_ENTRY,
+  BREAD_COST_RATIO, BREAD_PRICE, BREADS, COFFEE_COST_RATIO, favBread, DAY_END, DAY_START, DRINKS, LAST_ENTRY,
   LEVELS, MEAT_COST_RATIO, MEAT_PRICE_LB, MEATS, NPC_ROW0, NPCS, ODEN_COST_RATIO, ODEN_ITEMS, ODEN_PRICE,
   offeredIn, OWNER_ROW, PRODUCT_BY_ID, STAFF_ROW0, TRAIT_BY_ID, CATEGORIES, CAT_COATS, isRolling, TOY_PLAY, type CafeToy, CAT_TREASURES, UMBRELLA_COLORS, UMBRELLA_PRICE, GIFT_KINDS, GIFT_LEVELS, unlockedSkills, type Bread, type Category, type BreadQuality, type DrinkDef, type Meat, type NpcDef,
   type OdenItem, type Skill, type StationKind,
@@ -10,7 +10,7 @@ import {
 import { sunPatches, sunTiles } from './ambience';
 import { dateOf, demandMult, holidayOf, stationMult, streetCart, trafficMult, weatherOf } from './calendar';
 import {
-  catAppeal, catLover, costOf, equipSpeed, gainCat, gainEquipment, gainReputation, gainSupplier, giftChance, PETS_PER_DAY, repTraffic, rosterSize, type EquipKind,
+  capacityOf, catAppeal, catLover, costOf, equipSpeed, gainRack, gainCat, gainEquipment, gainReputation, gainSupplier, giftChance, PETS_PER_DAY, repTraffic, rosterSize, type EquipKind, type RackKind,
 } from './growth';
 import { collectionCount, collectionMult, isUnlocked, priceMult, productExpToNext, unlockOrder, unlockedCount } from './progress';
 import { streetFx, type StreetFx } from './street';
@@ -303,7 +303,7 @@ export type SimEvent =
   | { type: 'staffLevel'; staff: number; skill: Skill; level: number }
   | { type: 'money'; amount: number; x: number; y: number }
   | { type: 'productLevel'; id: string; level: number }
-  | { type: 'growth'; what: 'reputation' | 'cat' | EquipKind | Category; level: number }
+  | { type: 'growth'; what: 'reputation' | 'cat' | EquipKind | RackKind | Category; level: number }
   | { type: 'gift'; id: string; units: number; value: number }
   | { type: 'reliefGift'; units: number; value: number }
   | { type: 'gifts'; units: number; value: number }
@@ -1522,7 +1522,7 @@ export class Sim {
   restockAll(): number {
     let spent = 0;
     for (const f of this.placed()) {
-      const cap = FIXTURES[f.kind].capacity;
+      const cap = capacityOf(this.state, f.kind);
       for (const s of f.slots) {
         if (!s.product) continue;
         const p = PRODUCT_BY_ID.get(s.product)!;
@@ -1983,6 +1983,7 @@ export class Sim {
     if (neat && --neat.left <= 0) this.tidy.delete(f.id);
     if (this.rng.chance(two) && s.stock >= 2 && price * 2 <= remaining) qty = 2;
     s.stock -= qty;
+    if (gainRack(this.state, f.kind, qty)) this.emit({ type: 'growth', what: f.kind as RackKind, level: this.state.racks[f.kind as RackKind].level });
     c.pick = { index: p.index, x: f.vertical ? f.x : f.x + slot, y: f.vertical ? f.y + slot : f.y, at: this.clock, fixture: f.id, slot };
     c.spent += price * qty;
     c.basket.push({ kind: 'product', id: p.id, price, cost: costOf(this.state, p), qty });
@@ -2529,7 +2530,7 @@ export class Sim {
     // with nobody shopping, top up anything that isn't nearly full
     const quiet = this.customers.every((c) => c.state === 'leave');
     for (const f of this.placed()) {
-      const cap = FIXTURES[f.kind].capacity;
+      const cap = capacityOf(this.state, f.kind);
       f.slots.forEach((s, i) => {
         const key = `${f.id}:${i}`;
         if (!s.product || claimed.has(key)) return;
@@ -2770,7 +2771,7 @@ export class Sim {
       return;
     }
     const s = f.slots[t.slot];
-    const cap = FIXTURES[f.kind].capacity;
+    const cap = capacityOf(this.state, f.kind);
     const units = cap - s.stock;
     t.timer += dt;
     if (t.timer >= (0.8 + 0.12 * units) / w.speed('restock')) {
@@ -2792,7 +2793,7 @@ export class Sim {
   /** Tops a slot up from storage first, then buys the rest; returns units added. */
   private fillSlot(f: FixtureState, slot: number): number {
     const s = f.slots[slot];
-    const units = FIXTURES[f.kind].capacity - s.stock;
+    const units = capacityOf(this.state, f.kind) - s.stock;
     const p = PRODUCT_BY_ID.get(s.product!)!;
     const unit = costOf(this.state, p);
     const stored = takeStored(this.state, p.id, units);

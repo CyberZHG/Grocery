@@ -11,7 +11,7 @@ import type { UI } from './app';
 import { productIcon } from './app';
 import { clear, h } from './dom';
 
-const KINDS: FixtureKind[] = ['shelf', 'produce', 'fridge', 'freezer'];
+const KINDS: FixtureKind[] = ['shelf', 'produce', 'freezer', 'fridge'];
 
 function decorPrice(decor: string): number {
   if (decor === 'table') return TABLE_PRICE;

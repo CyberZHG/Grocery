@@ -1,13 +1,13 @@
 import { drawChar, drawCharPose, drawCharSitting, drawProductSmall, type CharPose, drawSprite, drawText, rect, textWidth } from '../core/assets';
 import { storeName } from '../game/names';
 import { sfx } from '../core/audio';
-import { BREADS, FIXTURES, NPC_ROW0, PRODUCT_BY_ID, TOY_FRAME_COUNT, TOY_PLAY, type CafeToy, type FixtureKind, type ToyPlay } from '../game/defs';
+import { BREADS, NPC_ROW0, PRODUCT_BY_ID, TOY_FRAME_COUNT, TOY_PLAY, type CafeToy, type FixtureKind, type ToyPlay } from '../game/defs';
 import { fixtureCells, type Layout } from '../game/layout';
 import { chalkDrawings, sunPatches } from '../game/ambience';
 import { dateOf, decorHoliday, streetCart, weatherOf } from '../game/calendar';
-import { equipTier, stars, type EquipKind } from '../game/growth';
+import { capacityOf, equipTier, stars, type EquipKind } from '../game/growth';
 import { OFFER_SECONDS, OVEN_OFFER_SECONDS, type Act, type CatAgent, type Customer, type Line, type Passer, type Sim, type Worker } from '../game/sim';
-import type { FixtureState } from '../game/state';
+import type { FixtureState, GameState } from '../game/state';
 import type { Dir } from '../game/agent';
 
 export const T = 32;
@@ -95,6 +95,8 @@ export class WorldRenderer {
   prompts: Prompt[] = [];
   time = 0;
   doorOpen = 0;
+  /** capacity levels of the store being drawn, for the stock bars */
+  private racks: GameState['racks'] | null = null;
   private chimeAt = -10;
 
   drawFloor(ctx: CanvasRenderingContext2D, l: Layout, sim?: Sim): void {
@@ -720,6 +722,7 @@ export class WorldRenderer {
   draw(ctx: CanvasRenderingContext2D, sim: Sim, dt: number, build: BuildView | null): void {
     this.time += dt;
     this.frameDt = dt;
+    this.racks = sim.state.racks;
     this.hits = [];
     this.prompts = [];
     this.updateDoor(sim, dt);
@@ -1212,6 +1215,10 @@ export class WorldRenderer {
     return this.time < this.doorUntil;
   }
 
+  private capacity(kind: FixtureKind): number {
+    return capacityOf({ racks: this.racks ?? undefined } as Pick<GameState, 'racks'>, kind);
+  }
+
   private spriteName(kind: FixtureKind, vertical: boolean): string {
     return `${kind}_${vertical ? 'v' : 'h'}`;
   }
@@ -1236,7 +1243,7 @@ export class WorldRenderer {
     const top = (f.y + (f.vertical ? 2 : 1)) * T - sh;
     ctx.globalAlpha = alpha;
     drawSprite(ctx, this.spriteName(f.kind, f.vertical), px, top);
-    const cap = FIXTURES[f.kind].capacity;
+    const cap = this.capacity(f.kind);
     f.slots.forEach((s, i) => {
       if (!s.product) return;
       const p = PRODUCT_BY_ID.get(s.product)!;

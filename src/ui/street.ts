@@ -7,6 +7,7 @@ import type { UI } from './app';
 import { chainPanel } from './chain';
 import { h } from './dom';
 import { expandPanel } from './panels';
+import { chainNotices, expandNotices, markSeen, unseen } from './notices';
 
 let selected = 0;
 
@@ -103,9 +104,13 @@ let growTab: 'expand' | 'street' | 'chain' = 'expand';
 export function growPanel(g: Game, ui: UI): HTMLElement {
   const body = h('div');
   const tabs = h('div', { class: 'tabs' });
+  const notices = { expand: () => expandNotices(g.state), chain: () => chainNotices(g.state), street: () => [] };
   const show = () => {
+    // looking at a tab clears its red dot
+    markSeen(g.state, notices[growTab]());
+    ui.refreshBar();
     tabs.replaceChildren(...(['expand', 'chain', 'street'] as const).map((k) =>
-      h('button', { class: `btn small${growTab === k ? ' active' : ''}`, onclick: () => ((growTab = k), show()) }, [t(`grow.${k}` as Key)])));
+      h('button', { class: `btn small${growTab === k ? ' active' : ''}${unseen(g.state, notices[k]()) ? ' has-dot' : ''}`, onclick: () => ((growTab = k), show()) }, [t(`grow.${k}` as Key)])));
     body.replaceChildren(growTab === 'street' ? streetPanel(g, ui) : growTab === 'chain' ? chainPanel(g, ui) : expandPanel(g, ui));
   };
   show();

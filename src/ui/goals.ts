@@ -32,7 +32,6 @@ export function goalsPanel(g: Game): HTMLElement {
   return h('div', { class: 'stack' }, [
     h('h3', {}, [t('chain.thisStore', { name: slotName(g.state, g.state.active) })]),
     h('div', { class: 'card' }, [challengeCard(g, g.state.active)]),
-    h('p', { class: 'muted' }, [t('goal.hint')]),
     h('h3', {}, [t('goal.daily')]),
     h('div', { class: 'card' }, s.daily.map(goalRow)),
     h('h3', {}, [t('goal.weekly')]),
