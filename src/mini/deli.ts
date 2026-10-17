@@ -1,7 +1,7 @@
 import { drawSprite, drawText, textWidth } from '../core/assets';
 import { Rng } from '../core/rng';
 import { sfx } from '../core/audio';
-import { t } from '../i18n';
+import { locale, t, weight } from '../i18n';
 import type { Meat } from '../game/defs';
 import { MiniGame, panel } from './base';
 
@@ -73,7 +73,7 @@ export class DeliGame extends MiniGame {
     const diff = this.weight - this.target;
     if (diff < -0.06) {
       this.mistakes += 1;
-      this.say(`${t('deli.target')} ${this.target.toFixed(2)} lb`, 'bad');
+      this.say(`${t('deli.target')} ${weight(this.target)}`, 'bad');
       return;
     }
     const a = Math.abs(diff);
@@ -120,19 +120,22 @@ export class DeliGame extends MiniGame {
     ctx.fillStyle = '#b8bcc8';
     ctx.fillRect(0, this.slicer.y + 96, vw, 2);
 
-    const tgt = `${this.target.toFixed(2)} LB`;
+    const tgt = weight(this.target);
     const tw = textWidth(tgt, 2) + 16;
     panel(ctx, Math.floor((vw - tw) / 2), 6, tw, 24, '#f4f2ee', '#3a3440');
     drawText(ctx, tgt, Math.floor((vw - tw) / 2) + 8, 10, '#2a2430', 2);
 
     const sx = this.slicer.x;
     const sy = this.slicer.y;
+    if (locale() === 'zh') drawSprite(ctx, 'roast_window', Math.floor(vw / 2 - 140), Math.max(34, sy - 126));
     drawSprite(ctx, 'slicer', sx, sy);
     const cx = sx + 48;
     const cy = sy + 46;
+    // at a roast-meat counter it's a cleaver on a board instead of a spinning blade
+    const chop = locale() === 'zh';
     ctx.strokeStyle = 'rgba(80, 90, 110, 0.6)';
     ctx.lineWidth = 1;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < (chop ? 0 : 3); i++) {
       const a = this.spin + (i * Math.PI * 2) / 3;
       ctx.beginPath();
       ctx.moveTo(Math.round(cx + Math.cos(a) * 12) + 0.5, Math.round(cy + Math.sin(a) * 12) + 0.5);
@@ -140,7 +143,8 @@ export class DeliGame extends MiniGame {
       ctx.stroke();
     }
     const push = this.holding ? Math.sin(this.spin * 0.6) * 2 : 0;
-    drawSprite(ctx, `meat_${this.meat}`, sx + 80 + push, sy + 20);
+    drawSprite(ctx, `meat_${this.meat}`, sx + 80 + (chop ? 0 : push), sy + 20);
+    if (chop) drawSprite(ctx, 'cleaver', sx + 54, sy + (this.holding && Math.sin(this.spin * 0.6) > 0 ? 16 : -6));
 
     drawSprite(ctx, 'scale', this.scaleR.x, this.scaleR.y);
     for (const s of this.slices) {
@@ -155,7 +159,7 @@ export class DeliGame extends MiniGame {
       drawSprite(ctx, `slice_${this.meat}`, -15, -6);
       ctx.restore();
     }
-    const wtxt = `${this.weight.toFixed(2)}`;
+    const wtxt = weight(this.weight, false);
     drawText(ctx, wtxt, this.scaleR.x + 50 - textWidth(wtxt, 2) / 2, this.scaleR.y + 30, '#8ef08a', 2);
   }
 }

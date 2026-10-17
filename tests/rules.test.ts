@@ -93,3 +93,98 @@ describe('service reward', () => {
     expect(fast.affinity).toBeGreaterThan(auto.affinity);
   });
 });
+
+describe('cash in every currency', () => {
+  it('pays with real notes and coins, mostly enough, and counts right without miscount', async () => {
+    const { CASH, denoms } = await import('../src/game/rules');
+    for (const cash of Object.values(CASH)) {
+      const rng = new Rng(11);
+      const valid = new Set(denoms(cash));
+      let short = 0;
+      for (let i = 0; i < 1500; i++) {
+        const total = rng.int(50, 12000);
+        const p = makeCashPayment(total, rng, { exact: 0.4, miscount: 0.15 }, cash);
+        expect(p.cash).toBe(cash.id);
+        expect(p.pieces.every((v) => valid.has(v)), cash.id).toBe(true);
+        expect(p.intended).toBeGreaterThanOrEqual(roundCash(total, cash));
+        if (changeDue(p.pieces, total, cash) < 0) short += 1;
+        const q = makeCashPayment(total, rng, { exact: 0.5, miscount: 0 }, cash);
+        expect(sum(q.pieces)).toBe(q.intended);
+      }
+      expect(short, cash.id).toBeLessThan(150);
+      // change can always be made from the drawer
+      for (let c = cash.step; c < 10000; c += cash.step) expect(sum(greedyChange(c, [...cash.drawer].reverse(), cash.coins)), `${cash.id} ${c}`).toBe(c);
+    }
+  });
+});
+
+function greedyChange(c: number, notes: number[], coins: number[]): number[] {
+  const out: number[] = [];
+  let left = c;
+  for (const d of [...notes, ...coins]) while (left >= d) (out.push(d), (left -= d));
+  return out;
+}
+
+describe('regional products', () => {
+  it('a hundred per language, kept out of other languages’ unlock ladders', async () => {
+    const { PRODUCTS, CATEGORIES, offeredIn } = await import('../src/game/defs');
+    const { unlockOrder } = await import('../src/game/progress');
+    const regional = PRODUCTS.filter((p) => p.region);
+    for (const lang of ['zh', 'ja', 'ko']) expect(regional.filter((p) => p.region === lang).length, lang).toBe(100);
+    // tests play in English: the ladder holds only the shared products
+    const ladder = new Set(CATEGORIES.flatMap((c) => unlockOrder(c)));
+    for (const p of regional) {
+      expect(ladder.has(p.id)).toBe(false);
+      expect(offeredIn(p, p.region!)).toBe(true);
+      expect(offeredIn(p, 'en')).toBe(false);
+    }
+  });
+});
+
+describe('local flavor', () => {
+  it('holidays only boost real products, and each language has its own calendar', async () => {
+    const { HOLIDAYS, dateOf } = await import('../src/game/calendar');
+    const { PRODUCT_BY_ID } = await import('../src/game/defs');
+    for (const [lang, list] of Object.entries(HOLIDAYS)) {
+      for (const h of list) for (const id of Object.keys(h.items)) expect(PRODUCT_BY_ID.has(id), `${lang} ${h.id} ${id}`).toBe(true);
+      // every holiday falls on some day of the year, and no two on the same day
+      const days = new Map<number, string>();
+      for (let d = 1; d <= 365; d++) {
+        const hits = list.filter((h) => h.on(dateOf(d)));
+        expect(hits.length, `${lang} day ${d}`).toBeLessThanOrEqual(1);
+        if (hits[0]) days.set(d, hits[0].id);
+      }
+      expect(new Set(days.values()).size, lang).toBe(list.length);
+    }
+  });
+
+  it('keeps everyone’s favorite bread among the breads every language has', async () => {
+    const { favBread, BREAD_REGION, NPCS } = await import('../src/game/defs');
+    for (const n of NPCS) expect(BREAD_REGION[favBread(n.index)]).toBeUndefined();
+  });
+
+  it('prices and unlocks every renovation style', async () => {
+    const { FLOOR_STYLES, WALL_STYLES, SIGN_STYLES, STYLE_PRICE, STYLE_UNLOCK } = await import('../src/game/defs');
+    expect(STYLE_PRICE.floor.length).toBe(FLOOR_STYLES.length);
+    expect(STYLE_PRICE.wall.length).toBe(WALL_STYLES.length);
+    expect(STYLE_PRICE.sign.length).toBe(SIGN_STYLES.length);
+    expect(STYLE_UNLOCK.floor.length).toBe(FLOOR_STYLES.length);
+    expect(STYLE_UNLOCK.wall.length).toBe(WALL_STYLES.length);
+    expect(STYLE_UNLOCK.sign.length).toBe(SIGN_STYLES.length);
+  });
+});
+
+describe('local buildings', () => {
+  it('boost real products and add busy hours that fit in the day', async () => {
+    const { streetFx, BUILDINGS, BUILDING_REGION } = await import('../src/game/street');
+    const { PRODUCT_BY_ID, DAY_START, LAST_ENTRY } = await import('../src/game/defs');
+    expect(new Set(Object.values(BUILDING_REGION))).toEqual(new Set(['zh', 'ja', 'ko']));
+    const fx = streetFx(BUILDINGS.map((id) => ({ id, level: 3 })));
+    for (const id of Object.keys(fx.items)) expect(PRODUCT_BY_ID.has(id), id).toBe(true);
+    for (const [at, share] of fx.peaks) {
+      expect(at).toBeGreaterThan(DAY_START);
+      expect(at).toBeLessThan(LAST_ENTRY);
+      expect(share).toBeLessThan(0.2);
+    }
+  });
+});

@@ -6,12 +6,14 @@ from PIL import Image
 
 from pix import Canvas, hexc, tone, mix
 import gen_products as GP
+import gen_products_local as GPL
 import gen_chars as GC
 import gen_street as GS
 import gen_cafe as GCF
 import gen_world as GW
 import gen_mini as GM
 import gen_decor as GD
+import gen_local as GL
 from names import make_name, make_name_jk
 
 NAMES_JK = {}
@@ -62,6 +64,7 @@ def products():
     out, en, zh = [], {}, {}
     for i, r in enumerate(rows):
         cv = GP.draw_product(r['tpl'], r['a'], r['b'], r['c'])
+        GPL.apply_mark(cv, r['tpl'], r.get('mark'))
         cv.to_image(img, (i % cols) * 32, (i // cols) * 32)
         price = float(r['price'])
         rnd = random.Random(r['id'])
@@ -71,6 +74,8 @@ def products():
             'id': r['id'], 'cat': r['cat'], 'store': STORAGE.get(r['cat'], 'shelf'),
             'price': round(price, 2), 'cost': round(price * (1 - margin), 2),
             'bag': [bw, bh, weight],
+            # regional specialties only show up for new shelves in that language
+            **({'region': r['region']} if r.get('region') else {}),
         })
         en[r['id']] = r['en']
         zh[r['id']] = r['zh']
@@ -86,6 +91,8 @@ NPC_COUNT = 240
 
 def npcs(prods):
     rnd = random.Random(2026)
+    # regional specialties aren't anyone's favorite: players in other languages can't stock them
+    prods = [p for p in prods if 'region' not in p]
     ids_by_cat = {}
     for p in prods:
         ids_by_cat.setdefault(p['cat'], []).append(p['id'])
@@ -198,7 +205,7 @@ def atlas():
         'floor0': GW.floor(0), 'floor1': GW.floor(1), 'sidewalk': GW.sidewalk(),
         'wall0': GW.wall_face(0), 'wall1': GW.wall_face(1), 'wall2': GW.wall_face(2), 'wall3': GW.wall_face(3),
         'wallcap': GW.wall_cap(), 'wallL': GW.wall_side(False), 'wallR': GW.wall_side(True),
-        'door_stock': GW.door_stock(), 'door_stock_open': GW.door_stock_open(), 'pillar': GW.pillar(), 'entrance_frame': GW.entrance_frame(), 'door_panel': GW.door_panel(), 'mat': GW.mat(),
+        'door_stock': GW.door_stock(), 'door_stock_open': GW.door_stock_open(), 'door_stock_half': GW.door_stock_open(True), 'pillar': GW.pillar(), 'entrance_frame': GW.entrance_frame(), 'door_panel': GW.door_panel(), 'mat': GW.mat(),
         'shelf_h': outlined(GW.shelf_h()), 'shelf_v': outlined(GW.shelf_v()),
         'produce_h': outlined(GW.produce_h()), 'produce_v': outlined(GW.produce_v()),
         'fridge_h': outlined(GW.fridge_h()), 'fridge_v': outlined(GW.fridge_v()),
@@ -219,9 +226,9 @@ def atlas():
         'b_chat': GW.bubble(GW.ic_chat), 'b_laugh': GW.bubble(GW.ic_laugh), 'b_wave': GW.bubble(GW.ic_wave),
         'b_exclaim': GW.bubble(GW.ic_exclaim), 'b_question': GW.bubble(GW.ic_question), 'b_camera': GW.bubble(GW.ic_camera), 'b_zzz': GW.bubble(GW.ic_zzz),
         'umbrella_stand': GW.umbrella_stand(),
-        'drawer': GM.drawer(), 'tray': GM.tray(), 'counter_wood': GM.wood_counter(),
+        'tray': GM.tray(), 'counter_wood': GM.wood_counter(),
         'oden_pot': GM.oden_pot(), 'oden_box_back': GM.oden_box_back(), 'oden_box_front': GM.oden_box_front(), 'slicer': GM.slicer(), 'scale': GM.scale_box(),
-        'bake_sheet': GM.bake_sheet(), 'bake_sheet_end': GM.bake_sheet_end(), 'oven_wall': GM.oven_wall(), 'oven_coil': GM.oven_coil(), 'oven_rail': GM.oven_rail(), 'coffee_cup': GM.coffee_cup(), 'cafe_wall': GM.cafe_wall(), 'cafe_counter': GM.cafe_counter(), 'cafe_head': GM.cafe_head(), 'cafe_tray': GM.cafe_tray(),
+        'bake_sheet': GM.bake_sheet(), 'bake_sheet_end': GM.bake_sheet_end(), 'oven_wall': GM.oven_wall(), 'oven_coil': GM.oven_coil(), 'oven_rail': GM.oven_rail(), 'coffee_cup': GM.coffee_cup(), 'cafe_wall': GM.cafe_wall(), 'cafe_counter': GM.cafe_counter(), 'cafe_head': GM.cafe_head(), 'cafe_panel': GM.cafe_panel(), 'cafe_menu': GM.cafe_menu(), 'cafe_shelf': GM.cafe_shelf(), 'belt_tile': GM.belt_tile(), 'cafe_tray': GM.cafe_tray(),
         'bag_paper': GM.bag_bg('paper'), 'bag_cold': GM.bag_bg('cold'), 'font': GM.font_sheet(),
     }
     card = outlined(GW.card_counter())
@@ -231,6 +238,71 @@ def atlas():
     for name, kind in (('register', 'register'), ('oden', 'oden'), ('deli', 'deli'), ('oven', 'oven'), ('coffee', 'coffee'), ('bagging', 'bagging')):
         for tier in (1, 2):
             items[f'{name}_t{tier}'] = GW.upgraded(kind, items[name], tier)
+    items.update({
+        'lanterns': GL.lanterns(), 'chochin': GL.chochin(), 'fu': GL.fu(), 'kadomatsu': GL.kadomatsu(),
+        'koinobori': GL.koinobori(), 'rabbit_lantern': GL.rabbit_lantern(), 'bokjori': GL.bokjori(),
+        'bunting_duanwu': GD.bunting(['3a9a5a', 'f0d040', 'd84848']), 'bunting_national': GD.bunting(['d8302a', 'f0c040']),
+        'bunting_saekdong': GD.bunting(['d84848', 'f0d040', '4aa060', '3a6ad8', 'f4f2ee', 'e070a0']),
+    })
+    for k, fn in (('lantern_stand', GL.lantern_stand), ('lucky_bamboo', GL.lucky_bamboo), ('daruma', GL.daruma),
+                  ('bonsai', GL.bonsai), ('onggi', GL.onggi), ('hanji_lamp', GL.hanji_lamp)):
+        items[f'decor_{k}'] = fn()
+    items['decor_maneki'] = GL.maneki(0)
+    for k in range(3):
+        items[f'maneki_{k}'] = GL.maneki(k)
+    items.update({'bld_plaza': GL.bld_plaza(), 'bld_market': GL.bld_market(), 'bld_bathhouse': GL.bld_bathhouse(), 'bld_netcafe': GL.bld_netcafe()})
+    for lang in ('zh', 'ja', 'ko'):
+        items[f'bld_bus@{lang}'] = GL.bus_stop(lang)
+        items[f'bld_apartments@{lang}'] = GL.apartments(lang)
+    for k in ('sweet_potato', 'tanghulu', 'bungeoppang'):
+        items[f'cart_{k}'] = GL.cart(k)
+    # sprites named name@<lang> replace name while playing in that language
+    for lang, cuts in GL.DELI_LOCAL.items():
+        for meat, (style, a, b) in cuts.items():
+            items[f'meat_{meat}@{lang}'] = GL.local_log(style, a, b)
+            items[f'slice_{meat}@{lang}'] = GL.local_slice(style, a, b)
+        counter = GL.deli_counter_local(lang, GW.counter_base)
+        items[f'deli@{lang}'] = counter
+        for tier in (1, 2):
+            items[f'deli_t{tier}@{lang}'] = GW.upgraded('deli', counter, tier)
+    items['slicer@zh'] = GL.chopping_board()
+    items['cleaver'] = GL.cleaver()
+    items['roast_window'] = GL.roast_window()
+    items['b_laowu'] = GL.bubble_laowu()
+    for coat in range(len(GL.DOG_COATS)):
+        for k in range(5):
+            items[f'dog_{coat}_{k}'] = GL.dog(coat, k)
+    for k in range(5):
+        items[f'sparrow_{k}'] = GL.sparrow(k)
+    for k in range(GL.SQUIRREL_FRAMES):
+        items[f'squirrel_{k}'] = GL.squirrel(k)
+    items.update({'footprint': GL.footprint(), 'van': GL.van(), 'dolly_full': GL.dolly(True), 'dolly_empty': GL.dolly(False)})
+    for k in ('hopscotch', 'flower', 'sun', 'cat', 'heart'):
+        items[f'chalk_{k}'] = GL.chalk(k)
+    for k in range(-2, 3):
+        items[f'chime_{k + 2}'] = GL.wind_chime(k)
+    for k in range(GL.RACCOON_FRAMES):
+        items[f'raccoon_{k}'] = GL.raccoon(k)
+    for k in range(5):
+        items[f'pigeon_{k}'] = GL.pigeon(k)
+    for k in range(2):
+        items[f'butterfly_{k}'] = GL.butterfly(k)
+    for k in range(4):
+        items[f'slicer_{k}@zh'] = GL.cleaver_frame(k)
+    zh_counter = GL.dimsum_counter(GW.counter_base)
+    items['oden@zh'] = zh_counter
+    for tier in (1, 2):
+        items[f'oden_t{tier}@zh'] = GW.upgraded('oden', zh_counter, tier)
+        items[f'card_counter_t{tier}@zh'] = GL.with_qr_sign(GW.upgraded('card', card, tier))
+    items['card_counter@zh'] = GL.with_qr_sign(card)
+    items['b_oden@zh'] = GW.bubble(GL.ic_bun, hexc('f0c040'))
+    for odenk, dk in zip(GM.ODEN, GL.DIMSUM):
+        items[f'oden_{odenk}@zh'] = GL.dimsum_item(dk)
+    items['oden_pot@zh'] = GL.steamer_grid()
+    items['oden_box_back@zh'] = GL.steamer_basket_back(GM.oden_box_back(), GM.BOX_CY, GM.BOX_RX, GM.BOX_RY)
+    items['oden_box_front@zh'] = GL.steamer_basket_front(GM.oden_box_front())
+    for k in range(4):
+        items[f'oden_bubble_{k}@zh'] = GL.dimsum_steam(k)
     for name, fn in GS.BUILDINGS.items():
         items[f'bld_{name}'] = fn()
     items['bld_empty'] = GS.empty_lot()
@@ -239,6 +311,32 @@ def atlas():
     for kind in GCF.TOYS:
         items[f'decor_toy_{kind}'] = GCF.toy(kind)
     items['toy_tunnel_front'] = GCF.tunnel_front()
+    for k in range(3):
+        items[f'mop_{k}'] = GW.mop(k)
+    items['bucket'] = GW.bucket()
+    for k in (1, 2):
+        items[f'oven_door_{k}'] = GW.oven_door(k)
+    for k in range(4):
+        items[f'oden_bubble_{k}'] = GW.oden_bubbles(k)
+        items[f'slicer_{k}'] = GW.slicer_blade(k)
+    for k in (1, 2, 3):
+        items[f'reg_drawer_{k}'] = GW.cash_drawer(k)
+        items[f'receipt_{k}'] = GW.receipt(k)
+    for kind in ('fridge', 'freezer'):
+        for vertical in (False, True):
+            for slot in (0, 1):
+                for stage in (1, 2):
+                    items[f'{kind}_glass_{"v" if vertical else "h"}_open{slot}_{stage}'] = GW.glass_open(kind, vertical, slot, stage)
+    for k in range(3):
+        items[f'gumball_{k}'] = GD.gumball_turn(k)
+    for k in range(2):
+        items[f'magazine_{k}'] = GD.magazine_flip(k)
+    items['sign_neon_dim'] = GD.sign_style('neon', True)
+    for k in range(12):
+        items[f'clock_h_{k}'] = GD.clock_hand(k, True)
+        items[f'clock_m_{k}'] = GD.clock_hand(k, False)
+    for k in range(GD.AQUARIUM_FRAMES):
+        items[f'aq_{k}'] = GD.aquarium(k)
     for kind, n in GCF.TOY_FRAMES.items():
         for k in range(n):
             items[f'toyf_{kind}_{k}'] = GCF.toy_frame(kind, k)
@@ -267,6 +365,14 @@ def atlas():
         items[f'sign_{st}'] = GD.sign_style(st)
     for k in GD.DECOR:
         items[f'decor_{k}'] = GD.decor(k)
+    for i, d in enumerate((-1, 1)):
+        items[f'decor_plant_small_s{i}'] = GD.decor('plant_small', d)
+        items[f'decor_flowers_s{i}'] = GD.decor('flowers', d)
+        items[f'plant_s{i}'] = GW.plant(d)
+    for k in range(4):
+        items[f'puddle_{k}'] = GW.puddle(k)
+    for k in range(3):
+        items[f'splash_{k}'] = GW.splash(k)
     for k in GD.GIFTS:
         items[f'gift_{k}'] = GD.gift_icon(k)
     items.update({
@@ -276,10 +382,20 @@ def atlas():
         'balloons': GD.balloons(), 'wreath': GD.wreath(), 'football': GD.football(),
         'spill_puddle': GD.spill('puddle'), 'spill_crumbs': GD.spill('crumbs'),
     })
+    # cash sprites are named by value in cents of the game's dollar: a yen is a cent, a won a tenth of one
     for v in (1, 5, 10, 20, 50, 100):
-        items[f'bill{v}'] = GM.bill(v)
-    for v in (1, 5, 10, 25):
-        items[f'coin{v}'] = GM.coin(v)
+        items[f'cash_usd_{v * 100}'] = GM.bill(v)
+    for v in (5, 10, 25):
+        items[f'cash_usd_{v}'] = GM.coin(v)
+    per = {'cny': 100, 'jpy': 1, 'krw': 0.1}
+    for cur, notes in GM.NOTES.items():
+        for v in notes:
+            items[f'cash_{cur}_{round(v * per[cur])}'] = GM.note(cur, v)
+    for cur, coins in GM.COINS.items():
+        for v in coins:
+            items[f'cash_{cur}_{round(v * per[cur]) if cur != "cny" else v}'] = GM.coin_of(cur, v)
+    for cur, (nb, nc) in {'usd': (5, 3), 'cny': (4, 3), 'jpy': (2, 6), 'krw': (3, 4)}.items():
+        items[f'drawer_{cur}'] = GM.drawer(nb, nc)
     for k in GM.ODEN:
         items[f'oden_{k}'] = GM.oden_item(k)
     for k in GM.MEATS:

@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { sfx } from '../core/audio';
 import { PRODUCT_BY_ID, type ProductDef } from '../game/defs';
 import { h } from '../ui/dom';
-import { accuracyLabel, inRect, MiniGame, panel } from './base';
+import { accuracyLabel, inRect, MiniGame } from './base';
 
 const CELL = 32;
 const COLS = 4;
@@ -235,9 +235,25 @@ export class BaggingGame extends MiniGame {
     ctx.fillStyle = '#34383e';
     ctx.fillRect(0, 0, vw, vh);
     const b = this.belt;
-    panel(ctx, b.x, b.y, b.w, b.h, '#2a2a30', '#141418');
-    ctx.fillStyle = '#3a3a44';
-    for (let x = b.x + 2; x < b.x + b.w; x += 12) ctx.fillRect(x, b.y + 1, 2, b.h - 2);
+    // a checkout conveyor: ribbed rubber belt between steel rails, a roller at each end
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(b.x + 8, b.y + 4, b.w - 16, b.h - 8);
+    ctx.clip();
+    for (let y = b.y + 4; y < b.y + b.h; y += 16) for (let x = b.x + 8; x < b.x + b.w; x += 16) drawSprite(ctx, 'belt_tile', x, y);
+    ctx.restore();
+    ctx.fillStyle = '#a8acb8';
+    ctx.fillRect(b.x, b.y, b.w, 4);
+    ctx.fillRect(b.x, b.y + b.h - 4, b.w, 4);
+    ctx.fillStyle = '#e0e4ec';
+    ctx.fillRect(b.x, b.y, b.w, 1);
+    ctx.fillRect(b.x, b.y + b.h - 4, b.w, 1);
+    for (const rx of [b.x, b.x + b.w - 8]) {
+      ctx.fillStyle = '#5a5e68';
+      ctx.fillRect(rx, b.y + 4, 8, b.h - 8);
+      ctx.fillStyle = '#8a8e98';
+      ctx.fillRect(rx + 2, b.y + 4, 2, b.h - 8);
+    }
     drawSprite(ctx, 'bag_paper', this.bags[0].x, this.bags[0].y);
     drawSprite(ctx, 'bag_cold', this.bags[1].x, this.bags[1].y);
     for (const it of this.items) {

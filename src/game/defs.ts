@@ -21,6 +21,12 @@ export interface ProductDef {
   cost: number;
   /** bag cells w, h and weight class (0 fragile, 1 light, 2 normal, 3 heavy) */
   bag: [number, number, number];
+  /** a regional specialty: offered for new shelves only while playing in this language */
+  region?: string;
+}
+
+export function offeredIn(p: { region?: string }, lang: string): boolean {
+  return !p.region || p.region === lang;
 }
 
 export const PRODUCTS: ProductDef[] = (productsJson as Omit<ProductDef, 'index'>[]).map((p, index) => ({ ...p, index }));
@@ -106,22 +112,34 @@ export type Meat = (typeof MEATS)[number];
 export const MEAT_PRICE_LB: Record<Meat, number> = { turkey: 11.99, ham: 9.99, roastbeef: 13.99, salami: 12.49, swiss: 10.49 };
 export const MEAT_COST_RATIO = 0.55;
 
-export const BREADS = ['croissant', 'baguette', 'muffin', 'cinnamon', 'melonpan', 'bagel', 'pretzel', 'anpan'] as const;
+export const BREADS = [
+  'croissant', 'baguette', 'muffin', 'cinnamon', 'melonpan', 'bagel', 'pretzel', 'anpan',
+  'eggtart', 'pineapple_bun', 'curry_bread', 'cream_bread', 'soboro', 'kkwabaegi',
+] as const;
 export type Bread = (typeof BREADS)[number];
+/** Regional breads are only baked while playing in that language. */
+export const BREAD_REGION: Partial<Record<Bread, string>> = {
+  eggtart: 'zh', pineapple_bun: 'zh', curry_bread: 'ja', cream_bread: 'ja', soboro: 'ko', kkwabaegi: 'ko',
+};
 /** Team bakery skill level needed before a bread can be baked. */
 export const BREAD_UNLOCK: Record<Bread, number> = {
   croissant: 1, baguette: 1, muffin: 1, cinnamon: 1, melonpan: 3, bagel: 6, pretzel: 10, anpan: 15,
+  eggtart: 2, pineapple_bun: 5, curry_bread: 2, cream_bread: 5, soboro: 2, kkwabaegi: 5,
 };
-export const favBread = (npcIndex: number): Bread => BREADS[(npcIndex * 7 + 3) % BREADS.length];
+/** Everyone's favorite is one of the breads every language has. */
+export const favBread = (npcIndex: number): Bread => BREADS[(npcIndex * 7 + 3) % 8];
 export const BREAD_PRICE: Record<Bread, number> = {
   croissant: 2.75, baguette: 3.5, muffin: 2.5, cinnamon: 3.25, melonpan: 2.5, bagel: 2.25, pretzel: 3, anpan: 2.5,
+  eggtart: 2.25, pineapple_bun: 2.5, curry_bread: 2.75, cream_bread: 2.25, soboro: 2.25, kkwabaegi: 2,
 };
 export const BREAD_COST_RATIO = 0.3;
 export type BreadQuality = 'good' | 'golden';
 
-export const COFFEE_STEPS = ['espresso', 'milk', 'foam', 'ice', 'water', 'vanilla', 'caramel', 'chocolate', 'whip'] as const;
+export const COFFEE_STEPS = ['espresso', 'milk', 'foam', 'ice', 'water', 'vanilla', 'caramel', 'chocolate', 'whip', 'tea', 'matcha', 'dalgona'] as const;
 export type CoffeeStep = (typeof COFFEE_STEPS)[number];
-export interface DrinkDef { id: string; steps: CoffeeStep[]; price: number }
+/** The last three steps belong to one language each. */
+export const STEP_REGION: Partial<Record<CoffeeStep, string>> = { tea: 'zh', matcha: 'ja', dalgona: 'ko' };
+export interface DrinkDef { id: string; steps: CoffeeStep[]; price: number; region?: string }
 export const DRINKS: DrinkDef[] = [
   { id: 'americano', steps: ['espresso', 'espresso', 'water'], price: 3.25 },
   { id: 'latte', steps: ['espresso', 'milk', 'foam'], price: 4.25 },
@@ -131,6 +149,12 @@ export const DRINKS: DrinkDef[] = [
   { id: 'vanilla_latte', steps: ['vanilla', 'espresso', 'milk', 'foam'], price: 4.75 },
   { id: 'caramel_macchiato', steps: ['caramel', 'milk', 'espresso', 'caramel'], price: 5.25 },
   { id: 'iced_mocha', steps: ['ice', 'chocolate', 'espresso', 'milk', 'whip'], price: 5.45 },
+  { id: 'milk_tea', steps: ['tea', 'milk'], price: 3.75, region: 'zh' },
+  { id: 'yuanyang', steps: ['tea', 'espresso', 'milk'], price: 4.5, region: 'zh' },
+  { id: 'matcha_latte', steps: ['matcha', 'milk', 'foam'], price: 4.75, region: 'ja' },
+  { id: 'iced_matcha', steps: ['ice', 'matcha', 'milk'], price: 4.95, region: 'ja' },
+  { id: 'dalgona', steps: ['ice', 'milk', 'dalgona'], price: 5.25, region: 'ko' },
+  { id: 'iced_americano', steps: ['ice', 'espresso', 'espresso', 'water'], price: 3.5, region: 'ko' },
 ];
 export const COFFEE_COST_RATIO = 0.25;
 
@@ -180,14 +204,23 @@ export const UMBRELLA_PRICE = 8;
 export const CAT_COATS = ['orange', 'black', 'white', 'calico', 'gray', 'tuxedo', 'shorthair', 'siamese'] as const;
 export type CatCoat = (typeof CAT_COATS)[number];
 
-export const DECOR_KINDS = ['plant_small', 'flowers', 'bench', 'cactus', 'lamp', 'gumball', 'magazine', 'cat_tower', 'aquarium'] as const;
+export const DECOR_KINDS = [
+  'plant_small', 'flowers', 'bench', 'cactus', 'lamp', 'gumball', 'magazine', 'cat_tower', 'aquarium',
+  'maneki', 'lantern_stand', 'lucky_bamboo', 'daruma', 'bonsai', 'onggi', 'hanji_lamp',
+] as const;
 export type DecorKind = (typeof DECOR_KINDS)[number];
+/** Regional decorations are only sold while playing in one of these languages. */
+export const DECOR_REGION: Partial<Record<DecorKind, string[]>> = {
+  maneki: ['zh', 'ja'], lantern_stand: ['zh'], lucky_bamboo: ['zh'], daruma: ['ja'], bonsai: ['ja'], onggi: ['ko'], hanji_lamp: ['ko'],
+};
 /** Reputation level needed for each decor item and renovation style. */
 export const DECOR_UNLOCK: Record<DecorKind, number> = {
   plant_small: 1, flowers: 2, bench: 5, cactus: 8, lamp: 4, gumball: 7, magazine: 10, cat_tower: 12, aquarium: 15,
+  maneki: 3, lantern_stand: 2, lucky_bamboo: 1, daruma: 2, bonsai: 4, onggi: 3, hanji_lamp: 4,
 };
 export const DECOR_PRICE: Record<DecorKind, number> = {
   plant_small: 40, flowers: 60, bench: 120, cactus: 80, lamp: 600, gumball: 900, magazine: 1200, cat_tower: 300, aquarium: 3000,
+  maneki: 500, lantern_stand: 200, lucky_bamboo: 90, daruma: 150, bonsai: 400, onggi: 250, hanji_lamp: 600,
 };
 /** How a cat plays with a toy; the renderer animates each style. */
 export type ToyPlay = 'chase' | 'bat' | 'scratch' | 'nap' | 'hide' | 'perch' | 'kick';
@@ -235,19 +268,19 @@ export const STORE_STYLE: Record<string, { floor: string; wall: string; sign: st
   suburb: { floor: 'concrete', wall: 'metal', sign: 'metal' },
   cafe: { floor: 'wood', wall: 'mint', sign: 'chalk' },
 };
-export const FLOOR_STYLES = ['cream', 'wood', 'blue', 'terrazzo', 'mint', 'checker', 'parquet', 'lino', 'concrete'] as const;
-export const WALL_STYLES = ['beige', 'mint', 'brick', 'navy', 'tile', 'green', 'plaster', 'pastel', 'metal'] as const;
-export const SIGN_STYLES = ['wood', 'metal', 'chalk', 'neon', 'awning', 'red', 'crayon'] as const;
+export const FLOOR_STYLES = ['cream', 'wood', 'blue', 'terrazzo', 'mint', 'checker', 'parquet', 'lino', 'concrete', 'flagstone', 'rushmat', 'oilpaper'] as const;
+export const WALL_STYLES = ['beige', 'mint', 'brick', 'navy', 'tile', 'green', 'plaster', 'pastel', 'metal', 'vermilion', 'screens', 'beams'] as const;
+export const SIGN_STYLES = ['wood', 'metal', 'chalk', 'neon', 'awning', 'red', 'crayon', 'plaque', 'curtain', 'celadon'] as const;
 export const STYLE_UNLOCK = {
-  floor: [1, 3, 6, 10, 15, 18, 22, 26, 30],
-  wall: [1, 4, 8, 12, 14, 16, 18, 20, 22],
-  sign: [1, 5, 10, 20, 22, 25, 28],
+  floor: [1, 3, 6, 10, 15, 18, 22, 26, 30, 12, 12, 12],
+  wall: [1, 4, 8, 12, 14, 16, 18, 20, 22, 12, 12, 12],
+  sign: [1, 5, 10, 20, 22, 25, 28, 12, 12, 12],
 };
 /** One-time cost of each renovation style; the first of each is the default. */
 export const STYLE_PRICE = {
-  floor: [0, 1500, 3000, 5000, 8000, 6000, 9000, 6000, 7000],
-  wall: [0, 2000, 4000, 7000, 6000, 6000, 9000, 6000, 7000],
-  sign: [0, 2500, 6000, 12000, 8000, 10000, 8000],
+  floor: [0, 1500, 3000, 5000, 8000, 6000, 9000, 6000, 7000, 8000, 8000, 8000],
+  wall: [0, 2000, 4000, 7000, 6000, 6000, 9000, 6000, 7000, 9000, 9000, 9000],
+  sign: [0, 2500, 6000, 12000, 8000, 10000, 8000, 10000, 10000, 10000],
 };
 export const CAT_ACCS = ['bell', 'bandana', 'bow', 'scarf', 'crown'] as const;
 export type CatAcc = (typeof CAT_ACCS)[number];

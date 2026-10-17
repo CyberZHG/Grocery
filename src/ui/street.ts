@@ -1,7 +1,7 @@
-import { money, t, type Key } from '../i18n';
+import { locale, money, t, type Key } from '../i18n';
 import type { Game } from '../game/game';
 import { saveGame } from '../game/state';
-import { BUILDINGS, levelCost, MAX_BUILDING_LEVEL, type BuildingId } from '../game/street';
+import { BUILDING_REGION, BUILDINGS, levelCost, MAX_BUILDING_LEVEL, type BuildingId } from '../game/street';
 import { spriteIcon } from './achievements';
 import type { UI } from './app';
 import { chainPanel } from './chain';
@@ -16,6 +16,7 @@ export function buildingEffect(id: BuildingId, level: number): string {
   const v: Record<BuildingId, [number, number]> = {
     park: [20 * l, 2 * l], bus: [6 * l, 0], apartments: [10 * l, 0], school: [15 * l, 15 * l], office: [20 * l, 10 * l],
     clinic: [20 * l, 15 * l], arcade: [5 * l, 4 * l], parking: [6 * l, 0], gym: [12 * l, 0], tower: [10 * l, 3 * l],
+    plaza: [20 * l, 0], market: [20 * l, 10 * l], bathhouse: [12 * l, 30 * l], netcafe: [15 * l, 30 * l],
   };
   const [a, b] = v[id];
   return t(`bld.${id}.fx` as Key, { a, b });
@@ -71,7 +72,7 @@ export function streetPanel(g: Game, ui: UI): HTMLElement {
     detail.append(h('h3', {}, [t('street.empty')]));
     const opts = h('div', { class: 'bld-opts' });
     for (const id of BUILDINGS) {
-      if (used.has(id)) continue;
+      if (used.has(id) || (BUILDING_REGION[id] && BUILDING_REGION[id] !== locale())) continue;
       const cost = levelCost(id, 1);
       opts.append(h('button', {
         class: 'bld-opt', disabled: s.money < cost,
@@ -103,7 +104,7 @@ export function growPanel(g: Game, ui: UI): HTMLElement {
   const body = h('div');
   const tabs = h('div', { class: 'tabs' });
   const show = () => {
-    tabs.replaceChildren(...(['expand', 'street', 'chain'] as const).map((k) =>
+    tabs.replaceChildren(...(['expand', 'chain', 'street'] as const).map((k) =>
       h('button', { class: `btn small${growTab === k ? ' active' : ''}`, onclick: () => ((growTab = k), show()) }, [t(`grow.${k}` as Key)])));
     body.replaceChildren(growTab === 'street' ? streetPanel(g, ui) : growTab === 'chain' ? chainPanel(g, ui) : expandPanel(g, ui));
   };

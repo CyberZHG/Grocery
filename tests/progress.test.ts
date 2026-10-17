@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CATEGORIES, PRODUCT_BY_ID } from '../src/game/defs';
-import { freshProducts, isUnlocked, levelsNeeded, priceMult, profit, STARTERS, UNLOCK_ORDER, unlockedCount } from '../src/game/progress';
+import { freshProducts, isUnlocked, levelsNeeded, priceMult, profit, STARTERS, unlockOrder, unlockedCount } from '../src/game/progress';
 
 describe('product progression', () => {
   it('starters are unlocked from the beginning', () => {
@@ -10,7 +10,7 @@ describe('product progression', () => {
 
   it('higher-profit products unlock later', () => {
     for (const c of CATEGORIES) {
-      const order = UNLOCK_ORDER[c].filter((id) => !STARTERS.includes(id));
+      const order = unlockOrder(c).filter((id) => !STARTERS.includes(id));
       for (let i = 1; i < order.length; i++) {
         expect(profit(PRODUCT_BY_ID.get(order[i])!)).toBeGreaterThanOrEqual(profit(PRODUCT_BY_ID.get(order[i - 1])!));
       }
@@ -19,7 +19,7 @@ describe('product progression', () => {
 
   it('category levels unlock the next product', () => {
     const prog = freshProducts();
-    const order = UNLOCK_ORDER.meat;
+    const order = unlockOrder('meat');
     const before = unlockedCount('meat', prog);
     const next = order[before];
     expect(isUnlocked(next, prog)).toBe(false);

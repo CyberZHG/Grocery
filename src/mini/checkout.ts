@@ -1,13 +1,14 @@
 import { drawSprite, drawText, rect, textWidth } from '../core/assets';
 import { Rng } from '../core/rng';
 import { sfx } from '../core/audio';
-import { t } from '../i18n';
-import { COINS, DRAWER_BILLS, greedy, roundCash, sum, type CashPayment } from '../game/rules';
+import { cashLabel, money, t } from '../i18n';
+import { CASH, greedy, isBill, roundCash, sum, type CashPayment, type CashSet } from '../game/rules';
 import { accuracyLabel, inRect, MiniGame, panel, type MiniResult } from './base';
 
 /** Cash on the counter, positioned by its center and rotated by rot radians. */
 interface Piece {
   v: number;
+  bill: boolean;
   cx: number;
   cy: number;
   w: number;
@@ -24,7 +25,7 @@ function extents(p: Piece): [number, number] {
 function hitPiece(p: Piece, x: number, y: number): boolean {
   const dx = x - p.cx;
   const dy = y - p.cy;
-  if (p.v < 100) return dx * dx + dy * dy <= (p.w / 2) * (p.w / 2);
+  if (!p.bill) return dx * dx + dy * dy <= (p.w / 2) * (p.w / 2);
   const c = Math.cos(-p.rot);
   const s = Math.sin(-p.rot);
   return Math.abs(dx * c - dy * s) <= p.w / 2 && Math.abs(dx * s + dy * c) <= p.h / 2;
@@ -35,8 +36,6 @@ function overlap(a: Piece, b: Piece): number {
   const [bx, by] = extents(b);
   return Math.max(0, ax + bx + 2 - Math.abs(a.cx - b.cx)) * Math.max(0, ay + by + 2 - Math.abs(a.cy - b.cy));
 }
-
-const pieceSprite = (v: number) => (v >= 100 ? `bill${v / 100}` : `coin${v}`);
 
 export class CheckoutGame extends MiniGame {
   private pieces: Piece[] = [];
@@ -49,10 +48,12 @@ export class CheckoutGame extends MiniGame {
   private drawerR = { x: 0, y: 0, w: 300, h: 96 };
   private placedOnce = false;
   private rng: Rng;
+  private cash: CashSet;
 
   constructor(total: number, private payment: CashPayment, seed: number) {
     super('checkout.title', 'checkout.hint');
-    this.due = roundCash(total);
+    this.cash = CASH[payment.cash];
+    this.due = roundCash(total, this.cash);
     this.rng = new Rng(seed);
     this.confirm('checkout.give', () => this.give());
     this.button('checkout.short', () => this.short(), 'btn warn');
@@ -87,13 +88,14 @@ export class CheckoutGame extends MiniGame {
     const midY = c.y + c.h / 2;
     const centered = () => (this.rng.next() + this.rng.next()) - 1;
     for (const v of values) {
-      const [, , w, hh] = rect(pieceSprite(v));
-      const rot = v >= 100 ? this.rng.range(-0.55, 0.55) : this.rng.range(-0.6, 0.6);
+      const [, , w, hh] = rect(this.sprite(v));
+      const bill = isBill(this.cash, v);
+      const rot = bill ? this.rng.range(-0.55, 0.55) : this.rng.range(-0.6, 0.6);
       let best: Piece | null = null;
       let bestScore = Infinity;
       for (let i = 0; i < 60; i++) {
         const spread = Math.min(1, 0.45 + i * 0.02);
-        const p: Piece = { v, w, h: hh, rot, cx: midX + centered() * (c.w / 2) * spread, cy: midY + centered() * (c.h / 2) * spread };
+        const p: Piece = { v, bill, w, h: hh, rot, cx: midX + centered() * (c.w / 2) * spread, cy: midY + centered() * (c.h / 2) * spread };
         this.clamp(p);
         const score = this.pieces.reduce((a, o) => a + overlap(p, o), 0);
         if (score < bestScore) {
@@ -135,14 +137,26 @@ export class CheckoutGame extends MiniGame {
       this.say(t('checkout.shortWrong'), 'bad');
       return;
     }
-    this.scatter(greedy(missing, [...DRAWER_BILLS.slice().reverse(), ...COINS]));
+    this.scatter(greedy(missing, [...this.cash.drawer.slice().reverse(), ...this.cash.coins]));
     this.say(t('checkout.added'));
   }
 
+  private sprite(v: number): string {
+    return `cash_${this.cash.id}_${v}`;
+  }
+
+  /** Note slots across the top of the drawer, coin cups below; mirrors drawer() in tools/gen_mini.py. */
   private drawerSlots(): { v: number; r: { x: number; y: number; w: number; h: number } }[] {
     const d = this.drawerR;
-    const out = DRAWER_BILLS.map((v, i) => ({ v, r: { x: d.x + 6 + i * 56, y: d.y + 6, w: 52, h: 47 } }));
-    COINS.slice().reverse().forEach((v, i) => out.push({ v, r: { x: d.x + 6 + (i + 1) * 74, y: d.y + 58, w: 70, h: 33 } }));
+    const row = (n: number, max: number) => {
+      const w = Math.min(max, Math.floor((288 - 4 * (n - 1)) / n));
+      return { w, x0: d.x + Math.floor((d.w - (n * w + (n - 1) * 4)) / 2) };
+    };
+    const b = row(this.cash.drawer.length, 52);
+    const out = this.cash.drawer.map((v, i) => ({ v, r: { x: b.x0 + i * (b.w + 4), y: d.y + 6, w: b.w, h: 47 } }));
+    const coins = this.cash.coins.slice().reverse();
+    const c = row(coins.length, 70);
+    coins.forEach((v, i) => out.push({ v, r: { x: c.x0 + i * (c.w + 4), y: d.y + 58, w: c.w, h: 33 } }));
     return out;
   }
 
@@ -154,8 +168,8 @@ export class CheckoutGame extends MiniGame {
     let cx = r.x + 6;
     const cy = r.y + r.h - 22;
     this.tray.forEach((v, i) => {
-      const [, , w, hh] = rect(pieceSprite(v));
-      if (v >= 100) {
+      const [, , w, hh] = rect(this.sprite(v));
+      if (isBill(this.cash, v)) {
         out.push({ v, x: bx, y: by, w, h: hh, i });
         bx += 8;
         by += 1;
@@ -221,7 +235,7 @@ export class CheckoutGame extends MiniGame {
     ctx.strokeStyle = '#5a3a28';
     ctx.strokeRect(c.x + 0.5, c.y + 0.5, c.w - 1, c.h - 1);
 
-    const amount = `$${(this.due / 100).toFixed(2)}`;
+    const amount = money(this.due / 100);
     const lw = Math.max(textWidth(amount, 2) + 12, 90);
     const lx = Math.floor((vw - lw) / 2);
     panel(ctx, lx, 4, lw, 22, '#203020');
@@ -232,30 +246,33 @@ export class CheckoutGame extends MiniGame {
       ctx.translate(Math.round(p.cx), Math.round(p.cy));
       ctx.rotate(p.rot);
       ctx.fillStyle = 'rgba(40, 20, 10, 0.25)';
-      if (p.v >= 100) ctx.fillRect(-p.w / 2 + 2, -p.h / 2 + 2, p.w, p.h);
-      drawSprite(ctx, pieceSprite(p.v), -p.w / 2, -p.h / 2);
+      if (p.bill) ctx.fillRect(-p.w / 2 + 2, -p.h / 2 + 2, p.w, p.h);
+      drawSprite(ctx, this.sprite(p.v), -p.w / 2, -p.h / 2);
       ctx.restore();
     }
 
     drawSprite(ctx, 'tray', this.trayR.x, this.trayR.y);
-    for (const it of this.trayItems()) drawSprite(ctx, pieceSprite(it.v), it.x, it.y);
-    const ts = `$${(sum(this.tray) / 100).toFixed(2)}`;
+    for (const it of this.trayItems()) drawSprite(ctx, this.sprite(it.v), it.x, it.y);
+    const ts = money(sum(this.tray) / 100);
     drawText(ctx, ts, this.trayR.x + this.trayR.w + 6, this.trayR.y + 4, '#f0e0a0');
 
-    drawSprite(ctx, 'drawer', this.drawerR.x, this.drawerR.y);
+    drawSprite(ctx, `drawer_${this.cash.id}`, this.drawerR.x, this.drawerR.y);
     for (const s of this.drawerSlots()) {
-      const name = pieceSprite(s.v);
+      const name = this.sprite(s.v);
       ctx.save();
       ctx.beginPath();
       ctx.rect(s.r.x + 1, s.r.y + 1, s.r.w - 2, s.r.h - 2);
       ctx.clip();
-      if (s.v >= 100) {
-        for (let k = 0; k < 3; k++) drawSprite(ctx, name, s.r.x - 4 + k, s.r.y + 12 + k * 2);
-        drawText(ctx, `$${s.v / 100}`, s.r.x + 4, s.r.y + 3, '#f0f0f0');
+      if (isBill(this.cash, s.v)) {
+        const [, , w] = rect(name);
+        const x = s.r.w > w ? s.r.x + (s.r.w - w) / 2 : s.r.x - 4;
+        for (let k = 0; k < 3; k++) drawSprite(ctx, name, x + k, s.r.y + 12 + k * 2);
+        drawText(ctx, cashLabel(this.cash.id, s.v), s.r.x + 4, s.r.y + 3, '#f0f0f0');
       } else {
         const [, , w, hh] = rect(name);
-        for (let k = 0; k < 4; k++) drawSprite(ctx, name, s.r.x + s.r.w / 2 - w / 2 - 12 + k * 7, s.r.y + s.r.h / 2 - hh / 2 + (k % 2) * 2);
-        drawText(ctx, `${s.v}¢`, s.r.x + 3, s.r.y + 2, '#f0f0f0');
+        const n = s.r.w < 60 ? 3 : 4;
+        for (let k = 0; k < n; k++) drawSprite(ctx, name, s.r.x + s.r.w / 2 - w / 2 - (n - 1) * 3.5 + k * 7, s.r.y + s.r.h / 2 - hh / 2 + (k % 2) * 2);
+        drawText(ctx, cashLabel(this.cash.id, s.v), s.r.x + 3, s.r.y + 2, '#f0f0f0');
       }
       ctx.restore();
     }

@@ -1,21 +1,23 @@
 import { Rng } from '../core/rng';
+import { cashSet, deliOrderSizes, locale, money } from '../i18n';
 import { Mover, type Dir } from './agent';
 import {
   BREAD_COST_RATIO, BREAD_PRICE, BREADS, COFFEE_COST_RATIO, favBread, DAY_END, DAY_START, DRINKS, FIXTURES, LAST_ENTRY,
   LEVELS, MEAT_COST_RATIO, MEAT_PRICE_LB, MEATS, NPC_ROW0, NPCS, ODEN_COST_RATIO, ODEN_ITEMS, ODEN_PRICE,
-  OWNER_ROW, PRODUCT_BY_ID, STAFF_ROW0, TRAIT_BY_ID, CATEGORIES, CAT_COATS, isRolling, TOY_PLAY, type CafeToy, CAT_TREASURES, UMBRELLA_COLORS, UMBRELLA_PRICE, GIFT_KINDS, GIFT_LEVELS, unlockedSkills, type Bread, type Category, type BreadQuality, type DrinkDef, type Meat, type NpcDef,
+  offeredIn, OWNER_ROW, PRODUCT_BY_ID, STAFF_ROW0, TRAIT_BY_ID, CATEGORIES, CAT_COATS, isRolling, TOY_PLAY, type CafeToy, CAT_TREASURES, UMBRELLA_COLORS, UMBRELLA_PRICE, GIFT_KINDS, GIFT_LEVELS, unlockedSkills, type Bread, type Category, type BreadQuality, type DrinkDef, type Meat, type NpcDef,
   type OdenItem, type Skill, type StationKind,
 } from './defs';
-import { demandMult, holidayOf, stationMult, trafficMult, weatherOf } from './calendar';
+import { sunPatches, sunTiles } from './ambience';
+import { dateOf, demandMult, holidayOf, stationMult, streetCart, trafficMult, weatherOf } from './calendar';
 import {
   catAppeal, catLover, costOf, equipSpeed, gainCat, gainEquipment, gainReputation, gainSupplier, giftChance, PETS_PER_DAY, repTraffic, rosterSize, type EquipKind,
 } from './growth';
-import { collectionCount, collectionMult, isUnlocked, priceMult, productExpToNext, UNLOCK_ORDER, unlockedCount } from './progress';
+import { collectionCount, collectionMult, isUnlocked, priceMult, productExpToNext, unlockOrder, unlockedCount } from './progress';
 import { streetFx, type StreetFx } from './street';
 import { chainPriceMult, inCafe, isFresh, peaksOf, perksOf, rulesOf, storeLayout, type Perks, type Rules } from './chain';
 import { accessTiles, entryTile, fixtureCells, Grid, serveTiles, spawnTile, type Layout, type P, type StationSpot } from './layout';
 import {
-  addExp, affinityValue, budgetMult, changeAffinity, makeCashPayment, npcExpToNext, roundCash, serviceReward, skillExpToNext, skillSpeed, waitPenalty,
+  addExp, affinityValue, budgetMult, CASH, changeAffinity, makeCashPayment, npcExpToNext, roundCash, serviceReward, skillExpToNext, skillSpeed, waitPenalty,
   type CashPayment, type Leveled, type ServiceResult,
 } from './rules';
 import { openingBuzz, takeStored, unlockedBreads, wageOf, type DayStats, type FixtureState, type GameState, type Role } from './state';
@@ -29,6 +31,27 @@ export interface BasketItem {
 }
 
 export type OdenOrder = { kind: 'oden'; items: Partial<Record<OdenItem, number>> };
+export type PasserKind = 'dog' | 'sparrows' | 'pigeon' | 'butterfly' | 'squirrel' | 'raccoon';
+export interface Passer {
+  id: number;
+  kind: PasserKind;
+  x: number;
+  y: number;
+  dir: 1 | -1;
+  /** tiles per game minute */
+  speed: number;
+  /** which regular's look the dog walker borrows, and the dog's coat */
+  look: number;
+  coat: number;
+  stopUntil: number;
+  leaveAt: number;
+  /** clock when birds took off; -1 while they're still here */
+  flee: number;
+  /** when it showed up: sparrows spend the first moment flying down to land */
+  since: number;
+  /** a startled squirrel bolting off */
+  bolt?: boolean;
+}
 export type DeliOrder = { kind: 'deli'; meat: Meat; pounds: number };
 export type CoffeeOrder = { kind: 'coffee'; drink: DrinkDef };
 export type Order = OdenOrder | DeliOrder | CoffeeOrder;
@@ -105,7 +128,7 @@ export class Customer {
   /** umbrella colour on a wet day */
   umbrella: string | null = null;
   /** Last item taken off a shelf, for the hand-to-basket animation. */
-  pick: { index: number; x: number; y: number; at: number } | null = null;
+  pick: { index: number; x: number; y: number; at: number; fixture: number; slot: number } | null = null;
 
   constructor(readonly id: number, readonly npc: NpcDef, p: P, budget: number) {
     this.mover = new Mover(p);
@@ -208,7 +231,7 @@ export class Worker {
   }
 }
 
-type CatGoal = 'tower' | 'fish' | 'friend' | 'leave' | 'rub' | 'follow' | 'box' | 'toy' | 'perch';
+type CatGoal = 'tower' | 'fish' | 'friend' | 'leave' | 'rub' | 'follow' | 'box' | 'toy' | 'perch' | 'maneki' | 'sun';
 
 export class CatAgent {
   mover: Mover;
@@ -309,6 +332,15 @@ export class Sim {
   rng: Rng;
   clock = DAY_START;
   customers: Customer[] = [];
+  /** Animals and dog walkers going past outside; just for looks, with their own random numbers. */
+  passers: Passer[] = [];
+  /** wet shoe prints inside the door on rainy and snowy days */
+  footprints: { x: number; y: number; age: number; flip: boolean }[] = [];
+  /** the morning delivery: someone wheeling boxes from a van to the stock door and back */
+  delivery: { mover: Mover | null; phase: 'arrive' | 'in' | 'drop' | 'out' | 'leave'; timer: number; vanX: number; parkX: number } | null = null;
+  private delivered = false;
+  private passRng: Rng;
+  private nextPasser = 1;
   workers: Worker[] = [];
   registers: Line[] = [];
   stations = new Map<StationKind, Line>();
@@ -354,6 +386,7 @@ export class Sim {
   constructor(readonly state: GameState) {
     this.layout = storeLayout(state);
     this.weather = weatherOf(state.seed, state.day);
+    this.passRng = new Rng((state.seed * 41 + state.day * 3163) | 0);
     this.rules = rulesOf(state);
     this.perks = perksOf(state);
     this.street = streetFx(state.street);
@@ -680,7 +713,7 @@ export class Sim {
       this.stats.revenue += UMBRELLA_PRICE;
       this.state.lifetime.revenue += UMBRELLA_PRICE;
       const e = entryTile(this.layout);
-      this.floaters.push({ text: `+$${UMBRELLA_PRICE.toFixed(2)}`, x: e.x + 0.5, y: e.y, t: 0, color: '#f0c040' });
+      this.floaters.push({ text: `+${money(UMBRELLA_PRICE)}`, x: e.x + 0.5, y: e.y, t: 0, color: '#f0c040' });
       c.umbrella = this.rng.pick([...UMBRELLA_COLORS]);
     } else if (this.weather === 'rain' && this.rng.chance(0.6)) c.umbrella = this.rng.pick([...UMBRELLA_COLORS]);
     if (this.spills.length < 5 && this.rng.chance(0.12)) {
@@ -693,6 +726,154 @@ export class Sim {
   // ---------- rolling toys ----------
 
   /** Toys rolling right now. */
+  /** People in line for coffee or on their way to it. */
+  private coffeeCrowd(): number {
+    const line = this.stations.get('coffee');
+    const going = this.customers.filter((c) => c.state !== 'queue' && c.state !== 'leave' && c.targets[0]?.t === 'station' && c.targets[0].kind === 'coffee').length;
+    return (line?.members.length ?? 0) + going;
+  }
+
+  /** A wet customer leaves a few shoe prints just inside the door. */
+  private trackIn(x: number): void {
+    const l = this.layout;
+    const r = this.passRng;
+    for (let k = 0; k < 3; k++) {
+      this.footprints.push({ x: x + r.range(-0.25, 0.25), y: l.h - 0.7 - k * 0.55 + r.range(-0.1, 0.1), age: 0, flip: k % 2 === 1 });
+    }
+    if (this.footprints.length > 60) this.footprints.splice(0, this.footprints.length - 60);
+  }
+
+  /** Prints dry out over a few hours; when they pile up, the mat area turns into a spill for staff to mop. */
+  private updateFootprints(dt: number): void {
+    for (const f of this.footprints) f.age += dt;
+    this.footprints = this.footprints.filter((f) => f.age < 180);
+    const l = this.layout;
+    const e = entryTile(l);
+    const nearDoor = (s: { x: number; y: number }) => Math.abs(s.x - e.x) <= 2 && Math.abs(s.y - e.y) <= 2;
+    if (this.footprints.length >= 18 && this.spills.length < 5 && !this.spills.some(nearDoor)) {
+      const at = [{ x: e.x, y: e.y - 1 }, { x: e.x + 1, y: e.y - 1 }, { x: e.x - 1, y: e.y - 1 }].find((p) => this.spillVisible(p.x, p.y));
+      if (at) this.spills.push({ id: this.nextSpill++, x: at.x, y: at.y, kind: 'puddle', age: 0 });
+    }
+  }
+
+  /** Mopping near the door takes the prints around it too. */
+  private mopPrints(sp: { x: number; y: number }): void {
+    this.footprints = this.footprints.filter((f) => Math.abs(f.x - sp.x) + Math.abs(f.y - sp.y) > 3);
+  }
+
+  /**
+   * Shortly after opening, a delivery van drives up the street and parks by the door; the driver wheels boxes
+   * in to the stock door, comes back, and the van drives off the other way.
+   */
+  private updateDelivery(dt: number): void {
+    const l = this.layout;
+    if (!this.delivery && !this.delivered && !this.closing && this.clock >= DAY_START + 6) {
+      this.delivered = true;
+      const parkX = l.mirrored ? l.entrance - 4 : l.entrance + 3;
+      // the van's cab is on the right, so it comes in from the left and drives on to the right
+      this.delivery = { mover: null, phase: 'arrive', timer: 0, vanX: -4, parkX };
+    }
+    const d = this.delivery;
+    if (!d) return;
+    const VAN_SPEED = 5;
+    if (d.phase === 'arrive') {
+      // slow down as it pulls in
+      d.vanX = Math.min(d.parkX, d.vanX + Math.max(0.6, Math.min(VAN_SPEED, (d.parkX - d.vanX) * 1.5)) * dt);
+      if (d.vanX >= d.parkX) {
+        d.phase = 'in';
+        d.mover = new Mover({ x: Math.round(d.parkX), y: l.h + 1 });
+        this.walk(d.mover, l.stockDoor);
+      }
+      return;
+    }
+    if (d.phase === 'leave') {
+      d.timer += dt;
+      d.vanX += Math.min(VAN_SPEED, 0.6 + d.timer * 3) * dt;
+      if (d.vanX > l.w + 3) this.delivery = null;
+      return;
+    }
+    const m = d.mover!;
+    m.step(dt, 0.9);
+    if (d.phase === 'in' && !m.path.length) {
+      d.phase = 'drop';
+      m.face('up');
+    } else if (d.phase === 'drop') {
+      d.timer += dt;
+      if (d.timer > 2) {
+        d.phase = 'out';
+        this.walk(m, { x: Math.round(d.parkX), y: l.h + 1 });
+      }
+    } else if (d.phase === 'out' && !m.path.length) {
+      d.phase = 'leave';
+      d.timer = 0;
+      d.mover = null;
+    }
+  }
+
+  /** Now and then someone walks a dog past, sparrows hop about or a pigeon wanders by; more often when the shop is quiet. */
+  private updatePassers(dt: number): void {
+    const l = this.layout;
+    const r = this.passRng;
+    const n = this.customers.length;
+    const quiet = n <= 1 ? 3 : n <= 4 ? 2 : n <= 10 ? 1 : 0.4;
+    const weather = this.weather === 'rain' ? 0.4 : this.weather === 'snow' ? 0.3 : 1;
+    if (!this.closing && this.passers.length < 3 && r.chance(0.03 * quiet * weather * dt)) {
+      const season = dateOf(this.state.day).season;
+      const kinds: [PasserKind, number][] = [
+        ['dog', 0.4], ['sparrows', 0.3], ['pigeon', 0.2], ['butterfly', season === 'spring' || season === 'summer' ? 0.15 : 0],
+        ['squirrel', season === 'winter' ? 0.04 : 0.2],
+        // raccoons come out toward evening
+        ['raccoon', this.clock >= 16 * 60 ? 0.25 : 0.04],
+      ];
+      let pick = r.next() * kinds.reduce((a, [, w]) => a + w, 0);
+      const kind = kinds.find(([, w]) => (pick -= w) <= 0)![0];
+      const dir = r.chance(0.5) ? 1 : -1;
+      const p: Passer = {
+        id: this.nextPasser++, kind, dir, x: dir > 0 ? -2 : l.w + 1, y: l.h + r.range(1.35, 1.85),
+        speed: { dog: 0.8, sparrows: 0, pigeon: 0.35, butterfly: 0.9, squirrel: 2.4, raccoon: 0.55 }[kind], look: r.int(0, 59), coat: r.int(0, 4),
+        stopUntil: 0, leaveAt: this.clock + r.range(20, 40), flee: -1, since: this.clock,
+      };
+      if (kind === 'pigeon') p.speed = r.range(0.25, 0.5);
+      // birds drop down somewhere along the sidewalk and stay a while
+      if (kind === 'sparrows') p.x = r.range(1, l.w - 2);
+      this.passers.push(p);
+    }
+    const walkers = [...this.customers.map((c) => c.mover), ...this.passers.filter((o) => o.kind === 'dog').flatMap((o) => [{ x: o.x, y: o.y }, { x: o.x + o.dir * 1.1, y: o.y }])];
+    for (const p of this.passers) {
+      if (p.flee >= 0) continue;
+      if (p.kind === 'sparrows' || p.kind === 'pigeon') {
+        // birds take off when a person or a dog comes close; sparrows also leave on their own after a while
+        const landed = this.clock - p.since > 1;
+        const near = walkers.some((m) => Math.abs(m.x - p.x) < 1.6 && Math.abs(m.y - p.y) < 1.2);
+        if (landed && (near || (p.kind === 'sparrows' && this.clock > p.leaveAt))) {
+          p.flee = this.clock;
+          continue;
+        }
+        if (p.kind === 'sparrows') continue;
+      }
+      if ((p.kind === 'squirrel' || p.kind === 'raccoon') && !p.bolt) {
+        // someone coming close: it freezes upright for a beat, then bolts away from them (a raccoon less quickly)
+        const threat = walkers.find((m) => Math.abs(m.x - p.x) < 2 && Math.abs(m.y - p.y) < 1.2);
+        if (threat) {
+          p.bolt = true;
+          p.dir = threat.x < p.x ? 1 : -1;
+          p.speed = p.kind === 'squirrel' ? 6 : 2.6;
+          p.stopUntil = this.clock + (p.kind === 'squirrel' ? 0.3 : 0.6);
+        }
+      }
+      if (this.clock < p.stopUntil) continue;
+      p.x += p.dir * p.speed * dt;
+      // a dog stops now and then to sniff something; a squirrel dashes, then sits up to look around
+      if (p.kind === 'dog' && r.chance(0.08 * dt)) p.stopUntil = this.clock + r.range(0.8, 2.5);
+      if (p.kind === 'squirrel' && !p.bolt && r.chance(0.6 * dt)) p.stopUntil = this.clock + r.range(0.5, 1.8);
+      // a pigeon dawdles: stops to peck at the pavement every so often
+      if (p.kind === 'pigeon' && r.chance(0.35 * dt)) p.stopUntil = this.clock + r.range(0.4, 1.4);
+      // a raccoon stops to rummage at the pavement, or sits up to look around
+      if (p.kind === 'raccoon' && !p.bolt && r.chance(0.25 * dt)) p.stopUntil = this.clock + r.range(1, 3);
+    }
+    this.passers = this.passers.filter((p) => (p.flee >= 0 ? this.clock - p.flee < 1.5 : p.x > -3.5 && p.x < l.w + 2.5));
+  }
+
   rollingToys(): Set<number> {
     return new Set(this.roll.keys());
   }
@@ -701,11 +882,36 @@ export class Sim {
     return f.at ?? { x: f.x, y: f.y };
   }
 
-  /** Inside the store, on open floor, clear of the door rows. */
+  /** Inside the store, on open floor, clear of the door rows, counters, staff spots and queues. */
   private floorOk(x: number, y: number): boolean {
     const tx = Math.round(x);
     const ty = Math.round(y);
-    return ty >= 1 && ty <= this.layout.h - 3 && this.grid.walkable(tx, ty);
+    return ty >= 1 && ty <= this.layout.h - 3 && this.grid.walkable(tx, ty) && !this.layout.reserved[ty * this.layout.w + tx];
+  }
+
+  /** Keeps a ball from sinking halfway into a wall or a counter beside its tile. */
+  private clampToFloor(x: number, y: number): P {
+    const tx = Math.round(x);
+    const ty = Math.round(y);
+    const m = 0.25;
+    if (!this.floorOk(tx - 1, ty)) x = Math.max(x, tx - m);
+    if (!this.floorOk(tx + 1, ty)) x = Math.min(x, tx + m);
+    if (!this.floorOk(tx, ty - 1)) y = Math.max(y, ty - m);
+    if (!this.floorOk(tx, ty + 1)) y = Math.min(y, ty + m);
+    return { x, y };
+  }
+
+  private nearestFloor(p: P): P | null {
+    const x0 = Math.round(p.x);
+    const y0 = Math.round(p.y);
+    for (let r = 1; r <= 8; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) === r && this.floorOk(x0 + dx, y0 + dy)) return { x: x0 + dx, y: y0 + dy };
+        }
+      }
+    }
+    return null;
   }
 
   private kick(f: FixtureState, dx: number, dy: number, speed: number): void {
@@ -732,7 +938,7 @@ export class Sim {
         v.vy = -v.vy * 0.7;
         y = p.y;
       }
-      f.at = { x, y };
+      f.at = this.clampToFloor(x, y);
       const k = Math.exp(-dt * 0.9);
       v.vx *= k;
       v.vy *= k;
@@ -741,7 +947,15 @@ export class Sim {
     // shoppers walking past nudge a ball along with their foot
     for (const f of this.placed()) {
       if (!isRolling(f.decor) || this.roll.has(f.id)) continue;
-      const p = this.toyAt(f);
+      let p = this.toyAt(f);
+      // a ball left behind a counter by an older version is put back on the floor
+      if (!this.floorOk(p.x, p.y)) {
+        const q = this.nearestFloor(p);
+        if (q) f.at = p = q;
+      } else {
+        const q = this.clampToFloor(p.x, p.y);
+        if (q.x !== p.x || q.y !== p.y) f.at = p = q;
+      }
       const c = this.customers.find((x) => x.mover.moving && Math.abs(x.mover.x - p.x) + Math.abs(x.mover.y - p.y) < 0.5);
       if (c) this.kick(f, p.x - c.mover.x + (c.mover.dir === 'right' ? 0.5 : c.mover.dir === 'left' ? -0.5 : 0), p.y - c.mover.y + (c.mover.dir === 'down' ? 0.5 : c.mover.dir === 'up' ? -0.5 : 0), 1.2);
     }
@@ -844,6 +1058,18 @@ export class Sim {
       c.timer = timer(40, 120);
       return;
     }
+    if (goal?.kind === 'sun') {
+      c.mode = this.passRng.chance(0.6) ? 'sleep' : 'loaf';
+      c.timer = timer(30, 70);
+      return;
+    }
+    if (goal?.kind === 'maneki' && f?.placed) {
+      c.mode = 'sit';
+      c.mover.face(f.x < c.mover.tile.x ? 'left' : 'right');
+      c.timer = timer(5, 9);
+      for (let k = 0; k < 4; k++) this.later(c, k === 0 ? 'b_paw' : null, k * 1.1, 0.5, 'swipe');
+      return;
+    }
     if (goal?.kind === 'fish' && f?.placed) {
       c.mode = 'sit';
       c.mover.face(f.x < c.mover.tile.x ? 'left' : 'right');
@@ -852,7 +1078,8 @@ export class Sim {
       return;
     }
     if (goal?.kind === 'friend') {
-      const other = this.cats().find((k) => k !== c);
+      // only a cat standing still can be greeted; one on its way somewhere would slide while sitting
+      const other = this.cats().find((k) => k !== c && !k.mover.path.length && !k.tag);
       if (other && this.guest && !this.guest.met && Math.abs(other.mover.tile.x - c.mover.tile.x) + Math.abs(other.mover.tile.y - c.mover.tile.y) <= 2) {
         // first meeting today: a hiss and a stare before they warm up
         this.guest.met = true;
@@ -875,6 +1102,7 @@ export class Sim {
           this.doAct(k, 'play', 4);
           this.faceToward(k.mover, (k === c ? other : c).mover.tile);
         }
+        this.laowu(c, other);
         this.state.cat.mood = Math.min(100, this.state.cat.mood + 5);
         return;
       }
@@ -1000,7 +1228,7 @@ export class Sim {
   private playTag(c: CatAgent): void {
     const t = c.tag!;
     const o = t.other;
-    if (this.clock > t.until || !o.tag || o.tag.other !== c || (this.guest?.agent === o && this.guest.gone)) {
+    if (this.clock > t.until || this.closing || !o.tag || o.tag.other !== c || (this.guest?.agent === o && this.guest.gone)) {
       // game over: trot to the nearest tile, then settle down as usual
       c.tag = null;
       c.goal = null;
@@ -1040,6 +1268,21 @@ export class Sim {
     return this.catSpot();
   }
 
+  /**
+   * Chinese only: once in a while, two cats sitting together close by yell "老吴" at each other.
+   * Both stay put until the exchange is over.
+   */
+  private laowu(a: CatAgent, b: CatAgent): void {
+    const near = Math.abs(a.mover.x - b.mover.x) + Math.abs(a.mover.y - b.mover.y) <= 2;
+    if (locale() !== 'zh' || !near || a.mover.path.length || b.mover.path.length || !this.rng.chance(0.04)) return;
+    for (const k of [a, b]) {
+      k.mode = 'sit';
+      k.timer = Math.max(k.timer, 6);
+    }
+    a.bubble = { icon: 'b_laowu', until: this.clock + 3.5 };
+    this.later(b, 'b_laowu', 1.5, 3.5);
+  }
+
   private startTag(a: CatAgent, b: CatAgent): void {
     const until = this.clock + this.rng.range(4, 9);
     a.tag = { other: b, it: true, until };
@@ -1057,7 +1300,7 @@ export class Sim {
   private wanderCat(c: CatAgent): void {
     // sometimes, instead of wandering, start a chase with another cat that's up and about
     const free = this.cats().filter((k) => k !== c && !k.tag && !k.perch && k.toy === null && k.mode !== 'sleep' && k.goal?.kind !== 'leave' && k.mover.y < this.layout.h);
-    if (free.length && this.rng.chance(0.15)) {
+    if (free.length && !this.closing && this.rng.chance(0.15)) {
       this.startTag(c, this.rng.pick(free));
       return;
     }
@@ -1080,6 +1323,9 @@ export class Sim {
     if (this.cafe && this.rng.chance(0.55)) {
       const busy = new Set(this.cats().map((k) => k.toy ?? k.goal?.fixture));
       const toys = this.placed().filter((f) => f.decor?.startsWith('toy_') && !busy.has(f.id));
+      // a ball lying close by catches the eye before anything else
+      const near = toys.filter((f) => isRolling(f.decor) && !this.roll.has(f.id) && Math.abs(this.toyAt(f).x - c.mover.x) + Math.abs(this.toyAt(f).y - c.mover.y) <= 5);
+      if (near.length && this.rng.chance(0.4) && this.goPlay(c, this.rng.pick(near))) return;
       if (toys.length && this.goPlay(c, this.rng.pick(toys))) return;
     }
     const decor = (kind: string) => this.placed().filter((f) => f.kind === 'decor' && f.decor === kind);
@@ -1090,6 +1336,28 @@ export class Sim {
       return acc.length ? this.freeTile(c.mover, acc) ?? null : null;
     };
     const other = this.cats().find((k) => k !== c && k.goal?.kind !== 'leave');
+    // on a sunny day the patch of light under a window is the best spot in the shop
+    const patches = sunPatches(this.layout, this.state.seed, this.state.day, this.clock).filter((p) => p.strength > 0.3);
+    if (patches.length && this.passRng.chance(0.22)) {
+      const tiles = patches.flatMap((p) => sunTiles(this.layout, p)).filter((q) => this.catVisible(q.x, q.y) && !this.layout.reserved[q.y * this.layout.w + q.x]);
+      const to = tiles.length ? this.freeTile(c.mover, tiles) : undefined;
+      if (to) {
+        c.goal = { kind: 'sun' };
+        this.walk(c.mover, to);
+        return;
+      }
+    }
+    // a beckoning cat figurine gets beckoned back
+    const lucky = decor('maneki');
+    if (lucky.length && this.rng.chance(0.12)) {
+      const f = this.rng.pick(lucky);
+      const to = near(f, true);
+      if (to) {
+        c.goal = { kind: 'maneki', fixture: f.id };
+        this.walk(c.mover, to);
+        return;
+      }
+    }
     const r = this.rng.next();
     // cats are sociable: a good share of their wandering is toward someone
     const tower = r < 0.3 ? this.rng.pick(decor('cat_tower')) : undefined;
@@ -1198,7 +1466,7 @@ export class Sim {
     const roster = NPCS.slice(0, rosterSize(this.state));
     const appeal = Math.min(0.15, this.placed().length * 0.006);
     const rep = repTraffic(this.state.reputation.level);
-    const traffic = trafficMult(this.state.seed, this.state.day) * (1 + openingBuzz(this.state)) * this.rules.traffic * this.street.traffic;
+    const traffic = trafficMult(this.state.seed, this.state.day) * (1 + openingBuzz(this.state)) * this.rules.traffic * this.street.traffic * (streetCart(this.state.seed, this.state.day) ? 1.05 : 1);
     if (!broke) this.supplierGifts(false);
     this.rollEvent();
     if (!this.cafe) this.planGuest();
@@ -1241,7 +1509,7 @@ export class Sim {
   private arrivalTime(): number {
     let r = this.rng.next();
     let t = this.rng.range(DAY_START, LAST_ENTRY);
-    for (const [at, share, spread] of peaksOf(this.state)) {
+    for (const [at, share, spread] of [...peaksOf(this.state), ...this.street.peaks]) {
       if (r < share) {
         t = at + (this.rng.next() + this.rng.next() - 1) * spread;
         break;
@@ -1280,7 +1548,10 @@ export class Sim {
     if (this.done) return;
     this.clock += dtMin;
     while (this.arrivals.length && this.arrivals[0].t <= this.clock && !this.closing) {
-      this.spawn(this.arrivals.shift()!.npc);
+      const npc = this.arrivals.shift()!.npc;
+      // at the cafe, a long line for coffee turns some newcomers away at the door
+      if (this.cafe && this.rng.chance(Math.min(0.9, this.coffeeCrowd() * 0.2))) continue;
+      this.spawn(npc);
     }
     if (!this.closing && this.clock >= DAY_END) {
       this.closing = true;
@@ -1292,6 +1563,9 @@ export class Sim {
     this.updateOven(dtMin);
     this.updateCat(dtMin);
     this.updateToys(dtMin);
+    this.updatePassers(dtMin);
+    this.updateFootprints(dtMin);
+    this.updateDelivery(dtMin);
     for (const sp of this.spills) sp.age += dtMin;
     const ev = this.event;
     if (ev?.kind === 'tour' && this.clock >= ev.at && !this.closing) {
@@ -1334,6 +1608,7 @@ export class Sim {
     this.state.lifetime.customers += 1;
     this.walk(c.mover, entryTile(this.layout));
     this.welcome(c);
+    if (this.weather === 'rain' || this.weather === 'snow') this.trackIn(start.x);
   }
 
   /** The worker nearest the entrance says hello. */
@@ -1359,6 +1634,7 @@ export class Sim {
   private cafeTargets(c: Customer): Target[] {
     const out: Target[] = [];
     if (this.stations.has('coffee')) out.push({ t: 'station', kind: 'coffee' });
+    if (this.stationSpot('bakery') && this.rng.chance(0.3 + c.npc.stations.bakery)) out.push({ t: 'bakery' });
     const tables = this.placed().filter((f) => f.decor === 'table');
     if (tables.length) out.push({ t: 'decor', fixture: this.rng.pick(tables).id });
     for (const f of this.rng.shuffle(this.placed().filter((x) => x.kind === 'decor' && DECOR_VISIT[x.decor ?? '']))) {
@@ -1381,7 +1657,7 @@ export class Sim {
         const p = PRODUCT_BY_ID.get(s.product)!;
         const fav = npc.favs.includes(p.id);
         const like = npc.likes.includes(p.cat);
-        const prob = Math.min(0.95, (0.08 + (like ? 0.28 : 0) + (fav ? 0.75 : 0) + aff * 0.004) * demandMult(this.state.seed, this.state.day, p.id) * (this.street.cat[p.cat] ?? 1));
+        const prob = Math.min(0.95, (0.08 + (like ? 0.28 : 0) + (fav ? 0.75 : 0) + aff * 0.004) * demandMult(this.state.seed, this.state.day, p.id) * (this.street.cat[p.cat] ?? 1) * (this.street.items[p.id] ?? 1));
         if (this.rng.chance(prob)) picks.push({ tg: { t: 'slot', fixture: f.id, slot: i }, price: this.priceOf(p.id), w: fav ? 3 : like ? 2 : 1 });
       });
     }
@@ -1635,14 +1911,16 @@ export class Sim {
       c.bubble ??= { icon: 'b_star', until: this.clock + 2 };
       this.doAct(c, c.npc.kind === 'kid' ? 'laugh' : 'point', 1.5);
     } else if (f.decor === 'gumball') {
+      c.using = f.id;
       this.doAct(c, 'reach', 0.8);
       this.prop('candy', { x: f.x, y: f.y + 0.3 }, { x: c.mover.x, y: c.mover.y }, 0.4, undefined, 0.3);
       this.state.money += 1;
       this.stats.revenue += 1;
       this.state.lifetime.revenue += 1;
-      this.floaters.push({ text: '+$1.00', x: f.x, y: f.y, t: 0, color: '#f0c040' });
+      this.floaters.push({ text: `+${money(1)}`, x: f.x, y: f.y, t: 0, color: '#f0c040' });
     } else if (f.decor === 'magazine') {
       c.timer = 2;
+      c.using = f.id;
       this.doAct(c, 'read', 2);
       // an ad catches the eye: one more stop on the way
       if (this.rng.chance(0.4)) {
@@ -1705,7 +1983,7 @@ export class Sim {
     if (neat && --neat.left <= 0) this.tidy.delete(f.id);
     if (this.rng.chance(two) && s.stock >= 2 && price * 2 <= remaining) qty = 2;
     s.stock -= qty;
-    c.pick = { index: p.index, x: f.vertical ? f.x : f.x + slot, y: f.vertical ? f.y + slot : f.y, at: this.clock };
+    c.pick = { index: p.index, x: f.vertical ? f.x : f.x + slot, y: f.vertical ? f.y + slot : f.y, at: this.clock, fixture: f.id, slot };
     c.spent += price * qty;
     c.basket.push({ kind: 'product', id: p.id, price, cost: costOf(this.state, p), qty });
     this.productSold(p.id, qty);
@@ -1736,7 +2014,7 @@ export class Sim {
     const before = unlockedCount(cat, this.state.products);
     const first = prog.sold === 0;
     prog.sold += qty;
-    if (first && !this.state.collections.includes(cat) && collectionCount(cat, this.state.products) === UNLOCK_ORDER[cat].length) {
+    if (first && !this.state.collections.includes(cat) && collectionCount(cat, this.state.products) === unlockOrder(cat).length) {
       this.state.collections.push(cat);
       this.emit({ type: 'collection', cat });
     }
@@ -1745,7 +2023,7 @@ export class Sim {
       this.emit({ type: 'productLevel', id, level: prog.level });
       const after = unlockedCount(cat, this.state.products);
       this.state.lifetime.unlocks += after - before;
-      for (let i = before; i < after; i++) this.emit({ type: 'unlock', id: UNLOCK_ORDER[cat][i] });
+      for (let i = before; i < after; i++) this.emit({ type: 'unlock', id: unlockOrder(cat)[i] });
     }
   }
 
@@ -1782,8 +2060,8 @@ export class Sim {
       for (const k of kinds) items[k] = this.rng.int(1, 3);
       return { kind, items };
     }
-    if (kind === 'deli') return { kind, meat: this.rng.pick(MEATS), pounds: this.rng.pick([0.25, 0.5, 0.5, 0.75, 1]) };
-    return { kind: 'coffee', drink: this.rng.pick(DRINKS) };
+    if (kind === 'deli') return { kind, meat: this.rng.pick(MEATS), pounds: this.rng.pick(deliOrderSizes()) };
+    return { kind: 'coffee', drink: this.rng.pick(DRINKS.filter((d) => offeredIn(d, locale()))) };
   }
 
   orderPrice(o: Order): { price: number; cost: number; id: string } {
@@ -1806,7 +2084,7 @@ export class Sim {
     const p = w.power('upsell');
     this.gainSkill(w, 'upsell', 0.4);
     if (!this.rng.chance(0.05 + p * 0.12)) return;
-    const treats = UNLOCK_ORDER.candy.filter((id) => isUnlocked(id, this.state.products));
+    const treats = unlockOrder('candy').filter((id) => isUnlocked(id, this.state.products));
     const id = this.rng.pick(treats);
     const prod = PRODUCT_BY_ID.get(id)!;
     const price = this.priceOf(id);
@@ -1816,7 +2094,7 @@ export class Sim {
     this.productSold(id, 1);
     this.sold.set(id, (this.sold.get(id) ?? 0) + 1);
     this.emit({ type: 'sold', cat: prod.cat, qty: 1 });
-    this.floaters.push({ text: `+$${price.toFixed(2)}`, x: c.mover.x, y: c.mover.y, t: 0, color: '#f0d060' });
+    this.floaters.push({ text: `+${money(price)}`, x: c.mover.x, y: c.mover.y, t: 0, color: '#f0d060' });
     this.gainSkill(w, 'upsell', 2);
   }
 
@@ -1826,13 +2104,13 @@ export class Sim {
       return;
     }
     const npc = c.npc;
-    c.cash = this.rng.chance(this.rules.cash ?? npc.cash);
+    c.cash = this.rng.chance(this.rules.cash ?? Math.min(0.9, npc.cash * cashSet().share));
     // cash payers can't use the card-only counters
     const open = this.registers.filter((r) => !r.card || !c.cash);
     let best = open[0];
     for (const r of open) if (r.members.length < best.members.length) best = r;
     this.upsell(c, best);
-    if (c.cash) c.payment = makeCashPayment(Math.round(c.total() * 100), this.rng, npc);
+    if (c.cash) c.payment = makeCashPayment(Math.round(c.total() * 100), this.rng, npc, cashSet());
     c.needsBag = !!this.bagging && c.itemCount() >= 3;
     this.join(c, best);
   }
@@ -1911,7 +2189,7 @@ export class Sim {
     }
     if (line.kind === 'register') {
       const total = c.total();
-      const paid = c.cash ? roundCash(Math.round(total * 100)) / 100 : total;
+      const paid = c.cash ? roundCash(Math.round(total * 100), CASH[c.payment?.cash ?? cashSet().id]) / 100 : total;
       if (c.cash) this.stats.cash! += 1;
       this.state.money += paid;
       this.stats.revenue += paid;
@@ -1919,7 +2197,7 @@ export class Sim {
       this.stats.goodsCost += c.basket.reduce((a, b) => a + b.cost * b.qty, 0);
       const st = this.state.npcs[c.npc.id];
       st.spent += paid;
-      this.floaters.push({ text: `+$${paid.toFixed(2)}`, x: line.spots[0].x, y: line.spots[0].y, t: 0, color: '#8ee08a' });
+      this.floaters.push({ text: `+${money(paid)}`, x: line.spots[0].x, y: line.spots[0].y, t: 0, color: '#8ee08a' });
       if (c.cash) {
         const r = serviceReward(result, 4, 20);
         c.mult *= r.mult;
@@ -1949,7 +2227,7 @@ export class Sim {
   private leave(c: Customer): void {
     c.state = 'leave';
     const st = this.state.npcs[c.npc.id];
-    const wp = waitPenalty(c.wait * (1 - Math.min(0.4, c.greet * 0.4)), c.npc.patience * this.rules.patience);
+    const wp = waitPenalty(c.wait * (1 - Math.min(0.4, c.greet * 0.4)), c.npc.patience * this.rules.patience * (1 + Math.min(1, st.fond.level * 0.01)));
     if (wp.affinity < 0) c.bubble = { icon: 'b_wait', until: this.clock + 3 };
     if (wp.affinity <= -2) this.stats.angry! += 1;
     const bought = c.basket.length > 0;
@@ -2007,6 +2285,7 @@ export class Sim {
   cleanSpill(id: number): boolean {
     const i = this.spills.findIndex((s) => s.id === id);
     if (i < 0) return false;
+    this.mopPrints(this.spills[i]);
     this.spills.splice(i, 1);
     this.stats.cleaned! += 1;
     for (const w of this.workers) if (w.task.type === 'clean' && w.task.spill === id) w.task = { type: 'none' };
@@ -2391,6 +2670,7 @@ export class Sim {
       t.timer += dt;
       if (t.timer >= 1.2 / w.speed('clean')) {
         this.spills = this.spills.filter((s) => s !== sp);
+        this.mopPrints(sp);
         this.stats.cleaned! += 1;
         this.gainSkill(w, 'clean', 2);
         w.task = { type: 'none' };

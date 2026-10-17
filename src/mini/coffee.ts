@@ -1,13 +1,17 @@
 import { drawSprite, drawText } from '../core/assets';
 import { sfx } from '../core/audio';
-import { t, type Key } from '../i18n';
-import { COFFEE_STEPS, type CoffeeStep, type DrinkDef } from '../game/defs';
+import { locale, t, type Key } from '../i18n';
+import { COFFEE_STEPS, STEP_REGION, type CoffeeStep, type DrinkDef } from '../game/defs';
 import { accuracyLabel, inRect, MiniGame, panel } from './base';
 
 const LAYER: Record<CoffeeStep, string> = {
   espresso: '#4a2a18', milk: '#efe6d8', foam: '#fbfaf6', ice: '#c8e8f8', water: '#a8c8d8',
   vanilla: '#f0e0a0', caramel: '#c87a30', chocolate: '#5a3020', whip: '#ffffff',
+  tea: '#a8582a', matcha: '#7aa84a', dalgona: '#d8a050',
 };
+
+/** The ingredient buttons: the shared nine plus this language's own. */
+const steps = (): CoffeeStep[] => COFFEE_STEPS.filter((s) => !STEP_REGION[s] || STEP_REGION[s] === locale());
 
 export class CoffeeGame extends MiniGame {
   private phase: 'memo' | 'make' = 'memo';
@@ -47,10 +51,11 @@ export class CoffeeGame extends MiniGame {
     const cols = this.vw >= 220 ? 5 : 3;
     const size = 40;
     const gw = cols * size;
-    const rows = Math.ceil(COFFEE_STEPS.length / cols);
+    const all = steps();
+    const rows = Math.ceil(all.length / cols);
     const x0 = Math.floor((this.vw - gw) / 2);
     const y0 = this.vh - rows * size - 6;
-    return COFFEE_STEPS.map((s, i) => ({ s, x: x0 + (i % cols) * size, y: y0 + Math.floor(i / cols) * size, w: size - 2, h: size - 2 }));
+    return all.map((s, i) => ({ s, x: x0 + (i % cols) * size, y: y0 + Math.floor(i / cols) * size, w: size - 2, h: size - 2 }));
   }
 
   protected update(dt: number): void {
@@ -91,10 +96,14 @@ export class CoffeeGame extends MiniGame {
     const cupY0 = Math.max(66, Math.floor((66 + cells0[0].y) / 2 - 36));
     const counterY = cupY0 + 76;
     for (let y = 0; y < counterY; y += 32) for (let x = 0; x < vw; x += 32) drawSprite(ctx, 'cafe_wall', x, y);
-    ctx.fillStyle = '#3a2a24';
-    ctx.fillRect(0, counterY, vw, vh - counterY);
+    for (let y = counterY + 20; y < vh; y += 32) for (let x = 0; x < vw; x += 32) drawSprite(ctx, 'cafe_panel', x, y);
     for (let x = 0; x < vw; x += 32) drawSprite(ctx, 'cafe_counter', x, counterY);
-    drawSprite(ctx, 'cafe_head', Math.floor(vw / 2) - 48, cupY0 - 30);
+    // a menu board and a shelf of beans and cups on the wall, where there's room beside the machine
+    if (vw >= 300) {
+      drawSprite(ctx, 'cafe_menu', Math.max(6, Math.floor(vw / 2) - 140), cupY0 - 4);
+      drawSprite(ctx, 'cafe_shelf', Math.min(vw - 82, Math.floor(vw / 2) + 66), cupY0 - 2);
+    }
+    drawSprite(ctx, 'cafe_head', Math.floor(vw / 2) - 56, cupY0 - 36);
     drawSprite(ctx, 'cafe_tray', Math.floor(vw / 2) - 40, counterY - 6);
     const rw = steps.length * 38 + 10;
     const rx = Math.floor((vw - rw) / 2);

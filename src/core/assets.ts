@@ -34,8 +34,15 @@ export async function loadAssets(): Promise<void> {
   assets = { atlas, products, chars, small };
 }
 
+let variant = '';
+
+/** Sprites named `name@zh` stand in for `name` while playing in that language. */
+export function setSpriteVariant(code: string): void {
+  variant = code;
+}
+
 export function rect(name: string): Rect {
-  const r = rects[name];
+  const r = (variant && rects[`${name}@${variant}`]) || rects[name];
   if (!r) throw new Error(`Missing sprite ${name}`);
   return r;
 }
@@ -73,6 +80,7 @@ export function drawChar(ctx: CanvasRenderingContext2D, row: number, dir: 'down'
 export const CHAR_POSES = [
   'wave1', 'wave2', 'cheer1', 'cheer2', 'talk1', 'talk2', 'laugh1', 'laugh2', 'crouch', 'photo', 'stretch', 'hop', 'drink', 'give',
   's_talk1', 's_talk2', 's_laugh1', 's_laugh2', 's_point', 's_crouch', 's_photo', 's_wave1', 's_wave2', 's_give',
+  'blink', 's_blink',
 ] as const;
 export type CharPose = (typeof CHAR_POSES)[number];
 

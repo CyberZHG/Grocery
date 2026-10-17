@@ -1305,6 +1305,105 @@ def t_pills(cv, A, B, C):
         cv.px(x, 5, W(cv.get(x, 6) or WHITE, -2))
 
 
+
+# ---------- regional ----------
+
+def t_fruitroll(cv, A, B, C):
+    """Hawthorn fruit rolls: a stack of thin rolled sheets in a clear sleeve, spiral ends showing."""
+    cv.rrect(3, 8, 28, 27, mix(GLASS, WHITE, 0.5), 2)
+    for i, y in enumerate((11, 16, 21)):
+        cv.rect(5, y, 26, y + 4, A)
+        cv.hline(5, 26, y, W(A, 2))
+        cv.ellipse(5.5, y + 2, 2.2, 2.4, W(A, -1))
+        cv.px(5, y + 2, W(A, 2)); cv.px(6, y + 1, W(A, -3))
+    cv.rect(11, 8, 20, 27, mix(B, WHITE, 0.2))
+    fake_text(cv, 12, 14, 19, C, 3)
+    fake_text(cv, 12, 20, 19, C, 4)
+
+
+def t_skewer(cv, A, B, C):
+    """Balls on a bamboo stick, top to bottom A, B, C; candied ones get a sugar shine."""
+    cv.line(16, 4, 16, 30, hexc('c8a060'), 1)
+    for i, c in enumerate((A, B, C)):
+        y = 8 + i * 7
+        cv.ellipse(16, y, 5.2, 4.2, c)
+        cv.shade_ball(16, y, 5.2, 4.2, 0.6, dither=False)
+        cv.px(14, y - 2, W(c, 4)); cv.px(15, y - 2, W(c, 3))
+
+
+def t_mooncake(cv, A, B, C):
+    """A round baked mooncake with a pressed pattern, on a little paper tray."""
+    cv.rect(5, 23, 26, 26, C)
+    cv.ellipse(16, 17, 11, 9, A)
+    cv.shade_ball(16, 17, 11, 9, 0.7)
+    cv.ellipse(16, 16, 7, 5.5, W(A, 1))
+    for a in range(0, 360, 30):
+        t = math.radians(a)
+        cv.px(round(16 + 9.5 * math.cos(t)), round(17 + 7.5 * math.sin(t)), W(A, -2))
+    cv.rect(13, 14, 18, 17, B)
+    cv.px(15, 15, W(B, 3))
+
+
+def t_zongzi(cv, A, B, C):
+    """Leaf-wrapped sticky rice pyramid tied with string."""
+    cv.poly([(16, 4), (28, 27), (4, 27)], A)
+    cv.poly([(16, 4), (22, 27), (10, 27)], W(A, 1))
+    for y in range(9, 27, 4):
+        cv.hline(16 - (y - 4) // 2 + 1, 16 + (y - 4) // 2 - 1, y, W(A, -1))
+    cv.line(7, 20, 25, 17, B, 1)
+    cv.line(9, 24, 23, 12, B, 1)
+    cv.px(16, 4, W(A, 3))
+
+
+def t_onigiri(cv, A, B, C):
+    """Triangle rice ball in its wrapper, a nori band at the bottom and a label on top."""
+    cv.poly([(16, 4), (29, 27), (3, 27)], mix(GLASS, WHITE, 0.6))
+    cv.poly([(16, 6), (27, 26), (5, 26)], WHITE)
+    cv.rect(10, 18, 22, 27, A)
+    cv.hline(10, 22, 18, W(A, 1))
+    cv.rect(12, 10, 20, 13, B)
+    fake_text(cv, 13, 11, 19, C, 5)
+    cv.px(16, 7, W(WHITE, -1))
+
+
+def t_ramune(cv, A, B, C):
+    """Codd-neck glass soda bottle with the marble in the pinched neck."""
+    glass = mix(A, WHITE, 0.25)
+    cv.rect(12, 14, 20, 29, glass)
+    cv.rrect(11, 15, 21, 29, glass, 2)
+    cv.rect(13, 7, 19, 13, glass)
+    cv.rect(14, 10, 18, 11, W(glass, -2))
+    cv.ellipse(16, 9, 2, 2, mix(GLASS, WHITE, 0.6))
+    cv.rect(13, 3, 19, 6, B)
+    cv.rect(11, 19, 21, 24, C)
+    fake_text(cv, 13, 21, 19, WHITE, 6)
+    cv.vline(12, 15, 28, W(glass, 3))
+
+
+def t_taiyaki(cv, A, B, C):
+    """Fish-shaped cake with scales and a tail fin."""
+    cv.ellipse(14, 17, 10, 7, A)
+    cv.poly([(22, 17), (29, 10), (29, 24)], A)
+    cv.shade_ball(14, 17, 10, 7, 0.6)
+    for x in range(8, 21, 3):
+        for y in (15, 19):
+            cv.px(x, y, W(A, -2))
+    cv.ellipse(8, 15, 1.2, 1.2, W(A, -4))
+    cv.px(24, 15, W(A, -2)); cv.px(26, 18, W(A, -2))
+    cv.hline(5, 22, 24, W(A, -1))
+
+
+def t_bananamilk(cv, A, B, C):
+    """Squat round-bellied tub with a narrow foil top, like the classic Korean banana milk."""
+    cv.ellipse(16, 21, 9, 8, A)
+    cv.rect(12, 8, 20, 15, A)
+    cv.poly([(12, 15), (20, 15), (24, 18), (8, 18)], A)
+    cv.rect(12, 5, 20, 8, B)
+    cv.shade_ball(16, 21, 9, 8, 0.5, dither=False)
+    cv.rect(10, 18, 22, 21, C)
+    fake_text(cv, 11, 19, 21, WHITE, 7)
+
+
 TEMPLATES = {k[2:]: v for k, v in globals().items() if k.startswith('t_')}
 
 # bag properties: weight class (0 fragile, 1 light, 2 normal, 3 heavy), w, h in bag cells
@@ -1331,6 +1430,8 @@ BAG = {
     'sponge': (1, 1, 1), 'battery': (1, 1, 1), 'bulb': (0, 1, 1), 'petbag': (3, 2, 2), 'toothpaste': (1, 2, 1),
     'toothbrush': (1, 1, 1), 'shampoo': (2, 1, 2), 'soap': (1, 1, 1), 'deodorant': (1, 1, 1),
     'tissue': (1, 1, 1), 'pills': (1, 1, 1),
+    'fruitroll': (1, 1, 1), 'skewer': (0, 1, 1), 'mooncake': (0, 1, 1), 'zongzi': (2, 1, 1), 'onigiri': (0, 1, 1),
+    'ramune': (2, 1, 2), 'taiyaki': (0, 1, 1), 'bananamilk': (2, 1, 1),
 }
 
 

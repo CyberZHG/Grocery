@@ -1,6 +1,7 @@
 import { Rng } from './core/rng';
 import { DRINKS } from './game/defs';
 import { makeCashPayment } from './game/rules';
+import { cashSet } from './i18n';
 import { BakeryGame } from './mini/bakery';
 import { BaggingGame } from './mini/bagging';
 import { CheckoutGame } from './mini/checkout';
@@ -11,7 +12,7 @@ import { OdenGame } from './mini/oden';
 const overlay = () => document.querySelector('.overlay') as HTMLElement;
 
 export function checkout(total = 1347, seed = 3): void {
-  const p = makeCashPayment(total, new Rng(seed), { exact: 0.5, miscount: 0 });
+  const p = makeCashPayment(total, new Rng(seed), { exact: 0.5, miscount: 0 }, cashSet());
   void new CheckoutGame(total, p, seed).open(overlay());
 }
 export function oden(): void {

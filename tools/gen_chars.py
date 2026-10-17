@@ -568,6 +568,9 @@ POSE_FACE = {
     ('down', 'yawn'): {7: S16, 8: S16, 9: 'sSSEESSSSSSEESSs', 11: '.sSSSSmEEmSSSSs.', 12: '.ssSSSmEEmSSSss.'},
     ('side', 'talk'): {11: '.sSSSSSSSSSSSES.', 12: '.ssSSSSSSSSSSm..'},
     ('side', 'laugh'): {7: 'SSSsSSSSSSSSSSS.', 8: 'SSsrSSSSSSSSSSS.', 9: 'SSSsSSSSSSSEESSS', 11: '.sSSSSSSSSSSSEE.', 12: '.ssSSSSSSSSSSm..'},
+    # eyes shut for a blink; the mouth stays as it is
+    ('down', 'blink'): {7: S16, 8: S16, 9: 'sSSEESSSSSSEESSs'},
+    ('side', 'blink'): {7: 'SSSsSSSSSSSSSSS.', 8: 'SSsrSSSSSSSSSSS.', 9: 'SSSsSSSSSSSEESSS'},
 }
 
 # Interaction poses. Each gives the view, a face, how the legs sit, an extra lift of the body, and arms as
@@ -599,6 +602,8 @@ POSES = {
     's_give': ('side', 'happy', None, 0, lambda t, h: [((15, t + 2), (23, t + 4), 0)]),
 }
 POSE_ORDER = list(POSES)
+# standing still with eyes shut, front and side, appended after the poses
+BLINKS = ['down', 'side']
 
 
 def limb(cv, a, b, tp):
@@ -811,7 +816,7 @@ def draw_frame(look, d, frame, expr=None, work=None, sit=False, pose=None):
     return cv
 
 
-FRAMES_PER_ROW = 22 + len(POSES)
+FRAMES_PER_ROW = 22 + len(POSES) + len(BLINKS)
 
 
 def char_row(look):
@@ -829,6 +834,8 @@ def char_row(look):
     frames.append(draw_frame(look, 'down', 0, 'happy', sit=True))
     for pose in POSE_ORDER:
         frames.append(draw_frame(look, 'down', 0, pose=pose))
+    for d in BLINKS:
+        frames.append(draw_frame(look, d, 0, expr='blink'))
     return frames
 
 

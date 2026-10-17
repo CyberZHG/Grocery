@@ -1,4 +1,4 @@
-id|cat|tpl|price|a|b|c|en|zh
+id|cat|tpl|price|a|b|c|en|zh|region|mark
 apple_red|produce|round|1.00|d83a3a|4a9a3a|8a4a2a|Red Apple|红苹果
 apple_green|produce|round|1.00|9ad04a|4a9a3a|8a4a2a|Green Apple|青苹果
 banana|produce|banana|1.79|f2d64a|8a6a2a|5a8a2a|Bananas|香蕉
@@ -199,3 +199,303 @@ tissues|personal|tissue|2.49|7ac0e0|f8f8f8|f8a0c0|Facial Tissues|面巾纸
 pain_reliever|personal|pills|6.99|f8f8f8|d03030|3060c0|Pain Reliever|止痛药
 vitamins|personal|pills|9.99|f0a020|f8f8f8|3a8a3a|Multivitamins|复合维生素
 cat_food|personal|tuna|0.99|8a50c0|f0d040|c8c8d0|Wet Cat Food|猫罐头
+guodanpi|candy|fruitroll|1.29|a83a2a|f0e0c0|c83a2a|Hawthorn Fruit Rolls|果丹皮|zh
+tanghulu|candy|skewer|2.49|d8302a|d8302a|d8302a|Candied Hawthorn Skewer|冰糖葫芦|zh
+mooncake|bakery|mooncake|3.99|c8883a|8a4a20|d84848|Mooncake|月饼|zh
+zongzi|frozen|zongzi|4.99|4a8a3a|c8a060|f4f0e8|Frozen Zongzi|速冻粽子|zh
+latiao|snacks|chipbag|0.99|d83a2a|f0c040|2a2a2a|Spicy Gluten Strips|辣条|zh|chili
+soy_milk|dairy|carton|1.79|f4f0e8|e0b030|5a9a4a|Soy Milk|豆奶|zh|bean
+zhacai|pantry|nutbag|0.89|5a9a4a|f0d040|d83a2a|Pickled Mustard Tuber|榨菜|zh|leaf
+tangyuan|frozen|frozenbag|3.49|f4f4f4|e86a8a|3a6ad8|Frozen Sweet Rice Balls|速冻汤圆|zh|moon
+chili_crisp|pantry|jar|3.29|b82a1a|f0e0c0|3a2a2a|Chili Crisp|油辣椒|zh|chili
+onigiri|bakery|onigiri|1.49|2a3a2a|d84848|f4f0e8|Onigiri Rice Ball|饭团|ja
+natto|dairy|tofu|1.99|f4f0e8|d84848|2a2a2a|Natto|纳豆|ja|bean
+umeboshi|pantry|jar|4.49|c83a5a|f0e0c0|3a2a2a|Umeboshi Plums|梅干|ja|berry
+ramune|beverages|ramune|1.79|8ad0e8|3a6ad8|3a8ad8|Ramune Soda|弹珠汽水|ja
+matcha_latte|beverages|can|1.99|5a8a3a|f4f0e8|2a2a2a|Matcha Latte|抹茶拿铁|ja|tea
+miso|pantry|tub|3.79|a8703a|f4f0e8|3a2a2a|Miso Paste|味噌|ja|bean
+taiyaki|bakery|taiyaki|2.29|c8883a|8a4a20|f4f0e8|Taiyaki|鲷鱼烧|ja
+yakisoba|pantry|ramen|1.59|f0d040|d83a2a|f4f0e8|Instant Yakisoba|日式炒面|ja|noodle
+dango|candy|skewer|2.49|f0a8b8|f4f0e8|8ac070|Dango Skewer|三色团子|ja
+kimchi|pantry|jar|5.49|d8582a|f0e0c0|3a2a2a|Kimchi|韩式泡菜|ko|chili
+tteokbokki|frozen|frozenbag|3.99|f4f4f4|d8402a|f08030|Tteokbokki Kit|韩式炒年糕|ko|chili
+banana_milk|dairy|bananamilk|1.49|f4e8a0|4a8a3a|f0c040|Banana Milk|香蕉牛奶|ko
+gim|snacks|chipbag|2.29|2a4a2a|5a9a4a|f0d040|Seasoned Seaweed|韩国海苔|ko|seaweed
+sikhye|beverages|can|1.49|e8d8b0|c8a060|8a5a3a|Sikhye Rice Drink|韩国米露|ko|rice
+hotteok|bakery|flakypastry|3.29|b07a3a|e0b070|f4f0e8|Hotteok Pancakes|糖饼|ko|
+gochujang|pantry|tub|4.29|c8302a|f4f0e8|3a2a2a|Gochujang|韩式辣酱|ko|chili
+yakgwa|snacks|flowercakes|2.99|b8783a|d8a040|f4f0e8|Yakgwa Honey Cookies|药果|ko|
+ramyeon|pantry|ramen|1.19|d83a2a|2a2a2a|f4f0e8|Spicy Ramyeon|韩国拉面|ko|chili
+bok_choy|produce|bokchoy|1.49|5aa84a|e8f0d8|4a8a3a|Bok Choy|小白菜|zh|
+napa_cabbage|produce|napa|2.49|d8e8b0|f4f4e0|8ab85a|Napa Cabbage|大白菜|zh|
+lotus_root|produce|lotus|2.99|e0c8a8|c8a888|8a6a4a|Lotus Root|莲藕|zh|
+winter_melon|produce|longmelon|3.49|6a9a7a|e8f0e0|4a7a5a|Winter Melon|冬瓜|zh|
+lychee|produce|lychee|4.99|d84a5a|f4e8e0|5a8a3a|Lychees|荔枝|zh|
+pomelo|produce|pomelo|3.99|e8e080|f0e8b0|7aa84a|Pomelo|柚子|zh|
+dragon_fruit|produce|dragonfruit|3.49|e04a8a|7ac05a|f4f0f0|Dragon Fruit|火龙果|zh|
+garlic_chives|produce|greenonion|1.79|4a9a3a|e8f0d8|f4f0e0|Garlic Chives|韭菜|zh|
+enoki|produce|enoki|1.29|f4f0e0|e8e0c8|c8b890|Enoki Mushrooms|金针菇|zh|
+old_yogurt|dairy|yogurt|1.69|f4f0e8|c84838|3a6ad8|Set Yogurt|老酸奶|zh|milk
+double_skin_milk|dairy|tub|2.49|f4f0e0|e8d8b0|c84848|Double-Skin Milk Pudding|双皮奶|zh|milk
+salted_duck_eggs|dairy|eggs|3.49|e8e0d0|a8c8c0|8a6a4a|Salted Duck Eggs|咸鸭蛋|zh
+century_eggs|dairy|eggs|3.99|5a4a3a|3a3a2a|8a6a4a|Century Eggs|皮蛋|zh
+bagged_milk|dairy|carton|1.29|f4f4f0|3a8ad8|5aa84a|Bagged Fresh Milk|袋装鲜奶|zh|milk
+douhua|dairy|tub|1.99|f8f4e8|f0d040|8a6a4a|Tofu Pudding|豆花|zh|bean
+quail_eggs|dairy|eggs|2.79|e8dcc8|8a7a5a|f4f0e8|Quail Eggs|鹌鹑蛋|zh
+char_siu|meat|charsiu|6.99|c83a2a|f0b040|8a2a1a|Char Siu Pork|叉烧|zh|
+lap_cheong|meat|links|5.49|b8302a|f4e8d8|8a2a1a|Cured Sausage|广式腊肠|zh|
+braised_beef|meat|deli|7.99|7a3a2a|c87a4a|f4e8d8|Braised Beef Shank|卤牛肉|zh|cow
+pork_belly_cn|meat|bellyslices|6.49|e8a8a0|f4e0d8|c87070|Pork Belly|五花肉|zh|
+duck_necks|meat|duckneck|4.99|a8402a|d87a3a|5a2a1a|Spicy Duck Necks|鸭脖|zh|
+salted_duck|meat|chicken|9.99|f0e0c8|d8c0a0|8a6a4a|Salted Duck|盐水鸭|zh|duck
+spare_ribs|meat|meattray|6.99|d87a70|f4e0d8|f4f4f4|Pork Spare Ribs|排骨|zh|pig
+grass_carp|meat|fish|5.99|8a9aa8|d8dce4|5a6a7a|Grass Carp|草鱼|zh|fish
+pork_buns|frozen|frozenbag|4.49|f4f4f0|d84848|f0c040|Frozen Pork Buns|速冻肉包|zh|pig
+wontons|frozen|frozenbag|4.99|f4f4f0|3a8ad8|f0c040|Frozen Wontons|速冻馄饨|zh|shrimp
+scallion_pancakes|frozen|frozenbox|3.99|f4f0e0|5aa84a|f0c040|Scallion Pancakes|葱油饼|zh|leaf
+mung_bean_bars|frozen|icecream|3.49|9ac86a|f4f0e0|5a8a3a|Mung Bean Ice Bars|绿豆冰棍|zh|bean
+fish_balls_cn|frozen|frozenbag|3.79|f4f4f0|3a6ad8|d8e8f0|Fish Balls|鱼丸|zh|fish
+hotpot_balls|frozen|frozenbag|4.29|f4f4f0|d8402a|f0a040|Hot Pot Meatballs|火锅丸子|zh|flame
+frozen_spring_rolls|frozen|frozenbox|3.99|f4f0e0|d89a40|d84848|Frozen Spring Rolls|速冻春卷|zh|sparkle
+frozen_jiaozi|frozen|frozenbag|5.49|f4f4f0|c83a2a|f4d040|Pork and Cabbage Jiaozi|猪肉白菜水饺|zh|pig
+wife_cake|bakery|flakypastry|3.49|f0d8a0|c83a2a|f4f0e8|Winter Melon Pastries|老婆饼|zh|
+sachima|bakery|puffblock|2.99|e0b060|c83a2a|f4f0e8|Sachima|沙琪玛|zh|
+mantou_pack|bakery|mantou|2.49|f6f0e2|e8dcc8|f4f0e8|Steamed Buns|馒头|zh|
+mung_bean_cake|bakery|pastrybox|3.29|c8d890|5a8a3a|f4f0e8|Mung Bean Cakes|绿豆糕|zh|bean
+egg_rolls_cn|bakery|cookies|3.49|f0c860|d84848|f4f0e8|Crispy Egg Rolls|鸡蛋卷|zh|egg
+walnut_cookies|bakery|cookies|2.79|d8a050|8a5a2a|f4f0e8|Walnut Shortbread|桃酥|zh|peanut
+steamed_sponge|bakery|buns|2.99|f0d070|f8e8a0|f4f0e8|Steamed Sponge Cakes|鸡蛋糕|zh|egg
+pineapple_bun_pack|bakery|buns|2.79|e8b040|f8d870|f4f0e8|Pineapple Buns|菠萝包|zh|star
+sunflower_seeds|snacks|nutbag|1.99|2a2a2a|f0c040|d84848|Sunflower Seeds|瓜子|zh|sesame
+fried_peanuts|snacks|nutbag|2.29|d8402a|f0d0a0|f4f0e8|Fried Peanuts|油炸花生|zh|peanut
+shrimp_chips_cn|snacks|chipbag|1.79|f0a040|f4f0e8|d84848|Shrimp Puffs|虾条|zh|shrimp
+snow_crackers|snacks|ricecakes|2.49|f4f0e8|d84848|f0c040|Sugar-Glazed Rice Crackers|雪饼|zh|snow
+dried_tofu|snacks|nutbag|1.99|8a5a3a|f0d040|d84848|Spiced Dried Tofu|豆干|zh|bean
+shredded_squid|snacks|nutbag|3.49|f0e0c8|3a6ad8|d84848|Shredded Squid|鱿鱼丝|zh|fish
+beef_jerky_cn|snacks|nutbag|5.99|8a3a2a|d84848|f0c040|Spiced Beef Jerky|牛肉干|zh|cow
+crunchy_noodles|snacks|ramen|0.79|f0c040|d84848|f4f0e8|Crunchy Noodle Snack|干脆面|zh|noodle
+milk_candy|candy|candybag|2.49|f4f4f0|3a6ad8|d84848|Milk Candy|奶糖|zh|milk
+haw_flakes|candy|jellybar|1.29|c83a5a|f0e0c0|8a2a2a|Haw Flakes|山楂片|zh|
+dried_plums|candy|candybag|1.99|6a2a3a|f0d040|d84848|Preserved Plums|话梅|zh|berry
+sesame_brittle|candy|candybar|2.29|e0c890|2a2a2a|d84848|Sesame Brittle|芝麻糖|zh|sesame
+peanut_brittle|candy|candybar|2.29|e0b060|8a5a2a|d84848|Peanut Brittle|花生糖|zh|peanut
+jelly_cups|candy|candybag|2.99|f4f4f0|e86a8a|f0c040|Fruit Jelly Cups|果冻|zh|citrus
+malt_candy|candy|jar|2.79|e8b860|f4f0e8|8a5a2a|Malt Candy|麦芽糖|zh|grain
+herbal_tea|beverages|can|1.29|d83a2a|f0c040|2a2a2a|Herbal Tea|凉茶|zh|leaf
+sour_plum_drink|beverages|juice|2.49|6a2a2a|f0c040|d84848|Sour Plum Drink|酸梅汤|zh|berry
+coconut_drink|beverages|can|1.49|f4f4f0|5a8a3a|2a2a2a|Coconut Milk Drink|椰汁|zh|drop
+jasmine_tea|beverages|sports|1.29|e8e8a0|f4f4f4|5aa84a|Jasmine Tea|茉莉花茶|zh|flower
+bottled_green_tea_cn|beverages|sports|1.29|a8d090|f4f4f4|3a8a3a|Bottled Green Tea|瓶装绿茶|zh|tea
+bottled_milk_tea|beverages|sports|1.99|d8b890|f4f4f4|8a5a3a|Bottled Milk Tea|瓶装奶茶|zh|milk
+walnut_drink|beverages|can|1.49|c8a070|f4f0e8|6a4a2a|Walnut Milk|核桃露|zh|peanut
+chrysanthemum_tea|beverages|can|1.29|f0d040|f4f0e8|5a8a3a|Chrysanthemum Tea|菊花茶|zh|flower
+eight_treasure_congee|breakfast|can|1.79|d84848|f0c040|8a2a2a|Eight-Treasure Congee|八宝粥|zh|redbean
+soymilk_powder|breakfast|canister|4.49|f0d070|5a8a3a|f4f0e8|Soy Milk Powder|豆浆粉|zh|bean
+sesame_paste|breakfast|canister|3.99|2a2a2a|f0c040|d84848|Black Sesame Paste|黑芝麻糊|zh|blackbean
+lotus_starch|breakfast|box|3.49|e8c8d8|5aa84a|f4f0e8|Lotus Root Starch|藕粉|zh|flower
+millet|breakfast|ricebag|3.99|f0d040|c8a040|d84848|Millet|小米|zh|grain
+sesame_flatbread|breakfast|tortilla|2.49|d8a050|2a2a2a|f4f0e8|Sesame Flatbread|烧饼|zh
+red_dates|breakfast|nutbag|4.99|a8302a|f0c040|d84848|Red Dates|红枣|zh|berry
+instant_milk_tea|breakfast|box|3.99|d8b890|8a5a3a|f4f0e8|Instant Milk Tea Powder|冲泡奶茶|zh|tea
+light_soy|pantry|smallbottle|2.49|3a2a1a|d84848|f0c040|Light Soy Sauce|生抽|zh|drop
+black_vinegar|pantry|smallbottle|2.29|2a1a1a|f0c040|d84848|Black Rice Vinegar|香醋|zh|drop
+oyster_sauce|pantry|smallbottle|3.49|5a3a2a|d84848|f0c040|Oyster Sauce|蚝油|zh|shrimp
+doubanjiang|pantry|jar|3.29|b83a2a|f4f0e8|8a2a1a|Chili Bean Paste|豆瓣酱|zh|chili
+hotpot_base|pantry|box|4.49|d8302a|f0c040|2a2a2a|Hot Pot Soup Base|火锅底料|zh|flame
+rice_vermicelli|pantry|pastabox|1.99|f4f4f0|d84848|3a8ad8|Rice Vermicelli|米粉|zh|noodle
+sichuan_pepper|pantry|spice|3.99|a8402a|f4f0e8|2a2a2a|Sichuan Peppercorns|花椒|zh|pepper
+sesame_oil_cn|pantry|oil|3.79|c88a2a|f4f0e8|d84848|Toasted Sesame Oil|香油|zh|sesame
+fermented_tofu|pantry|jar|2.49|d85a3a|f4f0e8|8a2a1a|Fermented Tofu|腐乳|zh|bean
+mosquito_coils|household|coil|2.99|3a8a3a|f0c040|2a2a2a|Mosquito Coils|蚊香|zh|
+red_envelopes|household|redenvelope|1.99|d8302a|f0c040|f0c040|Red Envelopes|红包|zh|
+bamboo_chopsticks|household|chopsticks|2.49|d8b070|8a5a2a|d84848|Bamboo Chopsticks|竹筷子|zh|
+pocket_tissues|household|tissue|1.49|f4f4f0|e86a8a|3a8ad8|Pocket Tissues|手帕纸|zh|flower
+laundry_bar|household|soap|1.29|f0e0a0|3a8ad8|f4f0e8|Laundry Soap Bar|洗衣皂|zh|bubble
+bamboo_steamer|household|steamer|8.99|d8b070|a8803a|f4f0e8|Bamboo Steamer|竹蒸笼|zh|
+cooling_oil|personal|smallbottle|2.49|3a8a5a|f4f0e8|d84848|Cooling Oil|风油精|zh|leaf
+floral_water|personal|spray|3.49|5aa8d8|f4f4f0|5aa84a|Floral Water|花露水|zh|flower
+cooling_balm|personal|mints|1.99|d84848|f0c040|f4f0e8|Cooling Balm|清凉油|zh|leaf
+herbal_toothpaste|personal|toothpaste|2.99|f4f4f0|3a8a5a|f0c040|Herbal Toothpaste|中草药牙膏|zh|leaf
+ginger_shampoo|personal|shampoo|5.99|e8c060|8a5a2a|f4f0e8|Ginger Shampoo|生姜洗发水|zh|leaf
+daikon|produce|daikon|1.49|f4f4f0|5aa84a|e8e8e0|Daikon Radish|白萝卜|ja|
+nagaimo|produce|potato|3.49|d8c8a8|f4f0e0|8a7a5a|Nagaimo Yam|山药|ja|leaf
+shiso|produce|leafstack|1.99|3a8a3a|5aa84a|f4f0e0|Shiso Leaves|紫苏叶|ja|
+komatsuna|produce|bokchoy|1.79|3a7a3a|5a9a4a|f4f0e0|Komatsuna Greens|小松菜|ja|
+mikan|produce|smallcitrus|3.99|f39a1e|4a9a3a|c06a10|Mikan Oranges|蜜柑|ja|
+yuzu|produce|smallcitrus|2.99|f0d040|4a9a3a|c8a020|Yuzu|日本柚子|ja|
+nashi_pear|produce|bigpear|2.49|d8c070|8a6a2a|a88a3a|Nashi Pear|日本梨|ja|
+kabocha|produce|squash|2.99|3a5a3a|f0a040|2a4a2a|Kabocha Squash|日本南瓜|ja|
+shiitake|produce|shiitake|3.29|8a5a3a|e8d8b8|6a4a2a|Shiitake Mushrooms|香菇|ja|
+custard_pudding|dairy|yogurt|1.49|f0d070|8a4a20|f4f0e8|Custard Pudding|布丁|ja|egg
+drinking_yogurt|dairy|carton|1.99|f4f4f0|3a6ad8|e86a8a|Drinking Yogurt|饮用酸奶|ja|milk
+coffee_milk|dairy|milkbottle|1.49|c89a60|f4f0e8|6a3a1a|Coffee Milk|咖啡牛奶|ja|
+lactic_drink|dairy|carton|1.79|f4f4f0|3a6ad8|f4f4f4|Lactic Acid Drink|乳酸菌饮料|ja|bubble
+onsen_egg|dairy|eggs|2.29|f4f0e8|f0c040|8a6a4a|Onsen Eggs|温泉蛋|ja|egg
+silken_tofu|dairy|tofu|1.29|f8f8f4|3a6ad8|f4f0e8|Silken Tofu|嫩豆腐|ja|bean
+fruit_milk|dairy|milkbottle|1.49|f0d8a0|e86a8a|f0c040|Fruit Milk|水果牛奶|ja|
+karaage|meat|karaage|5.49|c87a30|e8a850|f4f0e8|Karaage Fried Chicken|日式炸鸡块|ja|
+tonkatsu|meat|cutlet|5.99|d8983a|e8b860|f4f0e8|Tonkatsu Cutlet|炸猪排|ja|
+yakitori|meat|skewers|4.99|a85a2a|d88a4a|5a3a2a|Yakitori Skewers|日式烤鸡串|ja|
+thin_beef|meat|meattray|6.99|c85a5a|f4e0d8|f4f4f4|Thin-Sliced Beef|肥牛片|ja|cow
+saba_fillet|meat|fish|4.49|6a7a8a|c8ccd4|3a4a5a|Mackerel Fillet|鲭鱼片|ja|fish
+maguro_sashimi|meat|sashimi|9.99|c83a3a|e86a6a|f4f0e8|Tuna Sashimi|金枪鱼刺身|ja|
+chikuwa_pack|meat|tube|2.49|c88040|f0d8b0|8a6040|Chikuwa Fish Cakes|竹轮|ja|
+kamaboko|meat|fishcake|2.99|f4f4f0|e86a8a|f4f0e8|Kamaboko Fish Cake|鱼板|ja|
+frozen_udon|frozen|frozenbag|3.49|f4f4f0|3a6ad8|f4f0e8|Frozen Udon|冷冻乌冬面|ja|noodle
+frozen_takoyaki|frozen|frozenbox|4.99|f4f0e0|c86a3a|5a8a3a|Frozen Takoyaki|冷冻章鱼小丸子|ja|fish
+mochi_ice|frozen|icecream|3.99|f8f4f0|e8a8b8|f4f0e8|Mochi Ice Cream|雪糕大福|ja|moon
+matcha_ice|frozen|icecream|4.49|7aa84a|f4f0e8|3a5a2a|Matcha Ice Cream|抹茶冰淇淋|ja|tea
+frozen_edamame|frozen|frozenbag|2.99|f4f4f0|5aa84a|f0c040|Frozen Edamame|冷冻毛豆|ja|bean
+okonomiyaki|frozen|pizzabox|5.49|f0e0c0|8a4a2a|5aa84a|Frozen Okonomiyaki|冷冻大阪烧|ja
+frozen_chahan|frozen|frozenbag|3.99|f4f4f0|d84848|f0c040|Frozen Fried Rice|冷冻炒饭|ja|rice
+ebi_fry|frozen|frozenbox|5.99|f4f0e0|e88a3a|3a6ad8|Frozen Fried Shrimp|冷冻炸虾|ja|shrimp
+anpan_pack|bakery|buns|2.49|c8883a|e0b070|f4f0e8|Red Bean Buns|红豆面包|ja|redbean
+milk_shokupan|bakery|loaf|3.99|f4e8c8|3a6ad8|f0c040|Milk Bread Loaf|生吐司|ja
+dorayaki|bakery|sandwichcake|2.99|b8783a|e8b860|f4f0e8|Dorayaki|铜锣烧|ja|
+castella|bakery|castella|5.49|f0c040|8a4a20|f4f0e8|Castella Sponge Cake|长崎蛋糕|ja|
+daifuku|bakery|mochi|3.29|f8f4f0|e8a8b8|5aa84a|Daifuku|大福|ja|
+egg_sando|bakery|loaf|3.49|f8f0d8|f0d040|f4f0e8|Egg Salad Sandwich|鸡蛋三明治|ja|egg
+melon_pan_pack|bakery|buns|2.79|e8c860|f8e8a0|f4f0e8|Melon Pan|日式菠萝面包|ja|star
+yakisoba_pan|bakery|hotdogbuns|2.99|d89a50|8a4a2a|f4f0e8|Yakisoba Bread Roll|炒面面包|ja
+senbei|snacks|ricecakes|2.99|c8883a|2a3a2a|f4f0e8|Senbei Rice Crackers|日式仙贝|ja|rice
+nori_chips|snacks|chipbag|1.79|5a8a3a|f0d040|f4f0e8|Seaweed Salt Chips|海苔味薯片|ja|seaweed
+arare|snacks|nutbag|2.49|e8c880|d84848|f4f0e8|Arare Rice Bits|米果|ja|rice
+kaki_no_tane|snacks|nutbag|2.79|d8783a|f0d040|2a2a2a|Spicy Rice Crackers and Peanuts|柿种米果|ja|chili
+choco_sticks|snacks|box|1.99|d84848|8a4a2a|f4f0e8|Chocolate Biscuit Sticks|巧克力饼干棒|ja|heart
+potato_sticks|snacks|canister|1.99|f0c040|d84848|f4f0e8|Potato Sticks|薯条杯|ja|star
+seasoned_nori|snacks|box|2.49|2a3a2a|d84848|f0c040|Seasoned Nori Snack|调味海苔片|ja|seaweed
+ebi_senbei|snacks|chipbag|2.29|f0a080|f4f0e8|d84848|Shrimp Crackers|虾片|ja|shrimp
+konpeito|candy|candybag|2.49|f4f4f0|e86a8a|f0c040|Konpeito Sugar Stars|金平糖|ja|star
+ramune_tablets|candy|mints|1.29|8ad0e8|f4f4f0|3a6ad8|Soda Candy Tablets|汽水糖片|ja|bubble
+yokan|candy|jellybar|3.49|5a2a2a|8a4a3a|f0c040|Yokan Bean Jelly|羊羹|ja|
+chewy_fruit_candy|candy|candybar|1.49|e86a8a|f4f0e8|f0c040|Chewy Fruit Candy|水果软糖条|ja|berry
+matcha_chocolate|candy|candybar|2.99|7aa84a|f4f0e8|3a5a2a|Matcha Chocolate|抹茶巧克力|ja|tea
+milk_caramel|candy|candybar|1.49|f0d070|d84848|f4f0e8|Milk Caramels|牛奶焦糖|ja|milk
+warabi_mochi|candy|mochi|3.29|c8b880|8a6a3a|f4f0e8|Warabi Mochi|蕨饼|ja|
+ryokucha|beverages|sports|1.49|7ab85a|f4f4f4|3a6a2a|Japanese Green Tea|日式绿茶|ja|tea
+mugicha|beverages|juice|1.99|a8783a|f4f0e8|6a4a2a|Barley Tea|大麦茶|ja|grain
+canned_coffee|beverages|can|1.29|3a2a2a|c89a60|f4f0e8|Canned Coffee|罐装咖啡|ja|coffee
+hojicha|beverages|sports|1.49|a8603a|f4f4f4|5a3a2a|Roasted Green Tea|焙茶|ja|tea
+amazake|beverages|can|1.79|f4f0e8|d84848|f0c040|Amazake Rice Drink|甜米酒饮料|ja|rice
+melon_soda|beverages|bottle2l|1.99|5ad06a|f4f4f0|d84848|Melon Soda|蜜瓜苏打|ja|bubble
+lemon_tea_jp|beverages|carton|1.29|f0d040|f4f4f0|d84848|Lemon Tea|柠檬茶|ja|lemon
+oolong_tea|beverages|sports|1.49|c8783a|f4f4f4|8a3a1a|Oolong Tea|乌龙茶|ja|tea
+instant_miso_soup|breakfast|box|3.49|a8703a|f4f0e8|5a8a3a|Instant Miso Soup|速食味噌汤|ja|bean
+furikake|breakfast|spice|2.79|f0c040|2a3a2a|d84848|Furikake Rice Seasoning|拌饭香松|ja|seaweed
+ochazuke|breakfast|box|2.99|5a8a3a|f4f0e8|d84848|Ochazuke Mix|茶泡饭料包|ja|tea
+koshihikari_rice|breakfast|ricebag|14.99|f4f4f0|5aa84a|d84848|Short-Grain Rice|日本大米|ja|rice
+fruit_granola|breakfast|cereal|5.49|d84848|f0c040|f4f0e8|Fruit Granola|水果麦片|ja|berry
+yakinori|breakfast|box|3.99|2a3a2a|f0c040|f4f0e8|Toasted Nori Sheets|烤海苔|ja|seaweed
+kinako|breakfast|flour|2.49|d8b060|5a8a3a|f4f0e8|Roasted Soy Flour|黄豆粉|ja|bean
+okayu|breakfast|can|2.29|f4f0e8|5a8a3a|d84848|Rice Porridge Pouch|日式白粥|ja|rice
+koikuchi_soy|pantry|smallbottle|3.29|3a1a1a|d84848|f4f0e8|Soy Sauce|日式酱油|ja|drop
+mirin|pantry|smallbottle|3.49|e8c060|f4f0e8|8a5a2a|Mirin|味醂|ja|rice
+dashi_powder|pantry|canister|3.99|c89a50|d84848|f4f0e8|Dashi Stock Powder|日式高汤粉|ja|fish
+jp_mayonnaise|pantry|squeeze|3.49|f8f0d0|d84848|3a6ad8|Egg Yolk Mayonnaise|蛋黄酱|ja|egg
+tonkatsu_sauce|pantry|smallbottle|2.99|4a2a1a|f0c040|d84848|Tonkatsu Sauce|猪排酱|ja|pig
+panko|pantry|flour|2.29|f0d8a0|d84848|f4f0e8|Panko Breadcrumbs|面包糠|ja|grain
+dried_soba|pantry|pastabox|3.29|8a7a5a|f4f0e8|2a2a2a|Dried Soba Noodles|荞麦面|ja|noodle
+curry_roux|pantry|box|2.99|d8983a|8a3a1a|f0c040|Curry Roux Blocks|咖喱块|ja|flame
+wasabi_tube|pantry|squeeze|2.49|7ac05a|f4f0e8|3a6a2a|Wasabi Paste|芥末|ja|leaf
+heat_packs|household|box|4.99|f4f4f0|e86a3a|f0c040|Heat Packs|暖宝宝|ja|flame
+waribashi|household|chopsticks|1.99|e8d0a0|d84848|8a5a2a|Disposable Chopsticks|一次性筷子|ja|
+bento_box|household|lunchbox|7.99|3a3a44|d84848|f0c040|Lunch Box|便当盒|ja|
+tenugui|household|rolledcloth|3.99|3a5a9a|f4f4f0|d84848|Printed Cotton Towel|印花手巾|ja|
+katori_senko|household|coil|3.49|3a8a3a|f4f0e8|d84848|Green Mosquito Coils|绿色蚊香|ja|
+shamoji|household|paddle|1.99|f4f4f0|3a6ad8|d8b070|Rice Paddle|饭勺|ja|
+bath_salts|personal|box|4.49|8ad0e8|f4f4f0|e86a8a|Bath Salts|入浴剂|ja|drop
+eye_drops|personal|pills|5.99|3a8ad8|f4f4f0|f0c040|Eye Drops|眼药水|ja|drop
+hand_cream|personal|toothpaste|3.99|f4f0e8|e86a8a|f0c040|Hand Cream|护手霜|ja|flower
+sunscreen_milk|personal|shampoo|8.99|f4f4f0|3a8ad8|f0c040|Sunscreen Milk|防晒乳|ja|star
+cooling_sheets|personal|box|4.99|8ad0e8|f4f4f0|3a6ad8|Cooling Gel Sheets|退热贴|ja|snow
+mu_radish|produce|daikon|1.49|f4f4f0|7ac05a|e8f0e0|Korean Radish|韩国萝卜|ko|
+perilla_leaves|produce|leafstack|2.29|3a7a3a|5a9a4a|f4f0e0|Perilla Leaves|苏子叶|ko|
+singo_pear|produce|bigpear|3.49|d8b060|8a6a2a|a88a3a|Korean Pear|韩国梨|ko|
+chamoe|produce|ridged_melon|2.99|f0d040|f4f4f0|c8a020|Korean Melon|香瓜|ko|
+dan_persimmon|produce|persimmon|1.29|f08a2a|5a8a3a|c86a10|Sweet Persimmon|甜柿|ko|
+daepa|produce|greenonion|1.99|3a8a3a|f4f4f0|3a8a3a|Long Green Onion|大葱|ko|
+aehobak|produce|zucchini|1.49|8ac05a|c8e0a0|5a8a3a|Korean Zucchini|西葫芦|ko|
+shine_muscat|produce|grapes|9.99|b8e070|d8f0a0|5a8a3a|Green Muscat Grapes|阳光玫瑰葡萄|ko|
+king_oyster|produce|kingoyster|2.49|f0e8d8|c8b090|8a7a5a|King Oyster Mushrooms|杏鲍菇|ko|
+strawberry_milk|dairy|bananamilk|1.49|f4b8c8|e86a8a|e8708a|Strawberry Milk|草莓牛奶|ko|berry
+coffee_milk_kr|dairy|carton|1.29|b88a5a|f4f0e8|5a3a1a|Coffee Milk Carton|盒装咖啡奶|ko|coffee
+yogurt_minis|dairy|yogurt|1.99|f4f0e8|d84848|f0c040|Mini Yogurt Drinks|迷你乳酸菌饮料|ko|milk
+spoon_yogurt|dairy|yogurt|1.49|f4f4f0|3a6ad8|e86a8a|Spoonable Yogurt|勺吃酸奶|ko|berry
+soft_tofu|dairy|tofu|1.49|f8f8f4|d84848|f4f0e8|Extra-Soft Tofu|嫩豆腐（韩式）|ko|bean
+quail_jangjorim|dairy|jar|3.99|8a5a2a|f4f0e8|d84848|Soy-Braised Quail Eggs|酱鹌鹑蛋|ko|egg
+string_cheese|dairy|cheese|3.49|f4f0e0|3a6ad8|f0c040|String Cheese|手撕奶酪|ko|milk
+samgyeopsal|meat|bellyslices|7.49|e8a0a0|f4e0d8|c86a6a|Pork Belly Slices|烤肉用五花肉|ko|
+bulgogi_beef|meat|meattray|8.49|a84a3a|d8a080|f4f4f4|Bulgogi Beef|韩式烤牛肉|ko|cow
+la_galbi|meat|steak|11.99|b84a3a|e8a080|f4f0e8|Marinated Short Ribs|腌牛小排|ko|cow
+yangnyeom_chicken|meat|karaage|7.99|c83a2a|e87a3a|f4f0e8|Sweet Chili Fried Chicken|甜辣炸鸡|ko|
+jokbal|meat|trotter|9.99|8a4a2a|c87a4a|f4f0e8|Braised Pork Trotters|酱猪蹄|ko|
+canned_ham|meat|tuna|3.99|3a5aa8|f0c040|d84848|Canned Ham|午餐肉罐头|ko|pig
+godeungeo|meat|fish|4.99|5a6a8a|c8ccd4|3a4a6a|Salted Mackerel|咸青花鱼|ko|fish
+eomuk|meat|fishsheet|2.99|e8c890|d8a060|f4f0e8|Fish Cake Sheets|鱼饼|ko|
+gun_mandu|frozen|frozenbag|5.49|f4f4f0|d84848|3a6ad8|Pan-Fried Dumplings|煎饺|ko|pig
+melon_bar|frozen|icecream|1.29|8ad06a|f4f0e8|3a8a3a|Melon Ice Bar|蜜瓜冰棒|ko|leaf
+fish_ice_cream|frozen|icecream|1.99|d8983a|f4f0e8|8a4a20|Fish-Shaped Ice Cream|鲷鱼烧冰淇淋|ko|fish
+patbingsu_cup|frozen|icecream|2.99|f4f4f0|a8303a|f0c040|Red Bean Shaved Ice Cup|红豆刨冰杯|ko|redbean
+frozen_kimbap|frozen|frozenbox|4.49|f4f0e0|2a3a2a|f0c040|Frozen Kimbap|冷冻紫菜包饭|ko|seaweed
+kimchi_fried_rice|frozen|frozenbag|3.99|f4f4f0|e05a2a|f0c040|Kimchi Fried Rice|泡菜炒饭|ko|chili
+frozen_hotteok|frozen|frozenbox|4.99|f4f0e0|b07a3a|d84848|Frozen Sweet Pancakes|冷冻糖饼|ko|sparkle
+tteokgalbi|frozen|frozenbox|6.49|f4f0e0|8a3a2a|f0c040|Grilled Beef Patties|韩式肉饼|ko|cow
+gyeranppang|bakery|buns|1.99|f0c040|e8b860|f4f0e8|Egg Bread|鸡蛋面包|ko|egg
+kr_castella|bakery|castella|4.49|f0c860|a8603a|f4f0e8|Honey Castella|蜂蜜蛋糕|ko|
+danpatppang|bakery|buns|1.99|b8783a|e0b070|f4f0e8|Sweet Red Bean Bread|红豆包|ko|redbean
+songpyeon|bakery|halfmoon|4.99|f4f0e8|8ac06a|e8a8b8|Half-Moon Rice Cakes|松饼|ko|
+injeolmi|bakery|dustedcubes|3.99|d8b060|f0d890|f4f0e8|Soybean Rice Cakes|黄豆年糕|ko|
+maneul_ppang|bakery|loaf|3.49|f0c860|5aa84a|f4f0e8|Garlic Butter Bread|蒜香面包|ko|leaf
+chapssal_donut|bakery|buns|2.49|d8983a|f4f0e8|f4f0e8|Sticky Rice Doughnuts|糯米甜甜圈|ko|sparkle
+gukhwappang|bakery|flowercakes|2.99|d8983a|8a4a20|f4f0e8|Flower-Shaped Cakes|菊花饼|ko|
+kr_shrimp_crackers|snacks|chipbag|1.49|e84a2a|f0c040|f4f0e8|Shrimp Cracker Snack|鲜虾条|ko|shrimp
+honey_butter_chips|snacks|chipbag|2.49|f0c040|d8983a|f4f0e8|Honey Butter Chips|蜂蜜黄油薯片|ko|heart
+ppeongtwigi|snacks|ricecakes|1.99|f4f0e0|d84848|f0c040|Puffed Rice Discs|爆米饼|ko|rice
+dried_squid_kr|snacks|nutbag|5.99|f0d8b0|3a6ad8|d84848|Dried Squid|鱿鱼干|ko|fish
+choco_pies|snacks|cookies|3.99|d84848|8a4a2a|f4f0e8|Chocolate Marshmallow Pies|巧克力派|ko|heart
+onion_ring_snack|snacks|chipbag|1.49|3a8a3a|f0c040|f4f0e8|Onion Ring Snack|洋葱圈|ko|leaf
+honey_butter_almonds|snacks|nutbag|5.49|f0c040|8a5a2a|f4f0e8|Honey Butter Almonds|蜂蜜黄油杏仁|ko|peanut
+nurungji|snacks|ricecakes|2.99|d8a050|8a5a2a|f4f0e8|Scorched Rice Crisps|锅巴|ko|rice
+dalgona_candy|candy|lollipop|1.49|d8983a|f0c040|f4f0e8|Honeycomb Toffee|椪糖|ko
+yeot|candy|candybar|1.99|c8883a|8a5a2a|f4f0e8|Rice Taffy|米饴|ko|grain
+red_ginseng_candy|candy|candybag|4.49|8a2a2a|f0c040|d84848|Red Ginseng Candy|红参糖|ko|leaf
+sour_jelly|candy|candybag|1.99|f0d040|e86a8a|5aa84a|Sour Gummies|酸味软糖|ko|lemon
+kkultarae|candy|silkcandy|5.99|f4f0e8|f0c040|d84848|Honey Thread Candy|龙须糖|ko|
+kr_choco_sticks|candy|box|1.49|d84848|8a4a2a|f4f0e8|Chocolate Stick Biscuits|巧克力棒饼干|ko|heart
+gangjeong|candy|puffblock|3.49|e8c880|8a5a2a|d84848|Puffed Rice Bars|米花糖|ko|
+boricha|beverages|juice|1.49|b8803a|f4f0e8|6a4a2a|Roasted Barley Tea|焙大麦茶|ko|grain
+oksusu_tea|beverages|sports|1.49|f0d040|f4f4f4|5aa84a|Corn Silk Tea|玉米须茶|ko|grain
+yuja_tea|beverages|jar|5.99|f0c040|f4f0e8|d8a020|Citron Tea|柚子茶|ko|lemon
+milk_soda|beverages|can|1.29|f4f4f0|3a6ad8|f0c040|Milk Soda|牛奶汽水|ko|bubble
+aloe_drink|beverages|sports|1.79|c8e8b0|f4f4f4|5aa84a|Aloe Drink|芦荟饮料|ko|leaf
+pear_drink|beverages|can|1.49|e8d890|f4f0e8|5a8a3a|Grated Pear Drink|梨汁饮料|ko|berry
+vitamin_shot|beverages|smallbottle|1.29|f08a2a|f4f0e8|f0c040|Vitamin C Drink|维C饮料|ko|citrus
+cider_kr|beverages|can|1.19|5ad06a|f4f4f0|3a8a3a|Lemon-Lime Soda|柠檬汽水|ko|bubble
+misutgaru|breakfast|canister|5.99|d8b890|8a5a2a|f4f0e8|Roasted Grain Powder|五谷粉|ko|grain
+abalone_juk|breakfast|can|4.99|f4f0e8|3a6ad8|f0c040|Abalone Porridge|鲍鱼粥|ko|rice
+instant_rice|breakfast|box|1.29|f4f4f0|d84848|3a6ad8|Microwave Rice|即食米饭|ko|rice
+gimbap_seaweed|breakfast|box|3.49|2a3a2a|5aa84a|f0c040|Kimbap Seaweed|包饭用海苔|ko|seaweed
+japgokbap|breakfast|ricebag|8.99|8a6a4a|f4f0e8|5a8a3a|Mixed Grain Rice|杂粮米|ko|grain
+black_bean_milk|breakfast|carton|1.99|2a2a2a|f4f0e8|f0c040|Black Bean Soy Milk|黑豆豆奶|ko|blackbean
+grain_cereal|breakfast|cereal|4.99|d8a050|5aa84a|f4f0e8|Multigrain Cereal|杂粮麦片|ko|grain
+tteokguk_tteok|breakfast|pastabox|3.99|f4f4f0|3a6ad8|d84848|Sliced Rice Cakes|年糕片|ko|rice
+doenjang|pantry|tub|4.49|8a5a2a|f4f0e8|d84848|Soybean Paste|大酱|ko|bean
+guk_ganjang|pantry|smallbottle|3.49|3a2a1a|f0c040|5a8a3a|Soup Soy Sauce|汤用酱油|ko|drop
+gochugaru|pantry|spice|4.99|d8402a|f4f0e8|8a2a1a|Red Pepper Flakes|辣椒粉|ko|chili
+chamgireum|pantry|oil|5.99|c88a2a|f4f0e8|5a8a3a|Roasted Sesame Oil|芝麻油|ko|sesame
+deulgireum|pantry|oil|6.49|8a7a2a|f4f0e8|3a6a3a|Perilla Oil|苏子油|ko|leaf
+dangmyeon|pantry|pastabox|2.99|f4f0e8|3a6ad8|d84848|Sweet Potato Noodles|红薯粉丝|ko|noodle
+jjajang_ramen|pantry|ramen|1.29|2a2a2a|f0c040|f4f0e8|Black Bean Noodles|炸酱面|ko|blackbean
+bibim_myeon|pantry|ramen|1.19|d84848|f0d040|f4f0e8|Spicy Mixed Noodles|拌面|ko|chili
+dried_anchovy|pantry|nutbag|5.49|c8ccd4|3a6ad8|f4f0e8|Dried Anchovies|小银鱼干|ko|fish
+rubber_gloves|household|gloves|2.49|d84848|f4f4f0|f0c040|Rubber Gloves|橡胶手套|ko|
+steel_chopsticks|household|chopsticks|5.99|c8ccd4|8a8e98|3a6ad8|Steel Chopsticks|不锈钢筷子|ko|
+kimchi_container|household|container|7.99|f4f4f0|3a8a3a|d84848|Kimchi Container|泡菜盒|ko|
+hot_packs|household|box|3.99|f4f4f0|d84848|f0c040|Hand Warmers|暖手包|ko|flame
+plastic_basin|household|basin|4.49|3a8ad8|f4f4f0|f0c040|Plastic Basin|塑料盆|ko|
+mosquito_spray|household|spray|4.99|5aa84a|f4f4f0|2a2a2a|Mosquito Spray|驱蚊喷雾|ko|leaf
+scrub_towel|personal|mitt|1.99|5aa84a|f0c040|d84848|Exfoliating Towel|搓澡巾|ko|
+sheet_masks|personal|box|9.99|f4f4f0|e86a8a|8ad0e8|Sheet Masks|面膜|ko|flower
+snail_cream|personal|tub|12.99|f4f0e8|8a6aa8|f0c040|Snail Cream|蜗牛霜|ko|drop
+bamboo_salt_toothpaste|personal|toothpaste|3.99|f4f4f0|3a8a5a|8a5a2a|Bamboo Salt Toothpaste|竹盐牙膏|ko|star
+hair_essence|personal|smallbottle|7.99|f0c040|f4f0e8|8a5a2a|Hair Essence|护发精油|ko|drop

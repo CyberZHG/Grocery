@@ -1,5 +1,5 @@
-import { money, productName, t, type Key } from '../i18n';
-import { CAFE_TOYS, CATEGORIES, DECOR_KINDS, DECOR_PRICE, DECOR_UNLOCK, FIXTURES, TABLE_PRICE, TOY_PRICE, type CafeToy, NPCS, PRODUCT_BY_ID, PRODUCTS, type Category, type DecorKind, type FixtureKind, type ProductDef } from '../game/defs';
+import { locale, money, productName, t, type Key } from '../i18n';
+import { CAFE_TOYS, CATEGORIES, DECOR_KINDS, DECOR_PRICE, DECOR_REGION, DECOR_UNLOCK, FIXTURES, TABLE_PRICE, TOY_PRICE, type CafeToy, NPCS, offeredIn, PRODUCT_BY_ID, PRODUCTS, type Category, type DecorKind, type FixtureKind, type ProductDef } from '../game/defs';
 import { rosterSize } from '../game/growth';
 import { categoryLevels, collectionMult, isUnlocked, levelsNeeded, MAX_PRODUCT_LEVEL, priceMult, productExpToNext, unlockIndex } from '../game/progress';
 import { inCafe } from '../game/chain';
@@ -392,7 +392,7 @@ export class BuildMode {
     const rep = st.reputation.level;
     this.el.append(h('div', { class: 'row wrap' }, [
       h('span', { class: 'tag' }, [t('build.decor')]),
-      ...DECOR_KINDS.map((k) => {
+      ...DECOR_KINDS.filter((k) => !DECOR_REGION[k] || DECOR_REGION[k]!.includes(locale())).map((k) => {
         const open = rep >= DECOR_UNLOCK[k];
         return h('button', { class: 'btn small', disabled: !open || st.money < DECOR_PRICE[k], onclick: () => this.buy('decor', k) }, [
           open ? `${t(`decor.${k}` as Key)} ${money(DECOR_PRICE[k])}` : `${t(`decor.${k}` as Key)} · ${t('reno.needs', { n: DECOR_UNLOCK[k] })}`,
@@ -432,7 +432,9 @@ export function openPicker(game: Game, ui: UI, f: FixtureState, slot: number, on
   let query = '';
   let sort: SortKey = 'default';
   const grid = h('div', { class: 'picker-grid' });
-  const cats = CATEGORIES.filter((c) => PRODUCTS.some((p) => p.cat === c && p.store === store));
+  const lang = locale();
+  const offered = (p: ProductDef) => p.store === store && offeredIn(p, lang);
+  const cats = CATEGORIES.filter((c) => PRODUCTS.some((p) => p.cat === c && offered(p)));
   const chips = h('div', { class: 'chips' });
   const renderChips = () => {
     clear(chips);
@@ -477,7 +479,7 @@ export function openPicker(game: Game, ui: UI, f: FixtureState, slot: number, on
     ]);
   };
   // quick picks: most wanted, most wanted not yet stocked, most profitable not yet stocked
-  const candidates = PRODUCTS.filter((p) => p.store === store && isUnlocked(p.id, prog));
+  const candidates = PRODUCTS.filter((p) => offered(p) && isUnlocked(p.id, prog));
   const byFans = candidates.slice().sort((a, b) => fans(b.cat, b.id, roster) - fans(a.cat, a.id, roster));
   const recs: [Key, ProductDef[]][] = [
     ['picker.recStored', candidates.filter((p) => game.state.inventory[p.id] && !inStore.has(p.id)).sort((a, b) => game.state.inventory[b.id] - game.state.inventory[a.id]).slice(0, 4)],
@@ -492,7 +494,7 @@ export function openPicker(game: Game, ui: UI, f: FixtureState, slot: number, on
   const renderGrid = () => {
     clear(grid);
     const q = query.trim().toLowerCase();
-    const list = PRODUCTS.filter((p) => p.store === store && (cat === 'all' || p.cat === cat) && (!q || productName(p.id).toLowerCase().includes(q) || p.id.includes(q)));
+    const list = PRODUCTS.filter((p) => offered(p) && (cat === 'all' || p.cat === cat) && (!q || productName(p.id).toLowerCase().includes(q) || p.id.includes(q)));
     const open = list.filter((p) => isUnlocked(p.id, prog)).sort((a, b) => metric(b) - metric(a));
     const locked = list.filter((p) => !isUnlocked(p.id, prog)).sort((a, b) => levelsNeeded(a.id) - levelsNeeded(b.id));
     for (const p of open) grid.append(card(p));

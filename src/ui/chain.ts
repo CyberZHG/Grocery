@@ -1,6 +1,6 @@
 import { money, staffName, t, type Key } from '../i18n';
 import {
-  BRANCH_COST, BRANCH_REP, branchBlocker, isCafe, CHALLENGE_BY_ID, CHALLENGES, doneCount, goalOf, MANAGER_SHARE, managerShare, progressOf, STORE_BONUS, startNextTier, storeIncome,
+  BRANCH_COST, BRANCH_REP, branchBlocker, CAFE_PEAKS, isCafe, CHALLENGE_BY_ID, CHALLENGES, doneCount, goalOf, MANAGER_SHARE, managerShare, progressOf, STORE_BONUS, startNextTier, storeIncome,
 } from '../game/chain';
 import { saveGame, type StaffState } from '../game/state';
 import { CAFE_TOYS, CAT_COATS } from '../game/defs';
@@ -25,8 +25,16 @@ function progressLabel(g: Game, i: number): string {
 }
 
 /** One store's challenge: restrictions, goal with progress, and reward. */
+const peakText = (peaks: [number, ...number[]][]) => peaks.map(([m]) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`).join(' · ');
+
 export function challengeCard(g: Game, i: number): HTMLElement {
   const slot = g.state.stores[i];
+  if (isCafe(slot)) {
+    return h('div', { class: 'challenge' }, [
+      h('p', { class: 'muted' }, [t('cafe.hint')]),
+      h('div', { class: 'kv' }, [h('span', {}, [t('chain.peaks')]), h('span', {}, [peakText(CAFE_PEAKS)])]),
+    ]);
+  }
   const id = slot.challenge;
   const p = progressOf(g.state, i);
   const tier = slot.tier ?? 0;
@@ -41,7 +49,7 @@ export function challengeCard(g: Game, i: number): HTMLElement {
       : null,
     h('div', { class: 'kv' }, [
       h('span', {}, [t('chain.peaks')]),
-      h('span', {}, [CHALLENGE_BY_ID.get(id)!.peaks.map(([m]) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`).join(' · ')]),
+      h('span', {}, [peakText(CHALLENGE_BY_ID.get(id)!.peaks)]),
     ]),
     h('div', { class: 'kv' }, [h('span', {}, [t('chain.goal')]), h('span', {}, [goalText(g, i)])]),
     h('div', { class: 'ach-prog' }, [

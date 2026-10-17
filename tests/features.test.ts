@@ -177,9 +177,9 @@ describe('spills and collection', () => {
   });
 
   it('selling the last missing product completes a category and raises its prices', async () => {
-    const { UNLOCK_ORDER, COLLECTION_BONUS } = await import('../src/game/progress');
+    const { unlockOrder, COLLECTION_BONUS } = await import('../src/game/progress');
     const s = newGame(3);
-    const ids = UNLOCK_ORDER.dairy;
+    const ids = unlockOrder('dairy');
     for (const id of ids.slice(1)) s.products[id].sold = 1;
     const sim = new Sim(s);
     const before = sim.priceOf(ids[0]);
@@ -892,5 +892,49 @@ describe('store looks', () => {
     old.owned = [];
     const back = migrate(old)!;
     expect(back.stores[2].saved!.style.floor).toBe('checker');
+  });
+});
+
+describe('rolling toys', () => {
+  it('a ball never rests behind a counter or in a queue, so cats can still reach it', async () => {
+    const { ensureCafe, switchStore, checkChallenge, openBranch, CHALLENGES } = await import('../src/game/chain');
+    const s = newGame(44);
+    s.level = LEVELS.length - 1;
+    s.reputation.level = 20;
+    s.money = 1e7;
+    checkChallenge(s);
+    for (let k = 1; k < CHALLENGES.length; k++) {
+      openBranch(s);
+      s.stores[s.active].done = true;
+    }
+    ensureCafe(s);
+    switchStore(s, s.stores.length - 1);
+    const sim = new Sim(s);
+    const ball = s.fixtures.find((f) => f.decor === 'toy_ball')!;
+    ball.at = { ...sim.layout.registers[0].cashier };
+    sim.startDay();
+    for (let n = 0; n < 3000; n++) {
+      sim.update(0.1);
+      const p = sim.toyAt(ball);
+      const i = Math.round(p.y) * sim.layout.w + Math.round(p.x);
+      if (!sim.rollingToys().has(ball.id)) expect(sim.layout.reserved[i]).toBe(0);
+    }
+  });
+});
+
+describe('goals at the cat cafe', () => {
+  it('only asks for what the store can do, and swaps the rest when you switch in', async () => {
+    const { fitGoals, goalPossible } = await import('../src/game/goals');
+    const cafe = { stations: ['coffee', 'bakery'], bagging: false, shop: false };
+    for (let day = 1; day < 60; day++) {
+      const s = newGame(day);
+      refreshGoals(s.goals, s.seed, day, LEVELS.length - 1);
+      const rewards = [...s.goals.daily, ...s.goals.weekly].map((g) => g.reward);
+      fitGoals(s.goals, s.seed, day, cafe);
+      const all = [...s.goals.daily, ...s.goals.weekly];
+      for (const g of all) expect(goalPossible(g.kind, cafe), g.kind).toBe(true);
+      expect(all.map((g) => g.reward)).toEqual(rewards);
+      expect(new Set(s.goals.daily.map((g) => g.kind)).size).toBe(s.goals.daily.length);
+    }
   });
 });

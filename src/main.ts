@@ -2,8 +2,8 @@ import '@fontsource/pixelify-sans/400.css';
 import '@fontsource/pixelify-sans/600.css';
 import '@fontsource/vt323/400.css';
 import './style.css';
-import { loadAssets } from './core/assets';
-import { locale, t } from './i18n';
+import { loadAssets, setSpriteVariant } from './core/assets';
+import { locale, onLocaleChange, t } from './i18n';
 import { Game } from './game/game';
 import { UI } from './ui/app';
 
@@ -14,6 +14,8 @@ document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: 
 async function boot(): Promise<void> {
   const root = document.getElementById('app')!;
   document.documentElement.lang = locale();
+  setSpriteVariant(locale());
+  onLocaleChange(() => setSpriteVariant(locale()));
   await loadAssets();
   root.replaceChildren();
   const ui = new UI(root);

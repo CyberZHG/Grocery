@@ -1,4 +1,5 @@
-import { CATEGORIES, PRODUCT_BY_ID, PRODUCTS, type Category, type ProductDef } from './defs';
+import { locale } from '../i18n';
+import { CATEGORIES, offeredIn, PRODUCT_BY_ID, PRODUCTS, type Category, type ProductDef } from './defs';
 import { MAX_LEVEL, type Leveled } from './rules';
 
 export const MAX_PRODUCT_LEVEL = MAX_LEVEL;
@@ -24,7 +25,7 @@ export function priceMult(level: number): number {
 export const COLLECTION_BONUS = 0.03;
 
 export function collectionCount(cat: Category, products: Record<string, ProductProgress>): number {
-  return UNLOCK_ORDER[cat].filter((id) => products[id]?.sold > 0).length;
+  return unlockOrder(cat).filter((id) => products[id]?.sold > 0).length;
 }
 
 export function collectionMult(cat: Category, done: Category[]): number {
@@ -35,34 +36,47 @@ export function profit(p: ProductDef): number {
   return p.price - p.cost;
 }
 
-/** Per category, cheapest-profit products unlock first; starters are always open. */
-export const UNLOCK_ORDER = {} as Record<Category, string[]>;
-for (const c of CATEGORIES) {
-  UNLOCK_ORDER[c] = PRODUCTS.filter((p) => p.cat === c)
-    .sort((a, b) => Number(STARTERS.includes(b.id)) - Number(STARTERS.includes(a.id)) || profit(a) - profit(b))
-    .map((p) => p.id);
+const ladders = new Map<string, Record<Category, string[]>>();
+
+/**
+ * Per category, cheapest-profit products unlock first; starters are always open.
+ * Each language has its own ladder: the shared products plus that language's local ones, mixed in by profit.
+ */
+export function unlockOrder(cat: Category): string[] {
+  const lang = locale();
+  let ladder = ladders.get(lang);
+  if (!ladder) {
+    ladder = {} as Record<Category, string[]>;
+    for (const c of CATEGORIES) {
+      ladder[c] = PRODUCTS.filter((p) => p.cat === c && offeredIn(p, lang))
+        .sort((a, b) => Number(STARTERS.includes(b.id)) - Number(STARTERS.includes(a.id)) || profit(a) - profit(b))
+        .map((p) => p.id);
+    }
+    ladders.set(lang, ladder);
+  }
+  return ladder[cat];
 }
 
 export function baseUnlocked(cat: Category): number {
-  return Math.max(3, Math.ceil(UNLOCK_ORDER[cat].length * 0.35));
+  return Math.max(3, Math.ceil(unlockOrder(cat).length * 0.35));
 }
 
 /** Earned levels in a category: sum of (level - 1) across its products. */
 export function categoryLevels(cat: Category, products: Record<string, ProductProgress>): number {
   let n = 0;
-  for (const id of UNLOCK_ORDER[cat]) n += (products[id]?.level ?? 1) - 1;
+  for (const id of unlockOrder(cat)) n += (products[id]?.level ?? 1) - 1;
   return n;
 }
 
 export const LEVELS_PER_UNLOCK = 2;
 
 export function unlockedCount(cat: Category, products: Record<string, ProductProgress>): number {
-  return Math.min(UNLOCK_ORDER[cat].length, baseUnlocked(cat) + Math.floor(categoryLevels(cat, products) / LEVELS_PER_UNLOCK));
+  return Math.min(unlockOrder(cat).length, baseUnlocked(cat) + Math.floor(categoryLevels(cat, products) / LEVELS_PER_UNLOCK));
 }
 
 export function unlockIndex(id: string): number {
   const p = PRODUCT_BY_ID.get(id)!;
-  return UNLOCK_ORDER[p.cat].indexOf(id);
+  return unlockOrder(p.cat).indexOf(id);
 }
 
 export function isUnlocked(id: string, products: Record<string, ProductProgress>): boolean {

@@ -114,8 +114,8 @@ def door_stock():
     return cv
 
 
-def door_stock_open():
-    """The stock door swung inward: a lit back room with shelves of cartons."""
+def door_stock_open(half=False):
+    """The stock door swung inward: a lit back room with shelves of cartons. Half-open, the leaf still hides most of it."""
     cv = door_stock()
     cv.rect(6, 16, 25, 63, hexc('2e262c'))
     cv.rect(6, 16, 25, 23, hexc('3e3436'))
@@ -134,9 +134,12 @@ def door_stock_open():
     cv.hline(14, 22, 56, W(kraft, -1))
     cv.rect(6, 61, 25, 63, hexc('4a4044'))
     leaf = hexc('8a6a50')
-    cv.rect(6, 16, 10, 63, W(leaf, -1))
-    cv.vline(10, 16, 63, W(leaf, -3))
-    cv.rect(7, 22, 9, 32, hexc('9ec8d8'))
+    edge = 17 if half else 10
+    cv.rect(6, 16, edge, 63, W(leaf, -1))
+    cv.vline(edge, 16, 63, W(leaf, -3))
+    cv.rect(8, 22, edge - 2, 32, hexc('9ec8d8'))
+    if half:
+        cv.rect(edge - 3, 38, edge - 2, 41, hexc('d8c070'))
     return cv
 
 
@@ -345,6 +348,84 @@ def freezer_glass_v():
     return cv
 
 
+def cash_drawer(k):
+    """The register drawer sliding out (k = 1..3 pixels pairs), coins and notes in their trays."""
+    cv = Canvas(24, 9)
+    depth = k * 2 + 2
+    body = hexc('4a4a54')
+    cv.rect(0, 0, 23, depth, body)
+    cv.hline(0, 23, depth, W(body, -2))
+    if depth >= 4:
+        for i, c in enumerate(('7ab06a', '8ac07a', 'f0c040', 'c8ccd4', 'd8a060')):
+            x = 2 + i * 4
+            cv.rect(x, 1, x + 2, min(depth - 1, 3), hexc(c))
+    cv.outline(0.5)
+    return cv
+
+
+def receipt(k):
+    """Paper feeding out of the printer slot, a little more each frame."""
+    cv = Canvas(8, 13)
+    h = k * 4
+    cv.rect(1, 12 - h, 6, 12, WHITE)
+    for y in range(13 - h, 12, 2):
+        cv.hline(2, 5 if y % 4 else 4, y, hexc('a8acb8'))
+    cv.outline(0.4)
+    return cv
+
+
+def glass_open(kind, vertical, slot, stage):
+    """Glass overlay with one door swinging open (fridge) or one lid slid across (freezer); stage 1 is halfway, 2 is fully open."""
+    hl = (255, 255, 255, 110)
+    edge = hexc('c8ccd4')
+    if kind == 'fridge' and not vertical:
+        cv = Canvas(64, 72)
+        g = GLASS[:3] + (60,)
+        for i, x0 in enumerate((3, 33)):
+            if i != slot:
+                cv.rect(x0, 10, x0 + 27, 64, g)
+                cv.line(x0 + 3, 60, x0 + 22, 12, hl)
+                continue
+            # the door turns on its outer hinge: narrower as it opens, its frame catching the light
+            w = 13 if stage == 1 else 3
+            hx0 = x0 if slot == 0 else x0 + 27 - w
+            cv.rect(hx0, 10, hx0 + w, 64, GLASS[:3] + (90,))
+            cv.rect(hx0, 10, hx0, 64, edge) if slot == 0 else cv.rect(hx0 + w, 10, hx0 + w, 64, edge)
+            cv.rect(hx0 + (w if slot == 0 else 0), 10, hx0 + (w if slot == 0 else 0), 64, W(edge, -2))
+        return cv
+    if kind == 'fridge':
+        cv = Canvas(T, 104)
+        w = 9 if stage == 1 else 2
+        cv.rect(28 - w, 5, 28, 96, GLASS[:3] + (90,))
+        cv.vline(28 - w, 5, 96, W(edge, -2))
+        cv.vline(28, 5, 96, edge)
+        return cv
+    if not vertical:
+        # sliding lids: this slot's lid rides over the other one
+        cv = Canvas(64, 48)
+        shift = 14 if stage == 1 else 27
+        lids = [(3, 30), (33, 60)]
+        other = lids[1 - slot]
+        cv.rect(other[0], 3, other[1], 26, (210, 238, 248, 70))
+        mine = lids[slot]
+        dx = shift if slot == 0 else -shift
+        cv.rect(mine[0] + dx, 3, mine[1] + dx, 26, (210, 238, 248, 95))
+        cv.vline(mine[0] + dx, 3, 26, edge)
+        cv.vline(mine[1] + dx, 3, 26, edge)
+        return cv
+    cv = Canvas(T, 80)
+    shift = 15 if stage == 1 else 29
+    lids = [(3, 32), (33, 62)]
+    other = lids[1 - slot]
+    cv.rect(3, other[0], 28, other[1], (210, 238, 248, 70))
+    mine = lids[slot]
+    dy = shift if slot == 0 else -shift
+    cv.rect(3, mine[0] + dy, 28, mine[1] + dy, (210, 238, 248, 95))
+    cv.hline(3, 28, mine[0] + dy, edge)
+    cv.hline(3, 28, mine[1] + dy, edge)
+    return cv
+
+
 def counter_base(cv, w=64, h=56, top=hexc('e8dcc8'), front=hexc('8a6a4a')):
     cv.rect(0, 8, w - 1, 23, top)
     cv.hline(0, w - 1, 8, W(top, 2))
@@ -534,6 +615,89 @@ def oven():
         cv.rect(10, y0 + 1, 53, y0 + 2, hexc('d8dce4'))
     cv.rect(0, 68, 63, 71, W(body, -2))
     cv.shade_box(0, 0, 63, 71, 0.4)
+    return cv
+
+
+def mop(k):
+    """Mop held from the right hand, its head swishing across the floor: left, middle, right."""
+    cv = Canvas(24, 24)
+    head_x = (2, 7, 12)[k]
+    cv.line(18, 1, head_x + 5, 19, hexc('a8784a'), 1)
+    cv.rect(head_x, 19, head_x + 10, 22, hexc('dfe4ec'))
+    for x in range(head_x, head_x + 11, 2):
+        cv.px(x, 23, hexc('b8bec8'))
+    cv.hline(head_x, head_x + 10, 19, hexc('8a8e98'))
+    cv.outline(0.4)
+    return cv
+
+
+def bucket():
+    cv = Canvas(14, 12)
+    c = hexc('4a8ad0')
+    cv.poly([(1, 3), (12, 3), (11, 11), (2, 11)], c)
+    cv.rect(2, 3, 11, 4, hexc('8ec4e0'))
+    cv.line(1, 3, 6, 0, hexc('8a8e98'))
+    cv.line(12, 3, 7, 0, hexc('8a8e98'))
+    cv.outline(0.4)
+    return cv
+
+
+def slicer_blade(k):
+    """The deli slicer's disc with two light spokes, turned a little each frame so it reads as spinning."""
+    cv = Canvas(20, 20)
+    disc = hexc('dfe4ec')
+    cv.ellipse(10, 10, 8.5, 8.5, disc)
+    a = k * math.pi / 8
+    for spoke in (a, a + math.pi / 2):
+        for r in range(3, 8):
+            for sgn in (1, -1):
+                cv.px(round(10 + sgn * r * math.cos(spoke)), round(10 + sgn * r * math.sin(spoke)), (255, 255, 255, 220))
+    for r in range(3, 8):
+        cv.px(round(10 + r * math.cos(a + math.pi / 4)), round(10 + r * math.sin(a + math.pi / 4)), hexc('b8bec8'))
+    cv.ellipse(10, 10, 2, 2, hexc('6a6a84'))
+    cv.outline(0.4)
+    return cv
+
+
+def oden_bubbles(k):
+    """Broth simmering in the four sections of the oden pot: bubbles swell and pop, a highlight drifts."""
+    cv = Canvas(64, 24)
+    rnd = random.Random(31 + k)
+    for x0, x1 in ((7, 18), (21, 31), (34, 43), (46, 56)):
+        for _ in range(2):
+            x, y = rnd.randint(x0 + 1, x1 - 1), rnd.randint(10, 19)
+            r = rnd.choice((0, 1, 1))
+            if r:
+                cv.px(x, y - 1, (255, 240, 200, 200)); cv.px(x - 1, y, (255, 240, 200, 200))
+                cv.px(x + 1, y, (255, 240, 200, 200)); cv.px(x, y + 1, (255, 240, 200, 160))
+            else:
+                cv.px(x, y, (255, 245, 220, 230))
+        hx = x0 + (k * 3) % (x1 - x0 - 3)
+        cv.hline(hx, hx + 2, 12 + k % 2 * 4, (255, 230, 180, 120))
+    return cv
+
+
+def oven_door(k):
+    """The lower oven door dropping open (drawn 36px down the oven): halfway, then flat, with the hot inside showing."""
+    cv = Canvas(64, 34)
+    inside = hexc('2a2228')
+    cv.rect(4, 2, 59, 27, hexc('4a4a54'))
+    cv.rect(6, 4, 57, 25, inside)
+    cv.rect(7, 18, 56, 19, hexc('8a8e98'))
+    cv.rect(7, 24, 56, 25, hexc('f08030'))
+    glow = (240, 140, 60, 70)
+    cv.rect(7, 5, 56, 23, glow)
+    door = hexc('5a5a64')
+    if k == 1:
+        # tilted halfway: the door looks short, its window catching the light
+        cv.rect(4, 15, 59, 27, door)
+        cv.rect(10, 17, 53, 24, hexc('5a3028'))
+        cv.rect(14, 15, 49, 15, hexc('d8dce4'))
+    else:
+        # flat out in front, seen edge-on below the opening
+        cv.rect(2, 28, 61, 31, door)
+        cv.hline(2, 61, 28, hexc('d8dce4'))
+    cv.outline(0.4)
     return cv
 
 
@@ -1138,20 +1302,51 @@ def pillar():
     return cv
 
 
-def plant():
+def plant(sway=0):
     cv = Canvas(T, 48)
     pot = hexc('b06040')
     cv.poly([(9, 34), (23, 34), (21, 46), (11, 46)], pot)
     cv.rect(8, 32, 24, 34, W(pot, 1))
     cv.shade_cyl(8, 32, 24, 46)
     g = hexc('4a9a4a')
+    # the top leans further than the base when it sways
     for (x, y, rx, ry) in ((16, 16, 6, 10), (10, 22, 5, 8), (22, 22, 5, 8), (16, 26, 7, 6)):
-        cv.ellipse(x, y, rx, ry, g)
+        cv.ellipse(x + sway * (1.5 if y < 20 else 0.6), y, rx, ry, g)
     rnd = random.Random(3)
     for _ in range(30):
         x, y = rnd.randint(5, 27), rnd.randint(6, 32)
         if cv.get(x, y) == g:
             cv.px(x, y, W(g, rnd.choice((-1, 1, 2))))
-    cv.shade_ball(16, 20, 12, 14, 0.7)
+    cv.shade_ball(16 + sway, 20, 12, 14, 0.7)
     cv.outline(0.5)
+    return cv
+
+
+def puddle(k):
+    """A sidewalk puddle; k > 0 adds a raindrop ring that widens and fades."""
+    cv = Canvas(24, 10)
+    water = hexc('7a90a8')
+    cv.ellipse(11.5, 5, 11, 4, water)
+    cv.ellipse(9, 4, 5, 1.6, W(water, 2))
+    if k:
+        rx, ry = 1 + k * 2, 0.5 + k * 0.8
+        ring = mix(W(water, 4), water, (k - 1) / 3)
+        for i in range(64):
+            a = i / 64 * 2 * math.pi
+            x, y = round(14 + math.cos(a) * rx), round(5 + math.sin(a) * ry)
+            if cv.get(x, y) is not None:
+                cv.px(x, y, ring)
+    return cv
+
+
+def splash(k):
+    """A raindrop hitting the pavement: crown, then droplets falling away."""
+    cv = Canvas(8, 6)
+    c = hexc('c8dcf0')
+    if k == 0:
+        cv.px(3, 4, c); cv.px(4, 4, c); cv.px(2, 3, c); cv.px(5, 3, c)
+    elif k == 1:
+        cv.px(1, 2, c); cv.px(6, 2, c); cv.px(3, 1, c); cv.px(4, 5, c); cv.px(3, 5, c)
+    else:
+        cv.px(0, 4, c); cv.px(7, 4, c); cv.px(2, 2, c); cv.px(5, 2, c)
     return cv

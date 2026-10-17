@@ -75,6 +75,8 @@ canvas.world {
 .btn:disabled { opacity: 0.45; cursor: default; }
 .btn.small { padding: 6px 10px; font-size: 14px; }
 .btn.icon { min-width: 36px; }
+.btn .pix-icon { display: block; margin: 0 auto; }
+.btn.icon-text { display: inline-flex; align-items: center; gap: 6px; }
 .btn.primary { background: var(--primary); }
 .btn.warn { background: var(--warn); }
 .btn.ghost { background: transparent; border-color: #4a4256; box-shadow: none; }
@@ -444,6 +446,7 @@ label.row > span { white-space: nowrap; }
   .grow-row { grid-template-columns: 6.5em 4em 1fr; }
   .grow-eff { grid-column: 1 / -1; text-align: left; }
   .hud-money { font-size: 17px; }
+  .narrow-hide { display: none; }
   .cards { grid-template-columns: 1fr; }
   .mini-bottom { flex-wrap: wrap; }
   .toasts { top: auto; bottom: calc(112px + env(safe-area-inset-bottom)); right: auto; left: 50%; transform: translateX(-50%); align-items: center; flex-direction: column-reverse; }

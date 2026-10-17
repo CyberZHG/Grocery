@@ -1,5 +1,5 @@
-import atlas from '../data/atlas.json';
-import { money, t, type Key } from '../i18n';
+import { rect } from '../core/assets';
+import { money, t, weight, type Key } from '../i18n';
 import { ACH_CATEGORIES, ACHIEVEMENTS, achValue, categoryOpen, isRevealed, ROMAN, unlockedCount, type AchievementDef } from '../game/achievements';
 import type { GameState } from '../game/state';
 import { h } from './dom';
@@ -7,7 +7,7 @@ import { h } from './dom';
 const base = import.meta.env.BASE_URL;
 
 export function spriteIcon(name: string, scale = 1): HTMLElement {
-  const [x, y, w, hh] = (atlas.rects as unknown as Record<string, number[]>)[name];
+  const [x, y, w, hh] = rect(name);
   return h('div', {
     class: 'sprite',
     style: {
@@ -27,7 +27,7 @@ export function achName(a: AchievementDef): string {
 export function formatAch(a: AchievementDef, v: number): string {
   if (a.format === 'money') return money(v);
   if (a.format === 'cents') return money(v / 100);
-  if (a.format === 'pounds') return `${(Math.floor(v * 10) / 10).toLocaleString('en-US')} lb`;
+  if (a.format === 'pounds') return weight(v);
   return Math.floor(v).toLocaleString('en-US');
 }
 

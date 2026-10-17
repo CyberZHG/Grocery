@@ -82,24 +82,58 @@ export function waitPenalty(waitMinutes: number, patience: number): { mult: numb
 
 // ---------- cash ----------
 
-export const BILLS = [10000, 5000, 2000, 1000, 500, 100];
-export const DRAWER_BILLS = [100, 500, 1000, 2000, 5000];
-export const COINS = [25, 10, 5];
-export const ALL_DENOMS = [...BILLS, ...COINS];
+export type CashId = 'usd' | 'cny' | 'jpy' | 'krw';
 
-/** Pennies are no longer minted; cash totals round to the nearest nickel. */
-export function roundCash(cents: number): number {
-  return Math.round(cents / 5) * 5;
+/**
+ * Notes and coins in cents of the game's dollar. Prices stay the same number in every currency;
+ * yen show it ×100 (a yen is a cent) and won ×1000 (a won is a tenth of a cent).
+ */
+export interface CashSet {
+  id: CashId;
+  bills: number[];
+  coins: number[];
+  /** notes kept in the register drawer for change */
+  drawer: number[];
+  /** cash totals round to this */
+  step: number;
+  /** the smallest amount people think of as "whole": a dollar, a yuan, a hundred yen, a thousand won */
+  unit: number;
+  /** amounts people round up to when they don't count exactly */
+  payUps: number[];
+  /** how much more or less often than usual people pay cash here */
+  share: number;
+}
+
+export const CASH: Record<CashId, CashSet> = {
+  usd: { id: 'usd', bills: [10000, 5000, 2000, 1000, 500, 100], coins: [25, 10, 5], drawer: [100, 500, 1000, 2000, 5000], step: 5, unit: 100, payUps: [100, 500, 2000], share: 1 },
+  cny: { id: 'cny', bills: [10000, 5000, 2000, 1000, 500], coins: [100, 50, 10], drawer: [500, 1000, 2000, 5000], step: 10, unit: 100, payUps: [100, 1000, 5000], share: 0.35 },
+  jpy: { id: 'jpy', bills: [10000, 5000, 1000], coins: [500, 100, 50, 10, 5, 1], drawer: [1000, 5000], step: 1, unit: 100, payUps: [100, 1000, 5000], share: 1.6 },
+  krw: { id: 'krw', bills: [5000, 1000, 500, 100], coins: [50, 10, 5, 1], drawer: [100, 500, 1000], step: 1, unit: 100, payUps: [100, 500, 1000], share: 0.3 },
+};
+
+export const CASH_OF_LOCALE: Record<string, CashId> = { en: 'usd', zh: 'cny', ja: 'jpy', ko: 'krw' };
+
+export function denoms(cash: CashSet): number[] {
+  return [...cash.bills, ...cash.coins].sort((a, b) => b - a);
+}
+
+export function isBill(cash: CashSet, v: number): boolean {
+  return cash.bills.includes(v);
+}
+
+/** US pennies are no longer minted and yuan go down to the jiao; cash totals round to what can be paid. */
+export function roundCash(cents: number, cash = CASH.usd): number {
+  return Math.round(cents / cash.step) * cash.step;
 }
 
 export function sum(pieces: number[]): number {
   return pieces.reduce((a, b) => a + b, 0);
 }
 
-export function greedy(cents: number, denoms = ALL_DENOMS): number[] {
+export function greedy(cents: number, list = denoms(CASH.usd)): number[] {
   const out: number[] = [];
   let left = cents;
-  for (const d of denoms) {
+  for (const d of list) {
     while (left >= d) {
       out.push(d);
       left -= d;
@@ -112,6 +146,7 @@ export interface CashPayment {
   pieces: number[];
   /** what the customer believes they handed over */
   intended: number;
+  cash: CashId;
 }
 
 export interface CashProfile {
@@ -119,44 +154,44 @@ export interface CashProfile {
   miscount: number;
 }
 
-export function makeCashPayment(total: number, rng: Rng, profile: CashProfile): CashPayment {
-  const due = roundCash(total);
+export function makeCashPayment(total: number, rng: Rng, profile: CashProfile, cash = CASH.usd): CashPayment {
+  const due = roundCash(total, cash);
+  const all = denoms(cash);
+  const { unit, payUps } = cash;
   let pieces: number[];
   const counting = rng.next() < profile.exact;
   if (!counting) {
     const options: number[][] = [];
-    const single = BILLS.slice().reverse().find((b) => b >= due);
+    const single = cash.bills.slice().reverse().find((b) => b >= due);
     if (single) options.push([single]);
-    const dollars = Math.ceil(due / 100) * 100;
-    options.push(greedy(dollars, BILLS));
-    const five = Math.ceil(due / 500) * 500;
-    options.push(greedy(five, BILLS));
-    if (due > 2000) options.push(greedy(Math.ceil(due / 2000) * 2000, BILLS));
+    options.push(greedy(Math.ceil(due / payUps[0]) * payUps[0], all));
+    options.push(greedy(Math.ceil(due / payUps[1]) * payUps[1], all));
+    if (due > payUps[2]) options.push(greedy(Math.ceil(due / payUps[2]) * payUps[2], all));
     pieces = rng.pick(options);
   } else {
-    const cents = due % 100;
-    const dollarsPart = due - cents;
-    if (cents === 0 || rng.next() < 0.5) {
-      pieces = [...greedy(dollarsPart, BILLS), ...greedy(cents, COINS)];
+    const small = due % unit;
+    const whole = due - small;
+    if (small === 0 || rng.next() < 0.5) {
+      pieces = [...greedy(whole, all), ...greedy(small, cash.coins)];
     } else {
-      // hands over extra coins so change comes back in whole dollars
-      const bills = greedy(Math.ceil(due / 500) * 500, BILLS);
-      const extra = greedy(cents, COINS);
-      pieces = sum(bills) - due >= 100 ? [...bills, ...extra] : [...greedy(dollarsPart + 100, BILLS), ...extra];
+      // hands over extra coins so change comes back in whole units
+      const notes = greedy(Math.ceil(due / (unit * 5)) * unit * 5, all);
+      const extra = greedy(small, cash.coins);
+      pieces = sum(notes) - due >= unit ? [...notes, ...extra] : [...greedy(whole + unit, all), ...extra];
     }
   }
   const intended = sum(pieces);
   if (counting && rng.next() < profile.miscount && pieces.length > 1) {
-    const small = pieces.filter((p) => p < 100);
+    const small = pieces.filter((p) => !isBill(cash, p));
     if (small.length && rng.next() < 0.6) {
       pieces.splice(pieces.indexOf(rng.pick(small)), 1);
     } else {
-      pieces.push(rng.pick(COINS));
+      pieces.push(rng.pick(cash.coins.filter((c) => c < unit)));
     }
   }
-  return { pieces, intended };
+  return { pieces, intended, cash: cash.id };
 }
 
-export function changeDue(pieces: number[], total: number): number {
-  return sum(pieces) - roundCash(total);
+export function changeDue(pieces: number[], total: number, cash = CASH.usd): number {
+  return sum(pieces) - roundCash(total, cash);
 }

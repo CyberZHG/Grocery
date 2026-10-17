@@ -64,8 +64,8 @@ export function fixtureCells(f: FixturePlacement): P[] {
   return f.vertical ? [{ x: f.x, y: f.y }, { x: f.x, y: f.y + 1 }] : [{ x: f.x, y: f.y }, { x: f.x + 1, y: f.y }];
 }
 
-/** The cat cafe never grows: one register and a coffee counter. */
-export const CAFE_LEVEL: LevelDef = { w: 14, h: 10, registers: 1, cards: 0, stations: ['coffee'], bagging: false, cost: 0, roster: 60, rent: 60 };
+/** The cat cafe never grows: one register, a coffee counter and a bread oven. */
+export const CAFE_LEVEL: LevelDef = { w: 18, h: 12, registers: 1, cards: 0, stations: ['coffee', 'bakery'], bagging: false, cost: 0, roster: 80, rent: 60 };
 
 export function buildLayout(level: number, variant: LayoutVariant = 'base'): Layout {
   if (variant === 'cafe') return baseLayout(CAFE_LEVEL, -1, false, false);

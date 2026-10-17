@@ -1,7 +1,8 @@
-import { BREAD_UNLOCK, BREADS, CAT_COATS, CATEGORIES, NPCS, SKILLS, START_MONEY, STORE_STYLE, type Bread, type Category, type CatCoat, type FixtureKind, type Skill } from './defs';
+import { locale } from '../i18n';
+import { BREAD_REGION, BREAD_UNLOCK, BREADS, CAT_COATS, CATEGORIES, NPCS, SKILLS, START_MONEY, STORE_STYLE, type Bread, type Category, type CatCoat, type FixtureKind, type Skill } from './defs';
 import type { GoalsState } from './goals';
 import { freshGrowth, type CatState, type EquipKind } from './growth';
-import { collectionCount, freshProducts, UNLOCK_ORDER, type ProductProgress } from './progress';
+import { collectionCount, freshProducts, unlockOrder, type ProductProgress } from './progress';
 import type { Leveled } from './rules';
 import type { ChallengeId } from './chain';
 import type { LayoutVariant } from './layout';
@@ -335,7 +336,9 @@ export function migrate(data: unknown): GameState | null {
       for (const key of [`floor:${look.floor}`, `wall:${look.wall}`, `sign:${look.sign}`]) if (!s.owned.includes(key)) s.owned.push(key);
     });
     for (const slot of s.stores) if (slot.saved) slot.saved.street ??= emptyStreet();
-    s.collections ??= CATEGORIES.filter((c) => collectionCount(c, s.products) === UNLOCK_ORDER[c].length);
+    // stores you aren't running keep their own bakery shelf; give them the breads added since
+    for (const slot of s.stores) if (slot.saved) slot.saved.bakery = { ...Object.fromEntries(BREADS.map((b) => [b, { good: 0, golden: 0 }])), ...(slot.saved.bakery ?? {}) } as GameState['bakery'];
+    s.collections ??= CATEGORIES.filter((c) => collectionCount(c, s.products) === unlockOrder(c).length);
     s.savedAt ??= Date.now();
     const skills = freshSkills();
     s.owner = { ...skills, ...s.owner };
@@ -377,9 +380,11 @@ export function bakeryLevel(s: GameState): number {
   return Math.max(s.owner.bakery.level, ...s.staff.map((st) => st.skills.bakery.level));
 }
 
+/** Breads the team can bake here, in the order they unlock. */
 export function unlockedBreads(s: GameState): Bread[] {
   const lv = bakeryLevel(s);
-  return BREADS.filter((b) => BREAD_UNLOCK[b] <= lv);
+  const lang = locale();
+  return BREADS.filter((b) => BREAD_UNLOCK[b] <= lv && (!BREAD_REGION[b] || BREAD_REGION[b] === lang)).sort((a, b) => BREAD_UNLOCK[a] - BREAD_UNLOCK[b]);
 }
 
 /** Extra traffic share for a newly opened store, fading out over 14 days. */

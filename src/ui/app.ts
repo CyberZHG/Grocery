@@ -12,7 +12,9 @@ import { dateOf, holidayOf, weatherOf } from '../game/calendar';
 import { BuildMode } from './build';
 import { openShare } from './share';
 import { decodeSave, encodeSave } from '../game/savecode';
-import { clear, h } from './dom';
+import { clear, h, ICON_MUTED, ICON_SOUND, ICON_STORE, pixelIcon } from './dom';
+import { isCafe } from '../game/chain';
+import { slotName } from '../game/names';
 import { regularsPanel, reportPanel, staffPanel } from './panels';
 import { growPanel } from './street';
 
@@ -37,7 +39,7 @@ export function charIcon(row: number, scale = 1): HTMLElement {
     style: {
       width: `${32 * scale}px`, height: `${40 * scale}px`,
       backgroundImage: `url(${base}assets/chars.png?v=${__BUILD__})`,
-      backgroundSize: `${46 * 32 * scale}px auto`,
+      backgroundSize: `${48 * 32 * scale}px auto`,
       backgroundPosition: `0 -${(row * 48 + 2) * scale}px`,
     },
   });
@@ -201,6 +203,12 @@ export class UI {
         }, ['❚❚']),
         h('button', { class: 'btn small primary', onclick: () => g.startDay() }, [t('hud.skip')]),
       );
+      // with more than one store, switching is a tap away at night
+      if (g.state.stores.length > 1) {
+        this.controls.append(h('button', { class: 'btn small icon-text', title: t('hud.stores'), onclick: () => this.showStores() }, [
+          pixelIcon(ICON_STORE), h('span', { class: 'narrow-hide' }, [t('hud.stores')]),
+        ]));
+      }
     }
     const muted = audioSettings().muted;
     this.controls.append(
@@ -210,7 +218,7 @@ export class UI {
           setAudio({ muted: !audioSettings().muted });
           this.refresh();
         },
-      }, [muted ? '🔇' : '🔊']),
+      }, [pixelIcon(muted ? ICON_MUTED : ICON_SOUND)]),
       h('button', { class: 'btn small lang', title: t('menu.language'), onclick: () => this.showLanguages() }, [LOCALES.find((l) => l.code === locale())!.label]),
       h('button', { class: 'btn small icon', title: t('hud.menu'), onclick: () => this.showMenu() }, ['☰']),
     );
@@ -390,6 +398,26 @@ export class UI {
       h('button', { class: 'btn ghost', onclick: () => this.closeModal() }, [t('common.cancel')]),
       h('button', { class: 'btn warn', onclick: () => { this.closeModal(); onYes(); } }, [t('common.confirm')]),
     ]);
+  }
+
+  /** Pick the store to run tonight; the same as Expand → Chain, without the details. */
+  private showStores(): void {
+    const g = this.game;
+    const s = g.state;
+    const list = h('div', { class: 'stack' }, s.stores.map((slot, i) => {
+      const here = i === s.active;
+      const label = isCafe(slot) ? slotName(s, i) : `${i === 0 ? t('chain.main') : t('chain.branch', { n: i })} · ${slotName(s, i)}`;
+      return h('button', {
+        class: `btn${here ? ' primary' : ''}`, disabled: here,
+        onclick: () => {
+          g.switchStore(i);
+          this.closeModal();
+          this.refresh();
+          this.toast(t('chain.switched', { name: slotName(s, i) }));
+        },
+      }, [here ? `${label} · ${t('chain.current')}` : label]);
+    }));
+    this.modal(t('hud.stores'), list);
   }
 
   private showLanguages(): void {

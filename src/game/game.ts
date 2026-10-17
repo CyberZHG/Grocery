@@ -14,9 +14,9 @@ import { DAY_END, DAY_START, FIXTURES, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF
 import { BATCH, Sim, type Line } from './sim';
 import { checkAchievements } from './achievements';
 import { catName, slotName } from './names';
-import { chainIncome, checkChallenge, ensureCafe, fitFixtures, inCafe, openBranch as openChainBranch, recordDay, spoil, STORE_BONUS, switchStore as switchChainStore } from './chain';
+import { chainIncome, checkChallenge, ensureCafe, fitFixtures, inCafe, openBranch as openChainBranch, recordDay, spoil, STORE_BONUS, storeLayout, switchStore as switchChainStore } from './chain';
 import { sfx } from '../core/audio';
-import { progressGoals, refreshGoals, type GoalKind } from './goals';
+import { fitGoals, progressGoals, refreshGoals, type GoalKind, type GoalScope } from './goals';
 import { COLLECTION_BONUS } from './progress';
 import { gainReputation } from './growth';
 import { eventText, goalText } from '../ui/goals';
@@ -119,7 +119,7 @@ export class Game {
     this.makeSim();
     this.state.nightRestock += this.sim.restockAll();
     if (!this.state.candidates.length) this.state.candidates = this.makeCandidates();
-    refreshGoals(this.state.goals, this.state.seed, this.state.day, this.state.level);
+    refreshGoals(this.state.goals, this.state.seed, this.state.day, this.state.level, this.goalScope());
     this.checkChain();
     this.checkAchievements();
     this.forecast();
@@ -608,8 +608,14 @@ export class Game {
     this.afterStoreChange();
   }
 
+  private goalScope(): GoalScope {
+    const l = storeLayout(this.state);
+    return { stations: l.stations.map((x) => x.kind), bagging: !!l.bagging, shop: !inCafe(this.state) };
+  }
+
   private afterStoreChange(): void {
     this.state.candidates = [];
+    fitGoals(this.state.goals, this.state.seed, this.state.day, this.goalScope());
     this.toastFit(fitFixtures(this.state));
     this.checkAchievements();
     saveGame(this.state);

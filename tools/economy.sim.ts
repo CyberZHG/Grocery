@@ -35,7 +35,7 @@ function addFixture(s: GameState, kind: FixtureKind): boolean {
   const layout = storeLayout(s);
   const placed = s.fixtures.filter((f) => f.placed);
   const shown = new Set(placed.flatMap((f) => f.slots.map((x) => x.product)));
-  const choices = PRODUCTS.filter((p) => p.store === FIXTURES[kind].store && !shown.has(p.id) && isUnlocked(p.id, s.products))
+  const choices = PRODUCTS.filter((p) => !p.region && p.store === FIXTURES[kind].store && !shown.has(p.id) && isUnlocked(p.id, s.products))
     .sort((a, b) => profit(b) - profit(a));
   if (choices.length < 2) return false;
   for (let y = 1; y < layout.h - 3; y++) {

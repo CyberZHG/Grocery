@@ -87,6 +87,10 @@ FONT5x7 = {
     'x': ['00000', '00000', '10001', '01010', '00100', '01010', '10001'],
     'y': ['00000', '00000', '10001', '10001', '10001', '01111', '00001', '01110'],
     'z': ['00000', '00000', '11111', '00010', '00100', '01000', '11111'],
+    '¥': ['10001', '01010', '00100', '11111', '00100', '11111', '00100'],
+    '₩': ['10001', '10001', '11111', '10101', '11111', '01010', '01010'],
+    '斤': ['00011', '01100', '01000', '01111', '01010', '10010', '10010'],
+    '근': ['11110', '00010', '00010', '11111', '00000', '10000', '11111'],
 }
 FONT_CHARS = list(FONT5x7.keys())
 
@@ -165,13 +169,85 @@ def bill(v):
     return cv
 
 
+# Notes of the other currencies, by value in the currency's own units: (paper, ink, label).
+# Colors follow the real notes: yuan 5 purple, 10 blue, 20 brown, 50 green, 100 red;
+# yen 1000 blue, 5000 purple, 10000 brown; won 1000 blue, 5000 orange-red, 10000 green, 50000 yellow.
+NOTES = {
+    'cny': {5: ('dcc8e4', '7a3a8a'), 10: ('c8d4ec', '3a4a9a'), 20: ('ead8c0', '8a5a3a'), 50: ('c8e4d0', '2a7a5a'), 100: ('f0c4c4', 'b02a3a')},
+    'jpy': {1000: ('e0e8f0', '3a5a9a'), 5000: ('ece2ee', '7a4a8a'), 10000: ('eee4d4', '7a5a3a')},
+    'krw': {1000: ('d4e2f0', '3a6aa8'), 5000: ('f2d8c4', 'b8503a'), 10000: ('d4ead0', '3a8a4a'), 50000: ('f4e2b0', 'b0802a')},
+}
+
+
+def note(cur, v):
+    """A yuan, yen or won note: tinted paper, a guilloche band, a portrait window on the right and big numerals."""
+    w, h = 66, 30
+    paper_c, ink_c = NOTES[cur][v]
+    paper, ink = hexc(paper_c), hexc(ink_c)
+    cv = Canvas(w, h)
+    cv.rect(0, 0, w - 1, h - 1, paper)
+    for x in range(w):
+        y = round(h / 2 + math.sin(x / 4.5) * 6)
+        for yy in (y, h - 1 - y):
+            if 0 < yy < h - 1:
+                cv.px(x, yy, mix(paper, ink, 0.25))
+    for x in range(w):
+        for y in range(h):
+            if (x * 5 + y * 3) % 11 == 0:
+                cv.px(x, y, mix(paper, ink, 0.12))
+    for x in range(1, w - 1):
+        cv.px(x, 1, ink); cv.px(x, h - 2, ink)
+    for y in range(1, h - 1):
+        cv.px(1, y, ink); cv.px(w - 2, y, ink)
+    # portrait window on the right; the watermark sits in the blank on the left
+    px = w - 17
+    cv.ellipse(px, h / 2, 9, 11, mix(paper, ink, 0.3))
+    cv.ellipse(px, h / 2, 8, 10, W(paper, 1))
+    cv.ellipse(px, h / 2 - 3, 3.5, 4, mix(ink, paper, 0.3))
+    cv.poly([(px - 6, h / 2 + 9), (px + 6, h / 2 + 9), (px + 4, h / 2 + 3), (px - 4, h / 2 + 3)], mix(ink, paper, 0.3))
+    cv.ellipse(10, h / 2 + 1, 4, 5, mix(paper, WHITE, 0.5))
+    if cur == 'cny':
+        cv.rect(px - 13, 3, px - 12, h - 4, hexc('c8a040'))
+    else:
+        cv.rect(px - 13, 4, px - 11, h - 5, mix(hexc('c8c8d0'), paper, 0.3))
+    s = str(v)
+    if len(s) <= 3:
+        glyphs(cv, s, 4, 4, ink)
+        glyphs(cv, s, px - 15 - 6 * len(s), h - 12, ink)
+    else:
+        small_digits(cv, s, 4, 4, ink)
+        glyphs(cv, s, px - 13 - 6 * len(s), h - 11, ink)
+    fake_text(cv, 18, 6, px - 15, mix(ink, paper, 0.3), v)
+    return cv
+
+
+# Coins of the other currencies, by value in their own units: (color, radius, reeded edge, hole).
+# Radii follow the real diameters at about 0.47 px per mm.
+COINS = {
+    'cny': {100: ('c8ccd4', 11.9, True, False), 50: ('d8b048', 9.7, True, False), 10: ('bcc0c8', 9.0, False, False)},
+    'jpy': {500: ('d4b060', 12.6, True, False), 100: ('c8ccd4', 10.7, True, False), 50: ('c4c8d0', 10.0, True, True),
+            10: ('b8723a', 11.1, False, False), 5: ('d0a840', 10.4, False, True), 1: ('dcdfe4', 9.5, False, False)},
+    'krw': {500: ('c8ccd4', 12.6, True, False), 100: ('c0c4cc', 11.4, True, False), 50: ('c8c6bc', 10.2, True, False), 10: ('c8964a', 8.5, False, False)},
+}
+
+
+def coin_of(cur, v):
+    col, r, reeded, hole = COINS[cur][v]
+    # yuan coins carry 1 (yuan), 5 (jiao) and 1 (jiao)
+    label = {100: '1', 50: '5', 10: '1'}[v] if cur == 'cny' else str(v)
+    return _coin(hexc(col), r, reeded, label, hole)
+
+
 # value: (color, radius, reeded edge). Sizes follow real coins: dime < penny < nickel < quarter.
 COIN = {1: ('c87a4a', 8, False), 5: ('9ea2a8', 9.5, False), 10: ('e6eaf0', 7.4, True), 25: ('c4cad4', 11.5, True)}
 
 
 def coin(v):
     col, r, reeded = COIN[v]
-    c = hexc(col)
+    return _coin(hexc(col), r, reeded, str(v))
+
+
+def _coin(c, r, reeded, label, hole=False):
     size = int(r * 2 + 3)
     cv = Canvas(size, size)
     cx = cy = size / 2
@@ -186,34 +262,44 @@ def coin(v):
         for a in range(0, 360, 8):
             t = math.radians(a)
             cv.px(cx - 0.5 + (r - 2) * math.cos(t), cy - 0.5 + (r - 2) * math.sin(t), W(c, -1))
-    label = str(v)
     tw = len(label) * 4 - 1
     x0 = round(cx - tw / 2)
-    y0 = round(cy - 2.5)
+    y0 = round(cy - 2.5) + (3 if hole else 0)
     small_digits(cv, label, x0, y0 + 1, W(c, 2))
     small_digits(cv, label, x0, y0, W(c, -4))
+    if hole:
+        cv.ellipse(cx, cy - 3, 2.6, 2.6, W(c, -4))
+        cv.ellipse(cx, cy - 3, 2, 2, None)
     cv.outline(0.5)
     return cv
 
 
-def drawer():
+def slot_w(n):
+    """Width of each of n slots across the drawer; mirrors drawerSlots() in src/mini/checkout.ts."""
+    return min(52, (288 - 4 * (n - 1)) // n)
+
+
+def drawer(bills=5, coins=3):
     w, h = 300, 96
     cv = Canvas(w, h)
     body = hexc('4a4a54')
     cv.rect(0, 0, w - 1, h - 1, body)
     cv.hline(0, w - 1, 0, W(body, 2))
-    slot_w = 52
-    for i in range(5):
-        x0 = 6 + i * (slot_w + 4)
-        cv.rect(x0, 6, x0 + slot_w - 1, 52, hexc('2a2a30'))
-        cv.rect(x0 + 1, 7, x0 + slot_w - 2, 51, hexc('34343c'))
-        cv.rect(x0 + slot_w // 2 - 4, 4, x0 + slot_w // 2 + 3, 20, hexc('a8acb8'))
-        cv.rect(x0 + slot_w // 2 - 3, 4, x0 + slot_w // 2 + 2, 5, hexc('d8dce4'))
-    for i in range(4):
-        x0 = 6 + i * 74
-        cv.rect(x0, 58, x0 + 69, 90, hexc('2a2a30'))
-        cv.ellipse(x0 + 35, 74, 32, 14, hexc('34343c'))
-        cv.ellipse(x0 + 35, 72, 28, 10, hexc('3e3e48'))
+    bw = slot_w(bills)
+    bx = (w - (bills * bw + (bills - 1) * 4)) // 2
+    for i in range(bills):
+        x0 = bx + i * (bw + 4)
+        cv.rect(x0, 6, x0 + bw - 1, 52, hexc('2a2a30'))
+        cv.rect(x0 + 1, 7, x0 + bw - 2, 51, hexc('34343c'))
+        cv.rect(x0 + bw // 2 - 4, 4, x0 + bw // 2 + 3, 20, hexc('a8acb8'))
+        cv.rect(x0 + bw // 2 - 3, 4, x0 + bw // 2 + 2, 5, hexc('d8dce4'))
+    cw = min(70, (288 - 4 * (coins - 1)) // coins)
+    cx = (w - (coins * cw + (coins - 1) * 4)) // 2
+    for i in range(coins):
+        x0 = cx + i * (cw + 4)
+        cv.rect(x0, 58, x0 + cw - 1, 90, hexc('2a2a30'))
+        cv.ellipse(x0 + cw / 2, 74, cw / 2 - 3, 14, hexc('34343c'))
+        cv.ellipse(x0 + cw / 2, 72, cw / 2 - 7, 10, hexc('3e3e48'))
     return cv
 
 
@@ -479,7 +565,8 @@ def scale_box():
 
 # ---------- bakery ----------
 
-BREADS = ['croissant', 'baguette', 'muffin', 'cinnamon', 'melonpan', 'bagel', 'pretzel', 'anpan']
+BREADS = ['croissant', 'baguette', 'muffin', 'cinnamon', 'melonpan', 'bagel', 'pretzel', 'anpan',
+          'eggtart', 'pineapple_bun', 'curry_bread', 'cream_bread', 'soboro', 'kkwabaegi']
 
 
 def bread(kind, state):
@@ -553,6 +640,60 @@ def bread(kind, state):
         if state != 'burnt':
             for (x, y) in ((8, 13), (14, 7), (26, 7), (32, 14), (12, 25), (28, 25), (20, 22), (6, 19), (34, 20)):
                 cv.px(x, y, hexc('f8f8f0'))
+    elif kind == 'eggtart':
+        crust = A
+        cv.poly([(6, 15), (34, 15), (31, 26), (9, 26)], crust)
+        for x in range(8, 33, 3):
+            cv.vline(x, 16, 25, W(crust, -2))
+        cv.ellipse(20, 15, 14, 4.5, W(crust, 1))
+        fill = hexc('f8d850') if state in ('good', 'golden') else hexc('f4e8a8') if state == 'raw' else hexc('5a4020')
+        cv.ellipse(20, 15, 11.5, 3.2, fill)
+        if state in ('good', 'golden'):
+            for (x, y) in ((16, 14), (23, 15), (19, 16)):
+                cv.px(x, y, hexc('b8782a'))
+    elif kind in ('pineapple_bun', 'soboro'):
+        cv.ellipse(20, 18, 14, 10, A)
+        cv.shade_ball(20, 18, 14, 10, 0.6)
+        top = mix(A, hexc('f8d870'), 0.4) if state != 'burnt' else A
+        rnd = random.Random(11 if kind == 'soboro' else 12)
+        if kind == 'soboro':
+            # crumbly peanut streusel all over the top
+            for _ in range(70):
+                x, y = rnd.randint(8, 32), rnd.randint(9, 22)
+                if ((x - 20) / 13) ** 2 + ((y - 16) / 8) ** 2 < 1:
+                    cv.px(x, y, W(top, rnd.choice((-2, 0, 1, 2))))
+        else:
+            cv.ellipse(20, 15, 12, 7.5, top)
+            # cracked sugar crust in irregular plates
+            for _ in range(9):
+                x, y = rnd.randint(10, 30), rnd.randint(10, 20)
+                cv.line(x, y, x + rnd.randint(-4, 4), y + rnd.randint(-3, 3), W(top, -3))
+    elif kind == 'curry_bread':
+        cv.ellipse(20, 18, 15, 9, A)
+        cv.shade_ball(20, 18, 15, 9, 0.8)
+        rnd = random.Random(13)
+        for _ in range(60):
+            x, y = rnd.randint(5, 35), rnd.randint(9, 27)
+            if cv.get(x, y):
+                cv.px(x, y, W(A, rnd.choice((-2, 1, 2))))
+    elif kind == 'cream_bread':
+        cv.ellipse(20, 18, 15, 9, A)
+        for x in (12, 20, 28):
+            cv.ellipse(x, 25, 3.5, 3, A)
+        cv.shade_ball(20, 17, 15, 9, 0.8)
+        for x in (16, 24):
+            cv.line(x, 20, x, 27, W(A, -3))
+    elif kind == 'kkwabaegi':
+        for i in range(6):
+            x = 6 + i * 5
+            cv.ellipse(x + 2, 17 + (2 if i % 2 else -2), 4.5, 4, W(A, 0 if i % 2 else -1))
+        cv.shade_ball(20, 17, 17, 7, 0.6)
+        if state in ('good', 'golden'):
+            rnd = random.Random(14)
+            for _ in range(24):
+                x, y = rnd.randint(4, 36), rnd.randint(12, 22)
+                if cv.get(x, y):
+                    cv.px(x, y, hexc('fbf8f0'))
     elif kind == 'anpan':
         cv.ellipse(20, 18, 14, 10, A)
         cv.shade_ball(20, 18, 14, 10, 0.9)
@@ -640,7 +781,7 @@ def oven_rail():
 
 # ---------- coffee ----------
 
-COFFEE = ['espresso', 'milk', 'foam', 'ice', 'water', 'vanilla', 'caramel', 'chocolate', 'whip']
+COFFEE = ['espresso', 'milk', 'foam', 'ice', 'water', 'vanilla', 'caramel', 'chocolate', 'whip', 'tea', 'matcha', 'dalgona']
 
 
 def coffee_icon(kind):
@@ -684,6 +825,29 @@ def coffee_icon(kind):
         cv.rect(11, 15, 20, 21, WHITE)
         fake_text(cv, 12, 18, 19, hexc(col), 1)
         cv.shade_cyl(10, 10, 21, 28)
+    elif kind == 'tea':
+        cv.rect(8, 14, 23, 27, WHITE)
+        cv.rect(9, 14, 22, 16, hexc('a8582a'))
+        cv.line(17, 4, 15, 15, hexc('d8d0c0'))
+        cv.rect(12, 3, 18, 7, hexc('f4f0e8'))
+        cv.rect(13, 4, 17, 5, hexc('c84848'))
+        cv.rect(24, 17, 26, 22, WHITE)
+        cv.shade_cyl(8, 14, 23, 27)
+    elif kind == 'matcha':
+        cv.ellipse(16, 22, 11, 6, hexc('3a3a44'))
+        cv.ellipse(16, 20, 10, 4, hexc('7aa84a'))
+        cv.ellipse(16, 20, 7, 2.5, hexc('9ac86a'))
+        cv.line(22, 4, 18, 18, hexc('c8a060'), 2)
+        for x in range(17, 22, 2):
+            cv.vline(x, 14, 18, hexc('d8b878'))
+    elif kind == 'dalgona':
+        cv.rect(9, 18, 22, 28, hexc('e8ecf0'))
+        for (x, y, r) in ((12, 15, 4), (16, 12, 5), (20, 15, 4), (16, 17, 4)):
+            cv.ellipse(x, y, r, r - 0.5, hexc('d8a050'))
+        for (x, y) in ((13, 12), (17, 9), (20, 13)):
+            cv.px(x, y, hexc('f0c880'))
+        cv.shade_ball(16, 14, 8, 6, 0.5)
+        cv.shade_cyl(9, 18, 22, 28)
     elif kind == 'whip':
         cv.rect(11, 12, 20, 29, hexc('e8ecf0'))
         cv.rect(11, 18, 20, 23, hexc('c84848'))
@@ -730,35 +894,129 @@ def cafe_wall():
 
 
 def cafe_counter():
+    """Counter top with a rounded wooden lip, then the start of the panelled front."""
     cv = Canvas(32, 20)
     top = hexc('8a6a4a')
     cv.rect(0, 0, 31, 3, W(top, 2))
     cv.hline(0, 31, 0, W(top, 3))
-    cv.rect(0, 4, 31, 19, hexc('3a2a24'))
+    cv.hline(0, 31, 3, W(top, -1))
+    cv.rect(0, 4, 31, 19, hexc('4a3428'))
     cv.hline(0, 31, 4, hexc('2a1e1a'))
+    cv.rect(3, 8, 28, 19, hexc('523a2c'))
+    cv.hline(3, 28, 8, hexc('6a4c38'))
+    cv.vline(3, 8, 19, hexc('6a4c38'))
+    return cv
+
+
+def cafe_panel():
+    """Tile for the counter front below the lip: raised wooden panels."""
+    cv = Canvas(32, 32)
+    base = hexc('4a3428')
+    cv.rect(0, 0, 31, 31, base)
+    cv.rect(3, 0, 28, 26, hexc('523a2c'))
+    cv.vline(3, 0, 26, hexc('6a4c38'))
+    cv.hline(3, 28, 26, hexc('2e2018'))
+    cv.vline(28, 0, 26, hexc('2e2018'))
+    for y in (6, 14, 20):
+        cv.hline(6, 25, y, hexc('5a4030'))
+    cv.rect(0, 28, 31, 31, hexc('3a2a20'))
+    return cv
+
+
+def cafe_menu():
+    """A framed chalkboard menu: a cup sketch and lines of chalk writing."""
+    cv = Canvas(64, 46)
+    wood = hexc('8a5a34')
+    cv.rect(0, 0, 63, 45, wood)
+    cv.hline(0, 63, 0, W(wood, 2))
+    cv.rect(3, 3, 60, 42, hexc('2e3a32'))
+    chalk = hexc('e8ecf0')
+    cv.rect(8, 8, 15, 15, chalk)
+    cv.rect(9, 9, 14, 14, hexc('2e3a32'))
+    cv.rect(16, 10, 17, 12, chalk)
+    cv.px(10, 6, chalk); cv.px(12, 5, chalk); cv.px(13, 6, chalk)
+    for i, y in enumerate((9, 13, 20, 25, 30, 35)):
+        x0 = 21 if y < 18 else 8
+        fake_text(cv, x0, y, 55 - (i % 3) * 4, chalk, i + 1)
+        if y >= 20:
+            cv.px(55, y, hexc('f0c040')); cv.px(56, y, hexc('f0c040'))
+    cv.hline(6, 56, 17, hexc('8a9890'))
+    cv.rect(4, 40, 10, 41, hexc('f4f0e8'))
+    cv.outline(0.5)
+    return cv
+
+
+def cafe_shelf():
+    """A wall shelf of coffee-bean bags, a glass jar of beans and a stack of cups."""
+    cv = Canvas(76, 44)
+    wood = hexc('8a5a34')
+    for y in (20, 40):
+        cv.rect(0, y, 75, y + 3, wood)
+        cv.hline(0, 75, y, W(wood, 2))
+        for x in (6, 68):
+            cv.poly([(x, y + 4), (x + 3, y + 4), (x, y + 9)], W(wood, -2)) if y == 40 else None
+    for i, (x, c) in enumerate(((4, 'c8a070'), (16, '5a3a2a'), (28, 'a84838'))):
+        col = hexc(c)
+        cv.poly([(x, 20), (x + 10, 20), (x + 9, 6), (x + 1, 6)], col)
+        cv.rect(x + 1, 4, x + 9, 6, W(col, -1))
+        cv.rect(x + 2, 11, x + 8, 16, hexc('f4f0e8'))
+        cv.ellipse(x + 5, 13.5, 1.6, 1.2, hexc('5a3a2a'))
+    cv.rrect(44, 6, 58, 20, (220, 236, 244, 200), 2)
+    for k in range(18):
+        cv.ellipse(46 + (k * 5) % 11, 10 + (k * 3) % 9, 1.2, 0.9, hexc('5a3420'))
+    cv.rect(44, 4, 58, 6, hexc('a8acb8'))
+    for k in range(4):
+        y = 36 - k * 4
+        cv.rect(8 + k, y, 20 - k, y + 3, hexc('f4f0e8'))
+        cv.hline(8 + k, 20 - k, y, WHITE)
+    for x in (30, 44, 58):
+        cv.rect(x, 30, x + 9, 39, hexc('f4f0e8'))
+        cv.rect(x + 10, 32, x + 11, 36, hexc('f4f0e8'))
+        cv.rect(x + 1, 33, x + 8, 34, hexc('c84848'))
+    cv.outline(0.5)
     return cv
 
 
 def cafe_head():
-    """Underside of the espresso machine: chrome body, group head and spouts above the cup."""
-    w, h = 96, 34
+    """The espresso machine above the cup: chrome body with gauges and buttons, group head, portafilter and steam wand."""
+    w, h = 112, 40
     cv = Canvas(w, h)
     body = hexc('c8ccd4')
-    cv.rect(0, 0, w - 1, 20, body)
-    cv.hline(0, w - 1, 0, W(body, 2))
-    cv.hline(0, w - 1, 20, W(body, -3))
-    cv.shade_box(0, 0, w - 1, 20, 0.5)
-    cv.rect(36, 21, 59, 26, hexc('8a8e98'))
-    cv.hline(36, 59, 21, W(STEEL, 2))
-    cv.rect(58, 22, 86, 25, hexc('2a2228'))
-    cv.hline(58, 86, 22, hexc('4a4450'))
-    cv.rect(42, 27, 53, 29, STEEL)
-    for x in (44, 50):
-        cv.rect(x, 30, x + 1, 33, W(STEEL, -1))
-    cv.ellipse(14, 10, 6, 6, hexc('f4f0e8'))
-    cv.ellipse(14, 10, 5, 5, WHITE)
-    cv.line(14, 10, 17, 7, hexc('c84848'))
-    cv.px(80, 8, hexc('7ae07a')); cv.px(84, 8, hexc('e84848'))
+    x0, x1 = 8, 103
+    cv.rect(x0, 0, x1, 22, body)
+    cv.hline(x0, x1, 0, W(body, 3))
+    cv.hline(x0, x1, 1, W(body, 2))
+    cv.hline(x0, x1, 22, W(body, -3))
+    cv.shade_box(x0, 0, x1, 22, 0.5)
+    # dark control strip with two gauges, three buttons and a small screen
+    cv.rect(x0 + 2, 4, x1 - 2, 17, hexc('3a3a44'))
+    cv.hline(x0 + 2, x1 - 2, 4, hexc('5a5a64'))
+    for gx in (20, 34):
+        cv.ellipse(gx, 10.5, 5, 5, hexc('a8acb8'))
+        cv.ellipse(gx, 10.5, 4, 4, hexc('f8f6f0'))
+        for a in range(0, 360, 45):
+            t = math.radians(a)
+            cv.px(round(gx + math.cos(t) * 3), round(10.5 + math.sin(t) * 3), hexc('8a8e98'))
+        cv.line(gx, 10.5, gx + 2.5, 8, hexc('c84848'))
+    for i, bx in enumerate((50, 56, 62)):
+        cv.ellipse(bx, 10.5, 2, 2, hexc(('7ae07a', 'f0c040', 'e8ecf0')[i]))
+        cv.px(bx - 1, 9, WHITE)
+    cv.rect(70, 7, 94, 14, hexc('1a2a2a'))
+    fake_text(cv, 72, 10, 92, hexc('7ae0c0'), 3)
+    # group head and portafilter with its black handle
+    cv.rect(46, 23, 66, 28, hexc('a8acb8'))
+    cv.hline(46, 66, 23, WHITE)
+    cv.rect(44, 29, 68, 32, hexc('8a8e98'))
+    cv.hline(44, 68, 29, hexc('d8dce4'))
+    cv.rect(68, 29, 96, 32, hexc('2a2228'))
+    cv.hline(68, 96, 29, hexc('4a4450'))
+    cv.ellipse(96, 30.5, 2, 2, hexc('2a2228'))
+    for x in (51, 59):
+        cv.rect(x, 33, x + 2, 37, hexc('8a8e98'))
+    # steam wand on the left with its knob
+    cv.ellipse(5, 6, 3, 3, hexc('2a2228'))
+    cv.line(10, 18, 4, 38, hexc('a8acb8'), 2)
+    cv.px(3, 39, hexc('8a8e98'))
     cv.outline(0.5)
     return cv
 
@@ -774,6 +1032,17 @@ def cafe_tray():
 
 
 # ---------- bagging ----------
+
+def belt_tile():
+    """Tile of the checkout conveyor's rubber belt: dark with fine ribs."""
+    cv = Canvas(16, 16)
+    base = hexc('2a2a30')
+    cv.rect(0, 0, 15, 15, base)
+    for y in range(0, 16, 4):
+        cv.hline(0, 15, y, hexc('34343c'))
+        cv.hline(0, 15, y + 1, hexc('222228'))
+    return cv
+
 
 def bag_bg(kind):
     cell = 32

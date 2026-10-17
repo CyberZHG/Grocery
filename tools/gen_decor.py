@@ -16,7 +16,7 @@ def W(c, k):
 
 # ---------- renovation: floors ----------
 
-FLOOR_STYLES = ['cream', 'wood', 'blue', 'terrazzo', 'mint', 'checker', 'parquet', 'lino', 'concrete']
+FLOOR_STYLES = ['cream', 'wood', 'blue', 'terrazzo', 'mint', 'checker', 'parquet', 'lino', 'concrete', 'flagstone', 'rushmat', 'oilpaper']
 
 
 def _floor_new(style, v):
@@ -71,7 +71,52 @@ def _floor_new(style, v):
     return cv
 
 
+def _floor_craft(style, v):
+    """Floors of the three crafted looks: blue-grey flagstones, woven rush mats, glossy oiled paper."""
+    cv = Canvas(T, T)
+    rnd = random.Random(v * 11 + len(style))
+    if style == 'flagstone':
+        base = hexc('9aa4ac') if v == 0 else hexc('929ca6')
+        cv.rect(0, 0, T - 1, T - 1, base)
+        for y0 in (0, 16):
+            off = 8 if (y0 // 16 + v) % 2 else 0
+            cv.hline(0, T - 1, y0 + 15, W(base, -3))
+            for x in range(off, T + 16, 16):
+                cv.vline(x % T, y0, y0 + 14, W(base, -3))
+        for _ in range(16):
+            cv.px(rnd.randint(1, 30), rnd.randint(1, 30), W(base, rnd.choice((-1, 1))))
+        return cv
+    if style == 'rushmat':
+        # mats laid at right angles, each with a cloth border along one side
+        base = hexc('c8c08a') if v == 0 else hexc('c0b880')
+        cv.rect(0, 0, T - 1, T - 1, base)
+        across = v == 0
+        for i in range(0, T, 2):
+            if across:
+                cv.hline(0, T - 1, i, W(base, -1))
+            else:
+                cv.vline(i, 0, T - 1, W(base, -1))
+        edge = hexc('4a5a4a')
+        if across:
+            cv.rect(0, 0, T - 1, 2, edge)
+        else:
+            cv.rect(0, 0, 2, T - 1, edge)
+        return cv
+    # oiled paper: warm amber squares with a soft sheen
+    base = hexc('d8a860') if v == 0 else hexc('d0a058')
+    cv.rect(0, 0, T - 1, T - 1, base)
+    for _ in range(10):
+        x, y = rnd.randint(2, 28), rnd.randint(2, 28)
+        cv.hline(x, x + 3, y, W(base, 1))
+    cv.hline(0, T - 1, 15, W(base, -2))
+    cv.vline(15, 0, T - 1, W(base, -2))
+    cv.line(3, 12, 11, 4, W(base, 2))
+    return cv
+
+
 def floor_style(style, v):
+    if style in ('flagstone', 'rushmat', 'oilpaper'):
+        return _floor_craft(style, v)
     if style in ('checker', 'parquet', 'lino', 'concrete'):
         return _floor_new(style, v)
     cv = Canvas(T, T)
@@ -116,7 +161,7 @@ def floor_style(style, v):
 
 # ---------- renovation: walls ----------
 
-WALL_STYLES = ['beige', 'mint', 'brick', 'navy', 'tile', 'green', 'plaster', 'pastel', 'metal']
+WALL_STYLES = ['beige', 'mint', 'brick', 'navy', 'tile', 'green', 'plaster', 'pastel', 'metal', 'vermilion', 'screens', 'beams']
 SEASONS = ['spring', 'summer', 'autumn', 'winter']
 
 
@@ -155,8 +200,10 @@ def _poster(cv, season):
 def wall_style(style, kind=0, season=None):
     cv = Canvas(T, 64)
     base = {'beige': hexc('d8c8a8'), 'mint': hexc('c8e4d4'), 'brick': hexc('b86a50'), 'navy': hexc('4a5a7a'),
-            'tile': hexc('eef0f2'), 'green': hexc('8aa880'), 'plaster': hexc('ece2cc'), 'pastel': hexc('f4e2a8'), 'metal': hexc('9aa2ac')}[style]
-    trim = hexc('6a5a58') if style not in ('navy', 'tile', 'metal') else hexc('2a3248') if style == 'navy' else hexc('4a5058')
+            'tile': hexc('eef0f2'), 'green': hexc('8aa880'), 'plaster': hexc('ece2cc'), 'pastel': hexc('f4e2a8'), 'metal': hexc('9aa2ac'),
+            'vermilion': hexc('b8423a'), 'screens': hexc('f0ead8'), 'beams': hexc('f0ece2')}[style]
+    trim = {'navy': hexc('2a3248'), 'tile': hexc('4a5058'), 'metal': hexc('4a5058'), 'vermilion': hexc('3a2a2a'),
+            'screens': hexc('5a4030'), 'beams': hexc('3a7a6a')}.get(style, hexc('6a5a58'))
     cv.rect(0, 0, 31, 63, base)
     cv.rect(0, 0, 31, 7, trim)
     cv.hline(0, 31, 7, W(trim, -2))
@@ -184,6 +231,36 @@ def wall_style(style, kind=0, season=None):
         # school stripes in soft yellow and sky blue
         for y in range(8, 54, 8):
             cv.rect(0, y, 31, y + 3, hexc('bcdcf0'))
+    elif style == 'vermilion':
+        # lacquered posts with a gold-edged lattice panel between them
+        post = W(base, -2)
+        cv.rect(0, 8, 3, 53, post)
+        cv.rect(28, 8, 31, 53, post)
+        lat = hexc('7a2a24')
+        for y in range(12, 50, 6):
+            cv.hline(5, 26, y, lat)
+        for x in range(7, 26, 6):
+            cv.vline(x, 11, 50, lat)
+        cv.rect(4, 10, 27, 10, hexc('d8a840'))
+        cv.rect(4, 51, 27, 51, hexc('d8a840'))
+    elif style == 'screens':
+        # paper screens in a dark wooden grid
+        wood = hexc('5a4030')
+        for x in range(0, 32, 8):
+            cv.vline(x, 8, 53, wood)
+        for y in range(8, 54, 9):
+            cv.hline(0, 31, y, wood)
+        cv.rect(0, 8, 1, 53, wood)
+    elif style == 'beams':
+        # white walls under beams painted with bands of green, red and gold
+        band = [hexc('3a7a6a'), hexc('4a9a8a'), hexc('c84838'), hexc('e0b040'), hexc('3a5a9a')]
+        for i, c in enumerate(band):
+            cv.hline(0, 31, 8 + i, c)
+        for x in range(2, 32, 8):
+            cv.ellipse(x + 2, 15, 2.5, 2, hexc('c84838'))
+            cv.px(x + 2, 15, hexc('e0b040'))
+        cv.rect(0, 18, 2, 53, hexc('8a5a3a'))
+        cv.rect(29, 18, 31, 53, hexc('8a5a3a'))
     elif style == 'metal':
         # corrugated steel siding
         for x in range(0, 32, 4):
@@ -200,7 +277,8 @@ def wall_style(style, kind=0, season=None):
     else:
         for y in range(12, 54, 6):
             cv.hline(0, 31, y, W(base, -1) if y % 12 == 0 else W(base, 0))
-    skirt = {'navy': hexc('2a3248'), 'tile': hexc('4a5058'), 'metal': hexc('4a5058'), 'green': hexc('5a6a4e')}.get(style, hexc('7a6a5a'))
+    skirt = {'navy': hexc('2a3248'), 'tile': hexc('4a5058'), 'metal': hexc('4a5058'), 'green': hexc('5a6a4e'),
+             'vermilion': hexc('5a5a60'), 'screens': hexc('5a4030'), 'beams': hexc('8a8a84')}.get(style, hexc('7a6a5a'))
     cv.rect(0, 54, 31, 63, skirt)
     cv.hline(0, 31, 54, W(skirt, 2))
     if kind == 1:
@@ -216,28 +294,38 @@ def wall_style(style, kind=0, season=None):
     elif kind == 3:
         cv.rect(3, 18, 28, 21, WOOD)
         cv.rect(3, 22, 28, 22, W(WOOD, -2))
-        cv.ellipse(15.5, 33, 7, 7, WHITE)
-        cv.ellipse(15.5, 33, 5.5, 5.5, hexc('f8f6f0'))
-        cv.line(15, 33, 15, 29, DARK)
-        cv.line(15, 33, 18, 33, DARK)
+        # a round wall clock: dark rim, cream face, hour marks; the hands are drawn by the game
+        cv.ellipse(15.5, 33, 8.5, 8.5, hexc('3a3440'))
+        cv.ellipse(15.5, 33, 7.5, 7.5, hexc('8a8e98'))
+        cv.ellipse(15.5, 33, 6.8, 6.8, hexc('fbf6e8'))
+        for k in range(12):
+            a = k / 12 * 2 * math.pi
+            x, y = 15.5 + math.sin(a) * 5.6, 33 - math.cos(a) * 5.6
+            cv.px(round(x - 0.5), round(y - 0.5), hexc('3a3440') if k % 3 == 0 else hexc('a8a4a0'))
+        cv.px(13, 29, WHITE); cv.px(12, 30, WHITE)
+        # hands are drawn on top by the game, following the clock
     return cv
 
 
 # ---------- renovation: signs ----------
 
-SIGN_STYLES = ['wood', 'metal', 'chalk', 'neon', 'awning', 'red', 'crayon']
+SIGN_STYLES = ['wood', 'metal', 'chalk', 'neon', 'awning', 'red', 'crayon', 'plaque', 'curtain', 'celadon']
 
 
-def sign_style(style):
+def sign_style(style, dim=False):
     cv = Canvas(64, 20)
     frame, face = {
         'wood': (hexc('5a3a28'), hexc('2a2430')), 'metal': (hexc('a8acb8'), hexc('3a3e48')),
         'chalk': (hexc('8a6a4a'), hexc('2e4a3a')), 'neon': (hexc('e05a9a'), hexc('1a1424')),
         'awning': (hexc('3a7a4a'), hexc('2a4a30')), 'red': (hexc('c8a040'), hexc('8a2a24')), 'crayon': (hexc('e07a7a'), hexc('2a3a5a')),
+        'plaque': (hexc('d8a840'), hexc('2a1e1a')), 'curtain': (hexc('2a3a5a'), hexc('2e4470')), 'celadon': (hexc('7aa898'), hexc('3a6a5e')),
     }[style]
+    if dim:
+        # a neon tube losing its glow for a moment
+        frame = mix(frame, hexc('3a2a3a'), 0.6)
     cv.rrect(0, 0, 63, 19, frame, 2)
     cv.rrect(2, 2, 61, 17, face, 1)
-    if style == 'neon':
+    if style == 'neon' and not dim:
         for x in range(2, 62, 3):
             cv.px(x, 1, W(frame, 3))
     if style == 'metal':
@@ -247,6 +335,21 @@ def sign_style(style):
         # green and white stripes along the top edge
         for x in range(0, 64, 6):
             cv.rect(x, 0, x + 2, 1, WHITE)
+    if style == 'plaque':
+        # a carved double border in gold
+        cv.rrect(3, 3, 60, 16, hexc('a07828'), 1)
+        cv.rrect(4, 4, 59, 15, face, 1)
+    if style == 'curtain':
+        # a split cloth curtain hanging from a rod
+        cv.rect(0, 0, 63, 1, hexc('6a4a30'))
+        for x in (16, 32, 48):
+            cv.vline(x, 8, 18, W(face, -3))
+        cv.hline(2, 61, 17, W(face, 2))
+    if style == 'celadon':
+        # a glazed tile frame with a crackle line here and there
+        for (x, y) in ((6, 1), (20, 18), (41, 1), (57, 18)):
+            cv.px(x, y, W(frame, 3))
+            cv.px(x + 1, y, W(frame, 3))
     if style == 'crayon':
         # a frame in four crayon colours
         for i, c in enumerate(('e07a7a', 'f0c040', '6ab06a', '5a9ad0')):
@@ -256,12 +359,82 @@ def sign_style(style):
     return cv
 
 
+def gumball_turn(k):
+    """The crank turning (three positions); on the last a gumball drops into the chute."""
+    cv = decor('gumball')
+    red = hexc('d84848')
+    cv.rect(13, 30, 18, 34, hexc('c8ccd4'))
+    if k == 0:
+        cv.hline(13, 18, 32, DARK)
+    elif k == 1:
+        cv.line(13, 34, 18, 30, DARK)
+    else:
+        cv.vline(15, 30, 34, DARK)
+        cv.vline(16, 30, 34, DARK)
+        cv.ellipse(15.5, 38, 1.6, 1.6, hexc('5ab0e0'))
+    cv.px(10, 40, red)
+    return cv
+
+
+def magazine_flip(k):
+    """A page turning over on the front magazine."""
+    cv = decor('magazine')
+    page = [(7, 8), (12, 4)][k]
+    cv.poly([(10, 8), (10, 16), (page[0], 16 - page[1]), (page[0], 8 - page[1] // 2)], WHITE)
+    cv.line(10, 8, page[0], 8 - page[1] // 2, hexc('a8acb8'))
+    return cv
+
+
+def clock_hand(k, hour):
+    """One clock hand at position k of 12, on a 16x16 overlay centred at (8, 8)."""
+    cv = Canvas(16, 16)
+    a = k / 12 * 2 * math.pi
+    length = 3 if hour else 5
+    cv.line(8, 8, round(8 + math.sin(a) * length), round(8 - math.cos(a) * length), DARK if hour else hexc('4a4450'))
+    cv.px(8, 8, hexc('c84848'))
+    return cv
+
+
+AQUARIUM_FRAMES = 6
+
+
+def aquarium(k):
+    """Fish swim back and forth and turn, bubbles rise, the weed sways; k is the frame."""
+    cv = Canvas(T, 44)
+    wood = hexc('8a5a3a')
+    cv.rect(2, 28, 29, 43, wood)
+    cv.rect(4, 31, 27, 41, W(wood, -1))
+    cv.rect(2, 6, 29, 27, hexc('5ab0d8'))
+    cv.shade_vgrad(2, 6, 29, 27, 0.6, -0.5)
+    cv.rect(2, 4, 29, 6, hexc('3a3440'))
+    cv.rect(3, 24, 28, 26, hexc('e8d8a8'))
+    ph = k / AQUARIUM_FRAMES * 2 * math.pi
+    for x in (6, 9, 24):
+        sway = round(math.sin(ph + x) * 1)
+        cv.line(x, 24, x + 1 + sway, 15 + x % 4, hexc('4a9a50'), 1)
+    for i, (cx, y, c) in enumerate(((13, 12, 'f08030'), (18, 18, 'f0d040'), (16, 10, 'e84848'))):
+        a = ph + i * 2.1
+        x = round(cx + math.sin(a) * 6)
+        facing = 1 if math.cos(a) > 0 else -1
+        cv.ellipse(x, y, 2, 1.2, hexc(c))
+        cv.px(x - 3 * facing, y, hexc(c))
+        cv.px(x - 3 * facing, y - 1, W(hexc(c), -1))
+        cv.px(x + facing, y - 1, hexc('2a2430'))
+    for j, bx in enumerate((22, 9)):
+        by = 24 - ((k * 3 + j * 7) % 16)
+        if by > 7:
+            cv.px(bx + (k + j) % 2, by, (255, 255, 255, 190))
+    cv.line(4, 25, 10, 8, (255, 255, 255, 90))
+    cv.outline(0.5)
+    return cv
+
+
 # ---------- decor items (1x1 placeable) ----------
 
 DECOR = ['plant_small', 'flowers', 'bench', 'cactus', 'cat_tower', 'lamp', 'gumball', 'magazine', 'aquarium']
 
 
-def decor(kind):
+def decor(kind, sway=0):
     if kind == 'lamp':
         cv = Canvas(T, 48)
         cv.vline(15, 14, 44, DARK)
@@ -293,6 +466,8 @@ def decor(kind):
         cv.outline(0.5)
         return cv
     if kind == 'aquarium':
+        return aquarium(0)
+    if kind == 'aquarium_old':
         cv = Canvas(T, 44)
         wood = hexc('8a5a3a')
         cv.rect(2, 28, 29, 43, wood)
@@ -343,17 +518,19 @@ def decor(kind):
         cv.shade_cyl(10, 20, 22, 30)
         g = hexc('5aa050')
         for (x, y, rx, ry) in ((16, 12, 5, 7), (11, 16, 4, 4), (21, 16, 4, 4)):
-            cv.ellipse(x, y, rx, ry, g)
-        cv.shade_ball(16, 14, 9, 8, 0.7)
+            cv.ellipse(x + sway * (1 if y < 14 else 0.5), y, rx, ry, g)
+        cv.shade_ball(16 + sway * 0.5, 14, 9, 8, 0.7)
     elif kind == 'flowers':
         box = hexc('a86a40')
         cv.rect(3, 20, 28, 29, box)
         cv.shade_box(3, 20, 28, 29, 0.6)
         for i, c in enumerate(('e86a8a', 'f0d040', 'f8f8f8', 'e86a8a', 'a080e0')):
             x = 6 + i * 5
-            cv.vline(x, 13, 20, hexc('4a8a40'))
-            cv.ellipse(x, 12, 2.4, 2.4, hexc(c))
-            cv.px(x, 12, hexc('f8e070'))
+            # neighbouring stems lean a little out of step
+            d = sway * (1 if i % 2 == 0 else 0) if sway else 0
+            cv.line(x, 20, x + d, 13, hexc('4a8a40'))
+            cv.ellipse(x + d, 12, 2.4, 2.4, hexc(c))
+            cv.px(x + d, 12, hexc('f8e070'))
     elif kind == 'bench':
         w = hexc('a8703a')
         cv.rect(2, 14, 29, 18, w)
@@ -542,6 +719,7 @@ CAT_COATS = {
     'siamese': ('efe4d0', '5a4034', 'f8f0e4', 'points'),
 }
 CAT_POSES = ['sit', 'walk1', 'walk2', 'sleep', 'groom', 'stretch', 'loaf',
+             'sit_t1', 'sit_t2', 'sit_blink', 'loaf_blink', 'sleep_b', 'walk3', 'walk4', 'groom2', 'sniff2',
              'beg', 'bat1', 'bat2', 'pounce', 'leap', 'run1', 'run2', 'scratch1', 'scratch2', 'roll1', 'roll2', 'hiss', 'rub', 'sniff', 'peek']
 
 # Hand-placed 24x18 templates, facing right. Tags: B body, D underside, L chest/belly, H head, E ear, e inner ear,
@@ -572,6 +750,17 @@ _LEGS = {
         '.....QQPP.....QQPP......',
         '.....QQPP.....QQPP......',
         '.....QQPP.....QQPP......',
+    ],
+    # the other half of the stride: near and far legs trade places
+    'walk3': [
+        '....QQPP......PPQQ......',
+        '...QQ..PP....PP..QQ.....',
+        '...QQ...PP..PP....QQ....',
+    ],
+    'walk4': [
+        '.....PPQQ.....PPQQ......',
+        '.....PPQQ.....PPQQ......',
+        '.....PPQQ.....PPQQ......',
     ],
 }
 _TEMPLATES = {
@@ -960,6 +1149,46 @@ _TEMPLATES.update({
         '......PP.........PP.....',
     ],
 })
+
+
+def _variant(base, edits):
+    rows = [r.ljust(24, '.') for r in _TEMPLATES[base]]
+    for y, row in edits.items():
+        rows[y] = row
+    return rows
+
+
+# licking the chest instead of the paw, and a chewing bob of the head
+_TEMPLATES['groom2'] = _variant('groom', {
+    8: '......HHMMMMMHH.........',
+    9: '.......BLLLLLB..........',
+    10: '......BBLLPPLBB.........',
+    11: '.....BBBLLPPLBBB........',
+})
+_TEMPLATES['sniff2'] = _variant('sniff', {
+    12: '.......QQPP...QQHHHHHCHH',
+    13: '.......QQPP...QQHHHHHMMN',
+    14: '.......QQPP...QQPPHHMMMM',
+})
+
+# idle variants: the sitting tail swishes left and right, eyes close for a blink, a sleeping cat breathes
+_TEMPLATES['sit_t1'] = _variant('sit', {
+    12: '.....BBBLLLLLBBBB.......',
+    13: '.....BBBLLLLLBBBB....TT.',
+    14: '.....DBBLLLLLBBBD....TT.',
+    15: '.....DDPPPDPPPDDDTTTTT..',
+    16: '.....DDPPPDPPPDDTTTT....',
+})
+_TEMPLATES['sit_t2'] = _variant('sit', {
+    12: '.....BBBLLLLLBBBB.TT....',
+    13: '.....BBBLLLLLBBBB.TT....',
+    14: '.....DBBLLLLLBBBDTT.....',
+    15: '.....DDPPPDPPPDDDTT.....',
+    16: '.....DDPPPDPPPDD........',
+})
+_TEMPLATES['sit_blink'] = _variant('sit', {5: '.....HHHHHHHHHHH........', 6: '.....HHCCHHHCCHH........'})
+_TEMPLATES['loaf_blink'] = _variant('loaf', {7: '..............HHCHHHCHH.'})
+_TEMPLATES['sleep_b'] = [r for r in _TEMPLATES['sleep'][1:]] + ['..TTDDDDDDDDPPPPPHHHH...']
 
 
 def _cat_template(pose):

@@ -1,11 +1,12 @@
 import { drawChar, drawCharPose, drawCharSitting, drawProductSmall, type CharPose, drawSprite, drawText, rect, textWidth } from '../core/assets';
 import { storeName } from '../game/names';
 import { sfx } from '../core/audio';
-import { BREADS, FIXTURES, PRODUCT_BY_ID, TOY_FRAME_COUNT, TOY_PLAY, type CafeToy, type FixtureKind, type ToyPlay } from '../game/defs';
+import { BREADS, FIXTURES, NPC_ROW0, PRODUCT_BY_ID, TOY_FRAME_COUNT, TOY_PLAY, type CafeToy, type FixtureKind, type ToyPlay } from '../game/defs';
 import { fixtureCells, type Layout } from '../game/layout';
-import { dateOf, decorHoliday, weatherOf } from '../game/calendar';
+import { chalkDrawings, sunPatches } from '../game/ambience';
+import { dateOf, decorHoliday, streetCart, weatherOf } from '../game/calendar';
 import { equipTier, stars, type EquipKind } from '../game/growth';
-import { OFFER_SECONDS, OVEN_OFFER_SECONDS, type Act, type CatAgent, type Customer, type Line, type Sim, type Worker } from '../game/sim';
+import { OFFER_SECONDS, OVEN_OFFER_SECONDS, type Act, type CatAgent, type Customer, type Line, type Passer, type Sim, type Worker } from '../game/sim';
 import type { FixtureState } from '../game/state';
 import type { Dir } from '../game/agent';
 
@@ -94,11 +95,25 @@ export class WorldRenderer {
   prompts: Prompt[] = [];
   time = 0;
   doorOpen = 0;
+  private chimeAt = -10;
 
   drawFloor(ctx: CanvasRenderingContext2D, l: Layout, sim?: Sim): void {
     for (let x = -1; x <= l.w; x++) {
       drawSprite(ctx, 'sidewalk', x * T, (l.h + 1) * T);
       drawSprite(ctx, 'sidewalk', x * T, (l.h + 2) * T);
+    }
+    if (sim) {
+      for (const c of chalkDrawings(l, sim.state.seed, sim.state.day, sim.clock)) {
+        ctx.globalAlpha = Math.max(0.25, 0.85 - c.age * 0.25);
+        drawSprite(ctx, `chalk_${c.kind}`, c.x * T + 4, (l.h + 1) * T + (c.kind === 'hopscotch' ? 4 : 8));
+        ctx.globalAlpha = 1;
+      }
+    }
+    if (sim && sim.weather === 'rain') {
+      for (let x = -1; x <= l.w; x += 3) {
+        const k = Math.floor(this.time * 7 + (x + 1) * 1.7) % 9;
+        drawSprite(ctx, `puddle_${k < 4 ? k : 0}`, x * T + 4 + (x & 1) * 8, (l.h + 1) * T + (x & 1 ? 36 : 12));
+      }
     }
     const style = sim?.state.style ?? { floor: 'cream', wall: 'beige', sign: 'wood' };
     for (let y = 0; y < l.h; y++) {
@@ -111,11 +126,26 @@ export class WorldRenderer {
       if (x % 5 === 3) name = `wall_${style.wall}_1`;
       else if (x % 7 === 5) name = `wall_${style.wall}_p_${season}`;
       else if (x === l.w - 1 || x === 0) name = `wall_${style.wall}_3`;
-      if (x === l.stockDoor.x) name = sim && this.stockDoorOpen(sim) ? 'door_stock_open' : 'door_stock';
+      if (x === l.stockDoor.x) name = this.stockDoorAmount < 0.2 ? 'door_stock' : this.stockDoorAmount < 0.7 ? 'door_stock_half' : 'door_stock_open';
       drawSprite(ctx, name, x * T, -2 * T);
+      if (sim && name.endsWith('_1')) this.drawWindowWeather(ctx, sim, x * T + 6, -2 * T + 16);
+      if (name.endsWith('_3')) {
+        // the wall clock tells the store's time
+        const min = this.night ? 1200 : this.lightAt ?? sim?.clock ?? 600;
+        drawSprite(ctx, `clock_m_${Math.floor((min % 60) / 5)}`, x * T + 8, -2 * T + 25);
+        drawSprite(ctx, `clock_h_${Math.floor(min / 60) % 12}`, x * T + 8, -2 * T + 25);
+      }
     }
     if (sim) this.drawWallDecor(ctx, sim);
-    if (bakery) drawSprite(ctx, sim ? this.equipSprite(sim, 'oven') : 'oven', bakery.x * T, 16 - 72);
+    if (bakery) {
+      drawSprite(ctx, sim ? this.equipSprite(sim, 'oven') : 'oven', bakery.x * T, 16 - 72);
+      // the lower door drops open while someone loads or unloads a tray
+      const baker = sim?.workers.find((w) => w.task.type === 'oven' && !w.mover.path.length && w.task.timer > 0);
+      if (baker && baker.task.type === 'oven') {
+        const u = Math.min(1, baker.task.timer * baker.speed('bakery') / 2);
+        drawSprite(ctx, `oven_door_${u < 0.12 || u > 0.88 ? 1 : 2}`, bakery.x * T, 16 - 72 + 36);
+      }
+    }
     for (let y = -2; y <= l.h; y++) {
       drawSprite(ctx, 'wallL', -T, y * T);
       drawSprite(ctx, 'wallR', l.w * T, y * T);
@@ -139,7 +169,10 @@ export class WorldRenderer {
     const l = sim.layout;
     const x = (l.entrance - 2) * T;
     const y = l.h * T + 6;
-    drawSprite(ctx, `sign_${sim.state.style.sign}`, x, y);
+    // after dark a neon sign stutters now and then
+    const dark = this.night || (this.lightAt ?? sim.clock) >= 1110;
+    const flicker = sim.state.style.sign === 'neon' && dark && [0, 2, 3].includes(Math.floor(this.time * 12) % 41);
+    drawSprite(ctx, flicker ? 'sign_neon_dim' : `sign_${sim.state.style.sign}`, x, y);
     ctx.save();
     ctx.font = "7px 'Grocery Digits', 'Pixelify Sans', 'PingFang SC', 'Noto Sans SC', sans-serif";
     ctx.textAlign = 'center';
@@ -158,10 +191,16 @@ export class WorldRenderer {
     const h = decorHoliday(sim.state.day);
     if (!h) return;
     const l = sim.layout;
-    const garland = { july4: 'bunting_july4', superbowl: 'bunting_superbowl', newyear: 'bunting_newyear', valentine: 'hearts' }[h as string];
+    const garland = ({
+      july4: 'bunting_july4', superbowl: 'bunting_superbowl', newyear: 'bunting_newyear', cn_newyear: 'bunting_newyear', valentine: 'hearts', whiteday: 'hearts',
+      spring: 'lanterns', lantern: 'lanterns', midautumn: 'lanterns', national: 'bunting_national', dragonboat: 'bunting_duanwu',
+      obon: 'chochin', seollal: 'bunting_saekdong', chuseok: 'bunting_saekdong',
+    } as Partial<Record<string, string>>)[h];
+    // a few things hang on the wall between the windows
+    const hang = ({ christmas: 'wreath', thanksgiving: 'wreath', spring: 'fu', seollal: 'bokjori' } as Partial<Record<string, string>>)[h];
     for (let x = 0; x < l.w; x++) {
       if (garland) drawSprite(ctx, garland, x * T, -2 * T + 9);
-      if ((h === 'christmas' || h === 'thanksgiving') && x % 6 === 2 && x !== l.stockDoor.x) drawSprite(ctx, 'wreath', x * T + 6, -2 * T + 16);
+      if (hang && x % 6 === 2 && x !== l.stockDoor.x) drawSprite(ctx, hang, x * T + 6, -2 * T + 16);
     }
   }
 
@@ -181,8 +220,15 @@ export class WorldRenderer {
       door('pumpkin', 2);
     } else if (h === 'superbowl') {
       door('football', 2);
-    } else if (h === 'newyear') {
+    } else if (h === 'newyear' || h === 'cn_newyear' || h === 'singles' || h === 'pepero') {
       list.push({ y: l.h - 1.1, draw: () => drawSprite(ctx, 'balloons', (ex - 1) * T + 6, (l.h - 1) * T - 2) });
+    } else if (h === 'shogatsu') {
+      list.push({ y: l.h - 1.1, draw: () => drawSprite(ctx, 'kadomatsu', (ex - 1) * T + 10, (l.h - 1) * T) });
+      list.push({ y: l.h - 1.1, draw: () => drawSprite(ctx, 'kadomatsu', (ex + 2) * T + 6, (l.h - 1) * T) });
+    } else if (h === 'goldenweek') {
+      list.push({ y: l.h - 1.1, draw: () => drawSprite(ctx, 'koinobori', (ex + 2) * T + 2, (l.h - 1) * T - 10) });
+    } else if (h === 'midautumn' || h === 'lantern') {
+      list.push({ y: l.h - 1.1, draw: () => drawSprite(ctx, 'rabbit_lantern', (ex - 1) * T + 8, (l.h - 1) * T + 6) });
     } else if (h === 'christmas') {
       const cx = l.mirrored ? l.w - 1 : 0;
       list.push({ y: 0.6, draw: () => {
@@ -191,6 +237,238 @@ export class WorldRenderer {
         drawSprite(ctx, 'gift_box', cx * T + 16, 24);
       } });
     }
+  }
+
+  /**
+   * On clear days the odd passing cloud throws a shadow: a cumulus outline built from overlapping puffs,
+   * darker in the middle and fading at the edges, drawn on a 4px grid so it keeps the pixel look.
+   */
+  private drawCloudShadows(ctx: CanvasRenderingContext2D, l: Layout): void {
+    const span = (l.w + 16) * T;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(-T, -3 * T, (l.w + 2) * T, (l.h + 6) * T);
+    ctx.clip();
+    for (let i = 0; i < 2; i++) {
+      const cx = ((this.time * (5 + i * 1.5) + i * span / 2) % span) - 8 * T;
+      const cy = ((i * 0.41 + 0.2) % 1) * (l.h + 2) * T;
+      // puffs around a long base, each breathing slowly so the outline shifts as it drifts
+      const puffs: [number, number, number, number][] = [];
+      const n = 7 + i * 2;
+      for (let k = 0; k < n; k++) {
+        const u = k / (n - 1) - 0.5;
+        const h = Math.sin(k * 12.9898 + i * 78.233) * 43758.5453;
+        const rnd = h - Math.floor(h);
+        const r = (1.2 + rnd * 1.4 + (0.5 - Math.abs(u)) * 1.6) * T * (1 + 0.06 * Math.sin(this.time * 0.4 + k));
+        puffs.push([u * (9 + i * 2) * T, -(rnd - 0.3) * 1.6 * T - (0.5 - Math.abs(u)) * 1.2 * T, r, r * 0.62]);
+      }
+      const w = (6 + i) * T + 3 * T;
+      const h = 4 * T;
+      const G = 4;
+      const fringe = 6;
+      for (let gy = -h; gy < h; gy += G) {
+        for (let gx = -w; gx < w; gx += G) {
+          let best = Infinity;
+          for (const [px, py, rx, ry] of puffs) {
+            const d = Math.hypot((gx - px) / rx, (gy - py) / ry);
+            if (d < best) best = d;
+          }
+          if (best > 1 + fringe / T) continue;
+          const a = best < 0.75 ? 0.085 : best < 1 ? 0.06 : 0.03;
+          ctx.fillStyle = `rgba(28, 32, 58, ${a})`;
+          ctx.fillRect(Math.round(cx + gx), Math.round(cy + gy), G, G);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  /** Warm light from the back windows on sunny days, leaning with the hour. */
+  private drawSunPatches(ctx: CanvasRenderingContext2D, sim: Sim): void {
+    if (this.night) return;
+    const l = sim.layout;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, l.w * T, l.h * T);
+    ctx.clip();
+    for (const p of sunPatches(l, sim.state.seed, sim.state.day, sim.clock)) {
+      if (p.strength <= 0.05) continue;
+      const depth = 3.2 * T;
+      for (let y = 0; y < depth; y += 2) {
+        const fade = 1 - (y / depth) * 0.6;
+        const x = Math.round(p.x * T + 4 + p.lean * y);
+        ctx.fillStyle = `rgba(255, 236, 170, ${p.strength * 0.42 * fade})`;
+        ctx.fillRect(x, y, 24, 2);
+        // the window bars cast two thin lines through the light
+        ctx.fillStyle = `rgba(140, 110, 70, ${p.strength * 0.12 * fade})`;
+        ctx.fillRect(x + 11, y, 2, 2);
+        if (Math.floor(y / (depth / 2)) === 1 && y % (depth / 2) < 2) ctx.fillRect(x, y, 24, 2);
+      }
+    }
+    ctx.restore();
+  }
+
+  /** The window glass: rain running down it, snow on the sill, the low sun at the end of the day. */
+  private drawWindowWeather(ctx: CanvasRenderingContext2D, sim: Sim, x: number, y: number): void {
+    const w = sim.weather;
+    const gw = 20;
+    const gh = 27;
+    if (w === 'rain') {
+      ctx.fillStyle = 'rgba(60, 80, 110, 0.18)';
+      ctx.fillRect(x, y, gw, gh);
+      ctx.fillStyle = 'rgba(220, 236, 250, 0.7)';
+      for (let i = 0; i < 5; i++) {
+        const sx = x + 2 + ((i * 7) % (gw - 3));
+        const sy = y + ((this.time * (14 + i * 3) + i * 11) % gh);
+        ctx.fillRect(sx, Math.round(sy), 1, 3);
+      }
+    } else if (w === 'snow') {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      for (let i = 0; i < 6; i++) {
+        const sx = x + ((i * 5 + Math.sin(this.time + i) * 2 + 40) % gw);
+        const sy = y + ((this.time * 4 + i * 9) % gh);
+        ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
+      }
+      ctx.fillStyle = '#f8f8fc';
+      ctx.fillRect(x - 3, y + gh + 1, gw + 6, 2);
+      ctx.fillRect(x - 2, y + gh, gw + 4, 1);
+      ctx.fillRect(x, y + gh - 1, 3, 1);
+      ctx.fillRect(x + gw - 3, y + gh - 1, 3, 1);
+    }
+    const min = this.lightAt ?? sim.clock;
+    if (!this.night && min >= 17 * 60) {
+      const u = Math.min(1, (min - 17 * 60) / 120);
+      ctx.fillStyle = `rgba(255, 140, 60, ${0.15 + 0.25 * u})`;
+      ctx.fillRect(x, y, gw, gh);
+    }
+  }
+
+  /** The delivery van at the kerb and its driver wheeling boxes in and out. */
+  private drawDelivery(ctx: CanvasRenderingContext2D, sim: Sim, list: Drawable[]): void {
+    const d = sim.delivery;
+    if (!d) return;
+    const l = sim.layout;
+    // the van drives along the sidewalk edge, seen only over the sidewalk
+    list.push({ y: l.h + 1.95, draw: () => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(-T, (l.h + 1) * T - 8, (l.w + 2) * T, 3 * T);
+      ctx.clip();
+      const moving = d.phase === 'arrive' || d.phase === 'leave';
+      drawSprite(ctx, 'van', Math.round(d.vanX * T), (l.h + 1) * T + 2 - (moving && Math.floor(this.time * 8) % 2 ? 1 : 0));
+      ctx.restore();
+    } });
+    const m = d.mover;
+    if (!m) return;
+    list.push({ y: m.y + 0.01, draw: () => {
+      const [px, py] = this.charPos(m.x, m.y);
+      const full = d.phase === 'in' || (d.phase === 'drop' && d.timer < 1);
+      const dir = m.dir;
+      const front = dir === 'down';
+      const dx = dir === 'left' ? -12 : dir === 'right' ? 26 : 9;
+      const dolly = () => drawSprite(ctx, full ? 'dolly_full' : 'dolly_empty', px + dx, py + 16, dir === 'left');
+      if (!front) dolly();
+      drawChar(ctx, NPC_ROW0 + 15, dir, m.moving ? m.frame() : 0, px, py, null, m.moving ? null : 0);
+      if (front) dolly();
+    } });
+  }
+
+  /** Someone walking a dog, a few sparrows, a pigeon or a butterfly going past on the sidewalk. */
+  private drawPasser(ctx: CanvasRenderingContext2D, sim: Sim, p: Passer): void {
+    // only over the sidewalk: people and animals come in from its ends rather than out of the dark
+    const l = sim.layout;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(-T, -4 * T, (l.w + 2) * T, (l.h + 8) * T);
+    ctx.clip();
+    this.drawPasserIn(ctx, sim, p);
+    ctx.restore();
+  }
+
+  private drawPasserIn(ctx: CanvasRenderingContext2D, sim: Sim, p: Passer): void {
+    const left = p.dir < 0;
+    const stopped = sim.clock < p.stopUntil;
+    const t = this.time + p.id * 0.37;
+    if (p.kind === 'dog') {
+      const [ox, oy] = this.charPos(p.x, p.y);
+      const dx = p.x + p.dir * 1.1;
+      const dogX = Math.round(dx * T + (T - 24) / 2);
+      const dogY = Math.round(p.y * T) - 4;
+      const k = stopped ? 4 : Math.floor(t * 8) % 4;
+      drawChar(ctx, NPC_ROW0 + p.look, left ? 'left' : 'right', stopped ? 0 : [1, 0, 2, 0][Math.floor(t * 5) % 4], ox, oy);
+      drawSprite(ctx, `dog_${p.coat}_${k}`, dogX, dogY, left);
+      // the leash sags a little between hand and collar
+      const hx = ox + 16 + p.dir * 7;
+      const hy = oy + 27;
+      const cx = left ? dogX + 8 : dogX + 15;
+      const cy = dogY + (k === 4 ? 10 : 8);
+      ctx.fillStyle = '#c84848';
+      for (let i = 0; i <= 10; i++) {
+        const u = i / 10;
+        ctx.fillRect(Math.round(hx + (cx - hx) * u), Math.round(hy + (cy - hy) * u + Math.sin(u * Math.PI) * 3), 1, 1);
+      }
+      return;
+    }
+    const px = Math.round(p.x * T);
+    const py = Math.round(p.y * T);
+    if (p.kind === 'sparrows') {
+      const away = p.flee >= 0 ? sim.clock - p.flee : -1;
+      const landing = sim.clock - p.since;
+      [-0.45, 0, 0.5].forEach((off, i) => {
+        if (landing < 1) {
+          // swooping down from the sky, one after another
+          const u = Math.min(1, Math.max(0, landing * 1.3 - i * 0.12));
+          drawSprite(ctx, `sparrow_${u < 1 ? 3 + (Math.floor(t * 12 + i) % 2) : 0}`, Math.round(px + off * T - p.dir * (1 - u) * 50), Math.round(py - 6 - (1 - u) * 80), left);
+          return;
+        }
+        if (away >= 0) {
+          const u = away / 1.5;
+          drawSprite(ctx, `sparrow_${3 + (Math.floor(t * 12 + i) % 2)}`, Math.round(px + off * T + u * 40 * (i % 2 ? 1 : -1)), Math.round(py - 6 - u * 70 - i * 4), i % 2 === 0);
+          return;
+        }
+        // each bird pecks, looks about and hops on its own rhythm
+        const ph = Math.floor(t * 2.2 + i * 1.7) % 6;
+        const k = ph === 1 || ph === 4 ? 2 : ph === 3 ? 1 : 0;
+        drawSprite(ctx, `sparrow_${k}`, Math.round(px + off * T), py - 6 + (i === 1 ? 3 : 0), (Math.floor(t * 0.4 + i) % 2) === 0);
+      });
+      return;
+    }
+    if (p.kind === 'squirrel') {
+      let k: number;
+      if (p.bolt) k = stopped ? 6 : Math.floor(t * 20) % 4;
+      else if (!stopped) k = Math.floor(t * 12) % 4;
+      else {
+        // while it sits: hold the nut, nibble, look about, now and then flick the tail
+        const ph = Math.floor(t * 2.5) % 8;
+        k = [4, 5, 4, 5, 6, 4, 7, 5][ph];
+      }
+      const lift = k === 3 ? 2 : k === 0 ? 1 : 0;
+      drawSprite(ctx, `squirrel_${k}`, px, py - 10 - lift, left);
+      return;
+    }
+    if (p.kind === 'raccoon') {
+      let k: number;
+      if (p.bolt) k = stopped ? 6 : 7;
+      else if (!stopped) k = Math.floor(t * 6) % 4;
+      else {
+        // rummaging with both paws, with a pause to sit up and look around
+        const ph = Math.floor(t * 3) % 10;
+        k = ph >= 7 ? 6 : 4 + (ph % 2);
+      }
+      const hop = p.bolt && !stopped ? Math.floor(t * 14) % 2 : 0;
+      drawSprite(ctx, `raccoon_${k}`, px - 3, py - 11 - hop, left);
+      return;
+    }
+    if (p.kind === 'pigeon') {
+      if (p.flee >= 0) {
+        const u = (sim.clock - p.flee) / 1.5;
+        drawSprite(ctx, `pigeon_${3 + (Math.floor(t * 10) % 2)}`, Math.round(px + p.dir * u * 60), Math.round(py - 8 - u * 90), left);
+        return;
+      }
+      drawSprite(ctx, `pigeon_${stopped ? (Math.floor(t * 3) % 2 ? 2 : 0) : Math.floor(t * 4) % 2}`, px, py - 8, left);
+      return;
+    }
+    drawSprite(ctx, `butterfly_${Math.floor(t * 10) % 2}`, px, Math.round(py - 26 + Math.sin(t * 3) * 6));
   }
 
   /** Rain or snow falls over the sidewalk; the whole scene gets a light weather tint. */
@@ -209,10 +487,16 @@ export class WorldRenderer {
         const hgt = y1 - y0;
         const px = x0 + ((i * 53.7 + (w === 'snow' ? Math.sin(this.time + i) * 6 : this.time * 18)) % (x1 - x0) + (x1 - x0)) % (x1 - x0);
         const py = y0 + ((i * 31.3 + this.time * speed) % hgt);
-        if (w === 'rain') ctx.fillRect(Math.round(px), Math.round(py), 1, 4);
+        if (w === 'rain') {
+          // each drop lands somewhere on the sidewalk and splashes
+          const land = y0 + 8 + ((i * 17) % (hgt - 12));
+          if (py < land) ctx.fillRect(Math.round(px), Math.round(py), 1, 4);
+          else if (py - land < speed * 0.15) drawSprite(ctx, `splash_${Math.floor((py - land) / (speed * 0.05))}`, Math.round(px) - 4, land - 1);
+        }
         else ctx.fillRect(Math.round(px), Math.round(py), 2, 2);
       }
     }
+    if ((w === 'sunny' || w === 'hot') && !this.night) this.drawCloudShadows(ctx, l);
     const tint: Record<string, string> = {
       rain: 'rgba(40, 55, 90, 0.10)', snow: 'rgba(210, 225, 255, 0.07)', cloudy: 'rgba(60, 70, 90, 0.05)', hot: 'rgba(255, 170, 60, 0.05)',
     };
@@ -236,8 +520,10 @@ export class WorldRenderer {
     const u = act ? (sim.clock - act.at) / Math.max(0.01, act.until - act.at) : 0;
     let dx = 0;
     let dy = 0;
-    let pose: string = c.mode === 'walk' ? (Math.floor(this.time * 6) % 2 ? 'walk1' : 'walk2') : c.mode;
-    const seed = c === sim.cat ? 0 : 3;
+    const walk = (['walk1', 'walk2', 'walk3', 'walk4'] as const)[Math.floor(this.time * 8) % 4];
+    let pose: string = c.mode === 'walk' ? walk : c.mode;
+    if (pose === 'groom') pose = Math.floor(this.time * 3) % 2 ? 'groom' : 'groom2';
+    const seed = c === sim.cat ? 0 : sim.visitors.indexOf(c) + 3;
     switch (act?.kind) {
       case 'wiggle': pose = this.beat(seed, 3) ? 'rub' : 'sit'; break;
       case 'arch': dx = Math.round(Math.sin(this.time * 40) * 0.6); pose = 'hiss'; break;
@@ -251,7 +537,7 @@ export class WorldRenderer {
       }
       case 'hop': dy = -Math.round(Math.sin(u * Math.PI) * 6); pose = 'leap'; break;
       case 'box': pose = 'peek'; break;
-      case 'eat': pose = 'sniff'; break;
+      case 'eat': pose = Math.floor(this.time * 5) % 2 ? 'sniff' : 'sniff2'; break;
       case 'swipe': pose = 'bat2'; break;
     }
     let px0 = c.perch ? c.perch.x * T + 4 : Math.round(c.mover.x * T) + 4;
@@ -341,9 +627,16 @@ export class WorldRenderer {
         px0 = dir === 'right' ? toyLeft + into - 22 : toyRight - into - 2;
       }
     }
+    // idle life: a sitting cat swishes its tail, resting cats blink, a sleeping one breathes
+    if (!act && !play && !c.tag && !c.mover.path.length) {
+      const t = this.time + seed * 2.1;
+      if (pose === 'sit') pose = t % 5 < 0.16 ? 'sit_blink' : (['sit', 'sit_t1', 'sit', 'sit_t2'] as const)[Math.floor(t * 1.6) % 4];
+      else if (pose === 'loaf' && t % 6 < 0.16) pose = 'loaf_blink';
+      else if (pose === 'sleep' && Math.floor(t * 0.9) % 2) pose = 'sleep_b';
+    }
     // never slide along in a resting pose: anything still on the move walks
-    const resting = !['walk1', 'walk2', 'run1', 'run2', 'leap'].includes(pose);
-    if (resting && c.mover.path.length && !c.perch && !play) pose = Math.floor(this.time * 6) % 2 ? 'walk1' : 'walk2';
+    const resting = !['walk1', 'walk2', 'walk3', 'walk4', 'run1', 'run2', 'leap'].includes(pose);
+    if (resting && c.mover.path.length && !c.perch && !play) pose = walk;
     // a big jump in where the cat should be (onto a toy, out of a box) is shown as a leap with an arc
     const shown = this.catShown.get(c) ?? { x: px0, y: py0, jump: 0 };
     this.catShown.set(c, shown);
@@ -402,16 +695,25 @@ export class WorldRenderer {
     drawSprite(ctx, 'door_panel', x + 32 + slide, y + 3);
     ctx.restore();
     drawSprite(ctx, 'entrance_frame', x, y);
+    // a wind chime hangs at the top of the frame: it rings when the door opens and stirs in the breeze
+    const since = this.time - this.chimeAt;
+    const ring = since < 3 ? Math.sin(since * 9) * 2.2 * Math.exp(-since * 1.2) : 0;
+    const breeze = Math.sin(this.time * 1.3) * 0.6 + Math.sin(this.time * 3.1) * 0.3;
+    drawSprite(ctx, `chime_${Math.max(0, Math.min(4, Math.round(2 + ring + breeze)))}`, x + 2, y - 4);
   }
 
   private updateDoor(sim: Sim, dt: number): void {
     const l = sim.layout;
     const cx = l.entrance + 0.5;
     const near = (m: { x: number; y: number }) => Math.abs(m.x - cx) < 1.6 && m.y > l.h - 2.2 && m.y < l.h + 1.8;
-    const want = sim.customers.some((c) => near(c.mover)) || sim.workers.some((w) => near(w.mover)) ? 1 : 0;
+    const dm = sim.delivery?.mover;
+    const want = sim.customers.some((c) => near(c.mover)) || sim.workers.some((w) => near(w.mover)) || (dm && near(dm)) ? 1 : 0;
     // ease at a fixed real-time rate; dt is 0 while paused so the doors freeze too
     const step = dt * 3.5;
-    if (want && this.doorOpen === 0 && dt > 0) sfx('door');
+    if (want && this.doorOpen === 0 && dt > 0) {
+      sfx('door');
+      this.chimeAt = this.time;
+    }
     this.doorOpen = want ? Math.min(1, this.doorOpen + step) : Math.max(0, this.doorOpen - step * 0.7);
   }
 
@@ -421,6 +723,9 @@ export class WorldRenderer {
     this.hits = [];
     this.prompts = [];
     this.updateDoor(sim, dt);
+    // the stock door swings through a half-open frame each way
+    const target = this.stockDoorOpen(sim) ? 1 : 0;
+    this.stockDoorAmount += Math.max(-dt * 5, Math.min(dt * 5, target - this.stockDoorAmount));
     const l = sim.layout;
     this.drawFloor(ctx, l, sim);
     if (build) this.drawReserved(ctx, l);
@@ -432,9 +737,29 @@ export class WorldRenderer {
       ctx.globalAlpha = 1;
       this.hits.push({ x: sp.x * T, y: sp.y * T + 4, w: T, h: 28, action: { type: 'spill', id: sp.id } });
     }
+    this.drawSunPatches(ctx, sim);
+    for (const f of sim.footprints) {
+      ctx.globalAlpha = 0.8 * (1 - f.age / 180);
+      drawSprite(ctx, 'footprint', Math.round(f.x * T + 13 + (f.flip ? 5 : 0)), Math.round(f.y * T + 10));
+    }
+    ctx.globalAlpha = 1;
     const list: Drawable[] = [];
     this.holidayFloor(sim, list, ctx);
+    this.drawDelivery(ctx, sim, list);
     const rolling = new Set(sim.cats().map((k) => this.toyPlay(sim, k)).filter((p) => p?.f.decor === 'toy_laser').map((p) => p!.f.id));
+    this.openDoors = new Map();
+    for (const c of sim.customers) {
+      const pk = c.pick;
+      if (!pk) continue;
+      // swing open, hold while the item comes out, swing shut
+      const u = sim.clock - pk.at;
+      const stage = u < 0.12 ? 1 : u < 0.55 ? 2 : u < 0.7 ? 1 : 0;
+      if (stage) this.openDoors.set(pk.fixture, { slot: pk.slot, stage });
+    }
+    for (const w of sim.workers) {
+      const t = w.task;
+      if (t.type === 'restock' && t.phase === 'stocking' && !w.mover.path.length) this.openDoors.set(t.fixture, { slot: t.slot, stage: 2 });
+    }
     this.activeToys = new Set([
       ...sim.cats().map((k) => k.toy).filter((x): x is number => x !== null),
       ...sim.rollingToys(),
@@ -461,9 +786,22 @@ export class WorldRenderer {
         if (sim.bagging) this.drawBaggingFx(ctx, sim, sim.bagging, b.x * T, (b.y + 1) * T - 56);
       } });
     }
-    list.push({ y: l.h - 1.4, draw: () => drawSprite(ctx, 'plant', (l.w - 1) * T, (l.h - 1) * T - 16) });
+    list.push({ y: l.h - 1.4, draw: () => drawSprite(ctx, `plant${this.sway(7)}`, (l.w - 1) * T, (l.h - 1) * T - 16) });
     const wet = sim.weather === 'rain' || sim.weather === 'snow';
     if (sim.weather === 'rain') list.push({ y: l.h + 0.9, draw: () => drawSprite(ctx, 'umbrella_stand', (l.entrance + 2) * T + 6, (l.h + 1) * T - 12) });
+    for (const p of sim.passers) list.push({ y: p.y, draw: () => this.drawPasser(ctx, sim, p) });
+    // a winter street-food stall a little way down the sidewalk, its keeper standing behind it
+    const cart = streetCart(sim.state.seed, sim.state.day);
+    if (cart && !this.night) {
+      const cx = (l.mirrored ? l.entrance - 5 : l.entrance + 4) * T;
+      const cy = (l.h + 2) * T - 30;
+      list.push({ y: l.h + 1.6, draw: () => {
+        drawSprite(ctx, `cart_${cart}`, cx, cy);
+        // the stallholder stands beside the cart, not behind it, so nothing overlaps
+        drawChar(ctx, NPC_ROW0 + 7, l.mirrored ? 'right' : 'left', 0, cx + (l.mirrored ? -26 : 36), cy - 16);
+        this.puffs(ctx, cx + 12, cy + 2, 4, 14, 0.8, 16);
+      } });
+    }
     for (const p of l.pillars) list.push({ y: p.y + 0.5, draw: () => drawSprite(ctx, 'pillar', p.x * T, (p.y + 1) * T - 72) });
     for (const w of sim.workers) list.push({ y: this.seatOf(sim, w)?.y ?? w.mover.y, draw: () => this.drawWorker(ctx, sim, w) });
     const catY = (c: CatAgent) => {
@@ -536,6 +874,9 @@ export class WorldRenderer {
       const px = s.x * T;
       const top = (s.y + 1) * T - 56;
       if (s.kind === 'oden') {
+        // the broth simmers; it bubbles harder while someone is ladling
+        const busy = !!this.serving(sim.stations.get('oden'));
+        drawSprite(ctx, `oden_bubble_${Math.floor(t * (busy ? 8 : 3)) % 4}`, px, top);
         [11, 25, 38, 51].forEach((cx, i) => {
           for (let k = 0; k < 3; k++) {
             const ph = (t * 0.7 + k / 3 + i * 0.27) % 1;
@@ -651,18 +992,13 @@ export class WorldRenderer {
           ctx.fillRect(px + 9, top + 5, 1, 1);
         }
       } else if (kind === 'deli') {
-        const a = t * 14;
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        for (let k = 0; k < 2; k++) ctx.fillRect(Math.round(px + 44 + Math.cos(a + k * Math.PI) * 6), Math.round(top + 9 + Math.sin(a + k * Math.PI) * 6), 2, 1);
+        // the blade spins while slicing
+        drawSprite(ctx, `slicer_${Math.floor(t * 16) % 4}`, px + 34, top - 1);
         const ph = (t * 2.5) % 1;
         ctx.fillStyle = '#f0a0a8';
         ctx.fillRect(Math.round(px + 50 + ph * 8), Math.round(top + 8 + ph * ph * 4), 3, 1);
       } else if (kind === 'oden') {
         this.puffs(ctx, px + 8, top + 4, 6, 18, 1.1, 48);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        [12, 26, 39, 52].forEach((cx, i) => {
-          if (Math.floor(t * 6 + i * 1.7) % 3 === 0) ctx.fillRect(px + cx + ((i * 5 + Math.floor(t * 3)) % 4), top + 6 + (i % 2), 1, 1);
-        });
       }
     }
     const since = sim.clock - line.doneAt;
@@ -750,19 +1086,14 @@ export class WorldRenderer {
       }
       return;
     }
+    // the receipt feeds out of the printer as the last items go through, and is torn off after paying
+    const progress = c && line.duration > 0 ? line.progress / line.duration : 0;
+    const paper = progress > 0.55 ? (progress < 0.7 ? 1 : progress < 0.85 ? 2 : 3) : line.doneAt >= 0 && since >= 0 && since < 0.5 ? 3 : 0;
+    if (paper) drawSprite(ctx, `receipt_${paper}`, X(50, 8), top - 8, m);
     if (line.doneAt >= 0 && since >= 0 && since < 1.6) {
-      const out = Math.min(1, since * 4) * (since > 1.2 ? (1.6 - since) / 0.4 : 1);
-      const d = Math.round(out * 4);
-      ctx.fillStyle = '#2a2430';
-      ctx.fillRect(X(36, 22), top + 22, 22, 2 + d);
-      ctx.fillStyle = '#5a5464';
-      ctx.fillRect(X(37, 20), top + 22, 20, 1 + d);
-      if (d > 1) {
-        ctx.fillStyle = '#f0c848';
-        for (const cx of [39, 44, 49]) ctx.fillRect(X(cx, 3), top + 22, 3, 1);
-        ctx.fillStyle = '#8ed07a';
-        ctx.fillRect(X(52, 4), top + 22, 4, 1);
-      }
+      // the drawer slides out in three steps, stays open, then slides back
+      const stage = since < 0.08 ? 1 : since < 0.16 ? 2 : since < 1.2 ? 3 : since < 1.4 ? 2 : 1;
+      drawSprite(ctx, `reg_drawer_${stage}`, X(35, 24), top + 22, m);
       if (since < 0.8) {
         const a = Math.sin((since / 0.8) * Math.PI);
         ctx.fillStyle = `rgba(255, 240, 170, ${a})`;
@@ -863,6 +1194,9 @@ export class WorldRenderer {
 
   private doorUntil = 0;
   private frameDt = 0;
+  private stockDoorAmount = 0;
+  /** Fridge doors and freezer lids open right now: fixture → slot and how far (1 halfway, 2 open). */
+  private openDoors = new Map<number, { slot: number; stage: 1 | 2 }>();
   /** Toys being played with this frame: by a cat, rolling, or in a customer's hand. */
   private activeToys = new Set<number>();
   /** Where each cat was last drawn, so a sudden change of spot becomes a jump instead of a teleport. */
@@ -873,7 +1207,8 @@ export class WorldRenderer {
     const d = sim.layout.stockDoor;
     const near = sim.workers.some((w) => w.task.type === 'restock' && w.task.phase !== 'stocking'
       && (w.task.phase === 'pickup' || Math.abs(w.mover.x - d.x) + Math.abs(w.mover.y - d.y) < 1.6));
-    if (near) this.doorUntil = this.time + 0.5;
+    const dm = sim.delivery?.mover;
+    if (near || (dm && Math.abs(dm.x - d.x) + Math.abs(dm.y - d.y) < 1.6)) this.doorUntil = this.time + 0.5;
     return this.time < this.doorUntil;
   }
 
@@ -934,8 +1269,9 @@ export class WorldRenderer {
       }
     });
     if (f.kind === 'fridge' || f.kind === 'freezer') {
-      drawSprite(ctx, `${f.kind}_glass_${f.vertical ? 'v' : 'h'}`, px, top);
-      if (alpha === 1) this.glint(ctx, f, px, top, sh);
+      const door = this.openDoors.get(f.id);
+      drawSprite(ctx, door ? `${f.kind}_glass_${f.vertical ? 'v' : 'h'}_open${door.slot}_${door.stage}` : `${f.kind}_glass_${f.vertical ? 'v' : 'h'}`, px, top);
+      if (alpha === 1 && !door) this.glint(ctx, f, px, top, sh);
     }
     ctx.globalAlpha = 1;
     if (selected) {
@@ -971,13 +1307,24 @@ export class WorldRenderer {
    * left alone, and squashed while a cat lies on a bed or cushion. Null means the static sprite.
    */
   private toySprite(f: FixtureState): string | null {
+    // the aquarium is always alive
+    if (f.decor === 'aquarium') return `aq_${Math.floor(this.time * 3 + f.id) % 6}`;
+    // the beckoning paw goes up and down all day
+    if (f.decor === 'maneki') return `maneki_${[0, 1, 2, 1][Math.floor(this.time * 4 + f.id) % 4]}`;
+    if (f.decor === 'gumball') return this.activeToys.has(f.id) ? `gumball_${Math.min(2, Math.floor(this.time * 5) % 4)}` : null;
+    if (f.decor === 'magazine') return this.activeToys.has(f.id) ? `magazine_${Math.floor(this.time * 3) % 2}` : null;
+    if (f.decor === 'plant_small' || f.decor === 'flowers') {
+      const v = this.sway(f.id);
+      return v ? `decor_${f.decor}${v}` : null;
+    }
     const kind = f.decor?.startsWith('toy_') ? (f.decor.slice(4) as CafeToy) : null;
     const n = kind ? TOY_FRAME_COUNT[kind] : undefined;
     if (!kind || !n) return null;
     const active = this.activeToys.has(f.id);
     const frame = (rate: number) => `toyf_${kind}_${Math.floor(this.time * rate + f.id * 0.3) % n}`;
-    if (kind === 'bed' || kind === 'cushion') return active ? `toyf_${kind}_1` : null;
-    if (kind === 'hammock' || kind === 'box') return active ? frame(2) : null;
+    // a cat lying in it just weighs it down
+    if (kind === 'bed' || kind === 'cushion' || kind === 'hammock') return active ? `toyf_${kind}_1` : null;
+    if (kind === 'box') return active ? frame(2) : null;
     if (active) return frame(kind === 'spring' || kind === 'dangle' ? 6 : 9);
     if (kind === 'wand' || kind === 'fishing' || kind === 'ribbon' || kind === 'dangle') return frame(1.2);
     return null;
@@ -1159,7 +1506,19 @@ export class WorldRenderer {
   }
 
   /** drawChar with an optional crouch: the body sinks and the legs are clipped at the floor line. */
-  private drawBody(ctx: CanvasRenderingContext2D, row: number, dir: Dir, frame: number, px: number, py: number, expr: 'happy' | 'sad' | null, work: 0 | 1 | null, crouch: number, pose: CharPose | null = null): void {
+  /** A quick blink every few seconds, staggered per person. */
+  /** Leaves lean one way, then the other, now and then; a draught from the open door makes it quicker. */
+  private sway(seed: number): string {
+    const k = Math.floor(this.time * (this.doorOpen > 0.3 ? 4 : 2) + seed * 2.3) % 8;
+    return k === 1 ? '_s1' : k === 5 ? '_s0' : '';
+  }
+
+  private blinking(seed: number): boolean {
+    return (this.time + seed * 1.37) % 4.3 < 0.14;
+  }
+
+  private drawBody(ctx: CanvasRenderingContext2D, row: number, dir: Dir, frame: number, px: number, py: number, expr: 'happy' | 'sad' | null, work: 0 | 1 | null, crouch: number, pose: CharPose | null = null, seed = 0): void {
+    if (!pose && work === null && !crouch && frame === 0 && !expr && dir !== 'up' && this.blinking(seed)) pose = dir === 'down' ? 'blink' : 's_blink';
     if (pose) {
       drawCharPose(ctx, row, pose, dir === 'left', px, py);
       return;
@@ -1215,7 +1574,7 @@ export class WorldRenderer {
     if (stocking) drawSprite(ctx, 'carton', dir === 'left' ? px + 14 : px - 2, py + 34);
     if (t.type === 'clean' && work !== null) this.drawMop(ctx, px, py, true);
     if (work !== null && !act) this.drawStockItem(ctx, sim, w, px, py, true);
-    this.drawBody(ctx, w.row, act ? w.mover.dir : dir, frame, px, py, w.bubble?.icon === 'b_heart' || act?.kind === 'laugh' ? 'happy' : null, work, pose.crouch, pose.frame);
+    this.drawBody(ctx, w.row, act ? w.mover.dir : dir, frame, px, py, w.bubble?.icon === 'b_heart' || act?.kind === 'laugh' ? 'happy' : null, work, pose.crouch, pose.frame, w.staffId + 11);
     if (t.type === 'clean' && work !== null) this.drawMop(ctx, px, py, false);
     if (w.carrying && !stocking) drawSprite(ctx, 'carton', px + 6, py + 22 + (frame ? 1 : 0));
     if (work !== null && !act) {
@@ -1225,26 +1584,21 @@ export class WorldRenderer {
     if (w.bubble) this.bubble(ctx, w.bubble.icon, w.mover.x, w.mover.y, false);
   }
 
-  /** Mop handle behind the body, head swishing on the floor in front. */
+  /** A bucket beside the cleaner (behind), and the mop swishing back and forth in front. */
   private drawMop(ctx: CanvasRenderingContext2D, px: number, py: number, back: boolean): void {
-    const sw = Math.round(Math.sin(this.time * 9) * 5);
     if (back) {
-      ctx.fillStyle = '#8a6a4a';
-      for (let i = 0; i < 18; i++) ctx.fillRect(px + 22 + Math.round(((sw - 6) * i) / 18), py + 22 + i, 1, 1);
+      drawSprite(ctx, 'bucket', px + 22, py + 33);
       return;
     }
-    ctx.fillStyle = '#2a2430';
-    ctx.fillRect(px + 13 + sw, py + 40, 10, 4);
-    ctx.fillStyle = '#d8dce4';
-    ctx.fillRect(px + 14 + sw, py + 40, 8, 3);
-    ctx.fillStyle = '#aab0bc';
-    ctx.fillRect(px + 14 + sw, py + 42, 8, 1);
+    const k = [0, 1, 2, 1][Math.floor(this.time * 6) % 4];
+    drawSprite(ctx, `mop_${k}`, px + 4, py + 21);
     for (let i = 0; i < 3; i++) {
       const ph = (this.time * 1.3 + i / 3) % 1;
       ctx.fillStyle = `rgba(230, 245, 255, ${0.8 * (1 - ph)})`;
       ctx.fillRect(px + 8 + i * 8 + Math.round(Math.sin(ph * 6 + i) * 2), Math.round(py + 42 - ph * 14), 2, 2);
     }
   }
+
 
   private drawWorkFx(ctx: CanvasRenderingContext2D, sim: Sim, w: Worker, px: number, py: number): void {
     const t = w.task;
@@ -1331,7 +1685,7 @@ export class WorldRenderer {
     const tired = c.state === 'queue' && c.wait > 8 * c.npc.patience;
     const expr = icon === 'b_heart' || act?.kind === 'laugh' ? 'happy' : icon === 'b_sad' || icon === 'b_wait' || icon === 'b_empty' || tired ? 'sad' : null;
     this.drawPick(ctx, sim, c, true);
-    this.drawBody(ctx, c.row, act ? c.mover.dir : dir, c.mover.frame(), px, py, work === null ? expr : null, work, pose.crouch, pose.frame);
+    this.drawBody(ctx, c.row, act ? c.mover.dir : dir, c.mover.frame(), px, py, work === null ? expr : null, work, pose.crouch, pose.frame, c.id);
     if (act?.kind === 'read' && c.mover.dir !== 'up') this.drawMagazine(ctx, c.mover.dir, px, py);
     this.drawPick(ctx, sim, c, false);
     this.hits.push({ x: px + 6, y: py + 4, w: 20, h: 40, action: { type: 'customer', customer: c } });
