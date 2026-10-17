@@ -13,7 +13,8 @@ import { BuildMode } from './build';
 import { openShare } from './share';
 import { decodeSave, encodeSave } from '../game/savecode';
 import { clear, h } from './dom';
-import { expandPanel, regularsPanel, reportPanel, staffPanel } from './panels';
+import { regularsPanel, reportPanel, staffPanel } from './panels';
+import { growPanel } from './street';
 
 const base = import.meta.env.BASE_URL;
 
@@ -36,7 +37,7 @@ export function charIcon(row: number, scale = 1): HTMLElement {
     style: {
       width: `${32 * scale}px`, height: `${40 * scale}px`,
       backgroundImage: `url(${base}assets/chars.png?v=${__BUILD__})`,
-      backgroundSize: `${672 * scale}px auto`,
+      backgroundSize: `${704 * scale}px auto`,
       backgroundPosition: `0 -${(row * 48 + 2) * scale}px`,
     },
   });
@@ -241,7 +242,7 @@ export class UI {
       btn('bar.achievements', () => this.openPanel('ach.title', () => trophiesPanel(g.state))),
     );
     if (night) {
-      this.bottom.append(btn('bar.expand', () => this.openPanel('expand.title', () => expandPanel(g, this))));
+      this.bottom.append(btn('bar.expand', () => this.openPanel('expand.title', () => growPanel(g, this))));
       if (g.state.history.length) this.bottom.append(btn('bar.report', () => this.showReport(g.state.history[g.state.history.length - 1])));
     }
   }

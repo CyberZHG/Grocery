@@ -288,6 +288,20 @@ export function accessTiles(grid: Grid, f: FixturePlacement, slot: number): P[] 
   return out;
 }
 
+/**
+ * Where people stand to use a fixture: its front if that's open, otherwise any side.
+ * Horizontal fixtures face down toward the viewer; a vertical fridge's glass door faces right.
+ * Vertical shelves, produce bins and chest freezers are open on both long sides.
+ */
+export function serveTiles(grid: Grid, f: FixturePlacement, slot: number): P[] {
+  const all = accessTiles(grid, f, slot);
+  const c = fixtureCells(f)[slot];
+  const front = !f.vertical ? { x: c.x, y: c.y + 1 } : f.kind === 'fridge' ? { x: c.x + 1, y: c.y } : null;
+  if (!front) return all;
+  const open = all.filter((p) => p.x === front.x && p.y === front.y);
+  return open.length ? open : all;
+}
+
 export function entryTile(l: Layout): P {
   return { x: l.entrance, y: l.h - 1 };
 }

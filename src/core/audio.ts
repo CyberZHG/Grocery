@@ -115,8 +115,9 @@ export function sfx(name: Sfx): void {
   const b = sfxBus;
   switch (name) {
     case 'door':
-      tone(988, t, 0.25, 'triangle', 0.25, b);
-      tone(784, t + 0.18, 0.35, 'triangle', 0.25, b);
+      // plays every time someone comes or goes, so it stays soft
+      tone(988, t, 0.25, 'triangle', 0.09, b);
+      tone(784, t + 0.18, 0.35, 'triangle', 0.09, b);
       break;
     case 'ding':
       tone(1568, t, 0.3, 'square', 0.12, b);

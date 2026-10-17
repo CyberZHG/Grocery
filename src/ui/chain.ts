@@ -1,19 +1,22 @@
-import { money, t, type Key } from '../i18n';
+import { money, staffName, t, type Key } from '../i18n';
 import {
-  BRANCH_COST, BRANCH_REP, branchBlocker, CHALLENGE_BY_ID, CHALLENGES, doneCount, MANAGER_SHARE, progressOf, STORE_BONUS, storeIncome,
+  BRANCH_COST, BRANCH_REP, branchBlocker, CHALLENGE_BY_ID, CHALLENGES, doneCount, goalOf, MANAGER_SHARE, managerShare, progressOf, STORE_BONUS, startNextTier, storeIncome,
 } from '../game/chain';
+import { saveGame, type StaffState } from '../game/state';
 import type { Game } from '../game/game';
 import { slotName } from '../game/names';
 import type { UI } from './app';
 import { h } from './dom';
 
 function goalText(g: Game, i: number): string {
-  const def = CHALLENGE_BY_ID.get(g.state.stores[i].challenge)!;
-  return t(`challenge.${def.id}.goal` as Key, { n: def.target.toLocaleString('en-US'), v: money(def.target), rep: BRANCH_REP });
+  const slot = g.state.stores[i];
+  const { target } = goalOf(slot);
+  const key = slot.challenge === 'main' && slot.tier ? 'challenge.main.goalTier' : `challenge.${slot.challenge}.goal`;
+  return t(key as Key, { n: target.toLocaleString('en-US'), v: money(target), rep: BRANCH_REP });
 }
 
 function progressLabel(g: Game, i: number): string {
-  const def = CHALLENGE_BY_ID.get(g.state.stores[i].challenge)!;
+  const def = goalOf(g.state.stores[i]);
   const p = progressOf(g.state, i);
   if (def.goal === 'expand') return `${Math.round(p.ratio * 100)}%`;
   const f = (n: number) => (def.goal === 'revenue' ? money(n) : Math.floor(n).toLocaleString('en-US'));
@@ -25,11 +28,14 @@ export function challengeCard(g: Game, i: number): HTMLElement {
   const slot = g.state.stores[i];
   const id = slot.challenge;
   const p = progressOf(g.state, i);
+  const tier = slot.tier ?? 0;
+  const rules = id !== 'main' ? t(`challenge.${id}.rules` as Key) : tier ? t('challenge.main.rulesTier', { r: (1 + 0.25 * tier).toFixed(2) }) : null;
   return h('div', { class: `challenge${slot.done ? ' done' : ''}` }, [
-    id !== 'main'
+    tier ? h('span', { class: 'tag' }, [t('chain.tier', { n: tier + 1 })]) : null,
+    rules
       ? h('div', { class: 'kv' }, [
           h('span', {}, [t('chain.rules')]),
-          h('span', { class: slot.done ? 'struck' : '' }, [t(`challenge.${id}.rules` as Key)]),
+          h('span', { class: slot.done ? 'struck' : '' }, [tier && id !== 'main' ? `${rules} ${t('chain.harder')}` : rules]),
         ])
       : null,
     h('div', { class: 'kv' }, [
@@ -46,6 +52,28 @@ export function challengeCard(g: Game, i: number): HTMLElement {
       h('span', {}, [`${t('chain.bonus', { p: Math.round(STORE_BONUS * 100) })} ${t(`challenge.${id}.reward` as Key)}`]),
     ]),
   ]);
+}
+
+/** Pick one of the store's own staff to run it while you're elsewhere. */
+function managerRow(g: Game, i: number): HTMLElement {
+  const s = g.state;
+  const slot = s.stores[i];
+  const staff: StaffState[] = i === s.active ? s.staff : slot.saved?.staff ?? [];
+  const share = Math.round(managerShare(slot, staff) * 100);
+  const sel = h('select', {
+    class: 'select',
+    onchange: (e: Event) => {
+      const v = (e.target as HTMLSelectElement).value;
+      slot.manager = v ? Number(v) : null;
+      saveGame(s);
+      hint.textContent = t('chain.managerHint', { p: Math.round(managerShare(slot, staff) * 100) });
+    },
+  }, [
+    h('option', { value: '', selected: slot.manager == null }, [t('chain.noManager')]),
+    ...staff.map((m) => h('option', { value: String(m.id), selected: slot.manager === m.id }, [staffName(m.name)])),
+  ]);
+  const hint = h('span', { class: 'muted' }, [t('chain.managerHint', { p: share })]);
+  return h('div', { class: 'stack' }, [h('label', { class: 'row' }, [h('span', {}, [t('chain.manager')]), sel]), hint]);
 }
 
 export function chainPanel(g: Game, ui: UI): HTMLElement {
@@ -72,7 +100,18 @@ export function chainPanel(g: Game, ui: UI): HTMLElement {
           }, [t('chain.switch')]),
     ]);
     const income = here ? null : h('div', { class: 'muted' }, [t('chain.income', { v: money(storeIncome(slot)) })]);
-    out.append(h('div', { class: 'card stack' }, [head, income, challengeCard(g, i)]));
+    const next = slot.done
+      ? h('button', {
+          class: 'btn small', disabled: !night,
+          onclick: () => {
+            startNextTier(g.state, i);
+            saveGame(g.state);
+            if (i === g.state.active) g.rebuild();
+            ui.rerenderPanel?.();
+          },
+        }, [t('chain.nextTier', { n: (slot.tier ?? 0) + 2 })])
+      : null;
+    out.append(h('div', { class: 'card stack' }, [head, income, challengeCard(g, i), managerRow(g, i), next, next ? h('span', { class: 'muted' }, [t('chain.nextTierHint')]) : null]));
   });
   const k = s.stores.length;
   const block = branchBlocker(s);

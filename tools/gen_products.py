@@ -94,6 +94,20 @@ def t_round(cv, A, B, C):
     cv.px(11, 13, W(A, 4)); cv.px(12, 13, W(A, 4)); cv.px(11, 14, W(A, 4))
 
 
+def t_tomato(cv, A, B, C):
+    """Wider and flatter than an apple, with shallow ribs and a green star of sepals instead of a stem and leaf."""
+    cv.ellipse(16, 19, 12.5, 8.5, A)
+    cv.ellipse(10, 17, 5, 6, A)
+    cv.ellipse(22, 17, 5, 6, A)
+    cv.shade_ball(16, 19, 12.5, 8.5)
+    for x in (11, 21):
+        cv.line(x, 12, x - (1 if x < 16 else -1), 24, W(A, -1))
+    for dx, dy in ((-5, 1), (5, 1), (-3, -2), (3, -2), (0, 2)):
+        cv.line(16, 11, 16 + dx, 11 + dy, B, 2)
+    cv.rect(15, 8, 16, 11, W(B, -2))
+    cv.px(9, 14, W(A, 4)); cv.px(10, 14, W(A, 4)); cv.px(9, 15, W(A, 4))
+
+
 def t_citrus(cv, A, B, C):
     cv.ellipse(16, 17, 12, 8.5, A)
     cv.rect(3, 16, 4, 18, A)
@@ -1295,7 +1309,7 @@ TEMPLATES = {k[2:]: v for k, v in globals().items() if k.startswith('t_')}
 
 # bag properties: weight class (0 fragile, 1 light, 2 normal, 3 heavy), w, h in bag cells
 BAG = {
-    'round': (2, 1, 1), 'citrus': (2, 1, 1), 'banana': (1, 2, 1), 'grapes': (0, 1, 1), 'berries': (0, 1, 1),
+    'round': (2, 1, 1), 'tomato': (0, 1, 1), 'citrus': (2, 1, 1), 'banana': (1, 2, 1), 'grapes': (0, 1, 1), 'berries': (0, 1, 1),
     'melon': (3, 2, 2), 'avocado': (2, 1, 1), 'potato': (3, 2, 1), 'onion': (2, 1, 1), 'garlic': (1, 1, 1),
     'carrot': (2, 1, 1), 'leafy': (0, 1, 2), 'broccoli': (1, 1, 1), 'pepper': (2, 1, 1), 'corn': (2, 1, 1),
     'pineapple': (3, 1, 2), 'mushroom': (0, 1, 1), 'jug': (3, 1, 2), 'carton': (2, 1, 2), 'eggs': (0, 2, 1),

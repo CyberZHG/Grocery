@@ -79,7 +79,7 @@ export class BuildMode {
     const c = this.game.cell(wx, wy);
     if (!this.placing) return;
     const g = { ...target, x: c.x, y: c.y };
-    this.game.build.ghost = { kind: target.kind, x: c.x, y: c.y, vertical: target.vertical, ok: this.valid(g) };
+    this.game.build.ghost = { kind: target.kind, x: c.x, y: c.y, vertical: target.vertical, ok: this.valid(g), decor: target.decor };
   }
 
   private tap(wx: number, wy: number, hit: Hit | null): void {
@@ -96,7 +96,7 @@ export class BuildMode {
         this.game.rebuild();
         this.sync();
       } else {
-        if (this.game.build) this.game.build.ghost = { kind: f.kind, x: c.x, y: c.y, vertical: f.vertical, ok: false };
+        if (this.game.build) this.game.build.ghost = { kind: f.kind, x: c.x, y: c.y, vertical: f.vertical, ok: false, decor: f.decor };
         this.ui.toast(t('build.invalid'));
       }
       return;
@@ -144,7 +144,7 @@ export class BuildMode {
     d.x = c.x - d.dx;
     d.y = c.y - d.dy;
     this.game.build.hidden = f.id;
-    this.game.build.ghost = { kind: f.kind, x: d.x, y: d.y, vertical: f.vertical, ok: this.valid({ ...f, x: d.x, y: d.y }) };
+    this.game.build.ghost = { kind: f.kind, x: d.x, y: d.y, vertical: f.vertical, ok: this.valid({ ...f, x: d.x, y: d.y }), decor: f.decor, slots: f.slots };
   }
 
   private dragEnd(commit: boolean): void {
@@ -312,7 +312,8 @@ export class BuildMode {
     const head = h('div', { class: 'build-head' }, [
       h('div', { class: 'build-hint' }, [t(this.placing ? 'build.placeHint' : 'build.hint')]),
       h('button', { class: 'btn small ghost', disabled: !this.undoStack.length, onclick: () => this.undo() }, [t('build.undo')]),
-      h('button', { class: 'btn small primary', onclick: () => this.onDone() }, [t('common.done')]),
+      // with a fixture in hand, Done steps back to the build menu; from the menu it leaves build mode
+      h('button', { class: 'btn small primary', onclick: () => (this.cancel() ? undefined : this.onDone()) }, [t('common.done')]),
     ]);
     this.el.append(head);
     if (this.placing) {

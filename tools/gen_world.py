@@ -773,6 +773,159 @@ def ic_pricey(cv):
     cv.poly([(16.5, 6), (19.5, 6), (18, 3)], hexc('7ab0e8'))
 
 
+def ic_chat(cv):
+    c = hexc('6a7a9a')
+    for x in (6, 11, 16):
+        cv.rect(x, 9, x + 2, 11, c)
+
+
+def ic_laugh(cv):
+    c = hexc('e07a9a')
+    cv.vline(13, 4, 12, c)
+    cv.hline(13, 16, 4, c)
+    cv.hline(14, 17, 5, c)
+    cv.ellipse(11, 13, 2.6, 2, c)
+
+
+def ic_wave(cv):
+    s = hexc('f4c8a4')
+    d = hexc('c89878')
+    cv.rect(8, 8, 15, 15, s)
+    for i, x in enumerate((8, 10, 12, 14)):
+        cv.rect(x, 3 + (i % 2), x + 1, 8, s)
+    cv.rect(16, 9, 17, 12, s)
+    cv.vline(15, 9, 15, d)
+    cv.hline(8, 15, 15, d)
+    cv.px(4, 6, hexc('a0b0c8')); cv.px(5, 4, hexc('a0b0c8')); cv.px(19, 5, hexc('a0b0c8'))
+
+
+def ic_exclaim(cv):
+    c = hexc('e05050')
+    cv.rect(10, 3, 13, 11, c)
+    cv.rect(10, 14, 13, 16, c)
+
+
+def ic_question(cv):
+    c = hexc('4a8ad0')
+    cv.rect(8, 4, 15, 5, c)
+    cv.rect(14, 5, 15, 9, c)
+    cv.rect(11, 9, 14, 10, c)
+    cv.rect(11, 11, 12, 12, c)
+    cv.rect(11, 14, 12, 16, c)
+    cv.rect(8, 6, 9, 7, c)
+
+
+def ic_zzz(cv):
+    c = hexc('7a8ab0')
+    for (x, y, n) in ((5, 11, 5), (11, 6, 4), (16, 2, 3)):
+        cv.hline(x, x + n, y, c)
+        cv.line(x + n, y + 1, x, y + n - 1, c)
+        cv.hline(x, x + n, y + n, c)
+
+
+def ic_camera(cv):
+    b = hexc('3a3a44')
+    cv.rect(4, 7, 19, 16, b)
+    cv.rect(7, 5, 11, 7, b)
+    cv.ellipse(11.5, 11.5, 3.5, 3.5, hexc('8ab0d8'))
+    cv.ellipse(11.5, 11.5, 1.5, 1.5, hexc('2a3a5a'))
+    cv.rect(16, 8, 17, 9, hexc('f0f0a0'))
+
+
+TREASURES = ['leaf', 'feather', 'bottlecap', 'button', 'ribbon', 'pebble', 'flower', 'sock', 'mouse', 'bell', 'acorn', 'shell']
+
+
+def treasure(kind):
+    """Little things the cat brings back, 14x14."""
+    cv = Canvas(14, 14)
+    if kind == 'leaf':
+        cv.poly([(2, 11), (6, 3), (12, 2), (10, 8)], hexc('d8903a'))
+        cv.line(2, 12, 11, 3, hexc('a8602a'))
+    elif kind == 'feather':
+        cv.poly([(3, 12), (5, 6), (10, 1), (11, 4), (7, 10)], hexc('e8ecf0'))
+        cv.line(2, 13, 10, 2, hexc('a8acb8'))
+    elif kind == 'bottlecap':
+        cv.ellipse(6.5, 7, 5.5, 5.5, hexc('d84848'))
+        for a in range(0, 360, 45):
+            import math as _m
+            cv.px(round(6.5 + 6 * _m.cos(_m.radians(a))), round(7 + 6 * _m.sin(_m.radians(a))), hexc('a83030'))
+        cv.ellipse(6.5, 7, 3, 3, hexc('f0f0f0'))
+    elif kind == 'button':
+        cv.ellipse(6.5, 6.5, 5.5, 5.5, hexc('4a8ad0'))
+        for (x, y) in ((5, 5), (8, 5), (5, 8), (8, 8)):
+            cv.px(x, y, hexc('1a3a6a'))
+    elif kind == 'ribbon':
+        cv.poly([(1, 3), (6, 6), (1, 10)], hexc('e07a9a'))
+        cv.poly([(12, 3), (7, 6), (12, 10)], hexc('e07a9a'))
+        cv.rect(5, 5, 8, 8, hexc('c05a7a'))
+    elif kind == 'pebble':
+        cv.ellipse(6.5, 7.5, 5.5, 4, hexc('9a9aa8'))
+        cv.px(4, 6, hexc('c8c8d4')); cv.px(5, 5, hexc('c8c8d4'))
+    elif kind == 'flower':
+        for (x, y) in ((6.5, 3.5), (3.5, 6.5), (9.5, 6.5), (6.5, 9.5)):
+            cv.ellipse(x, y, 2.4, 2.4, hexc('f0d040'))
+        cv.ellipse(6.5, 6.5, 1.8, 1.8, hexc('e08030'))
+    elif kind == 'sock':
+        cv.rect(4, 1, 8, 8, hexc('e8e0d0'))
+        cv.rect(4, 8, 11, 11, hexc('e8e0d0'))
+        cv.hline(4, 8, 2, hexc('d84848')); cv.hline(4, 8, 4, hexc('d84848'))
+        cv.rect(10, 9, 11, 11, hexc('c8c0b0'))
+    elif kind == 'mouse':
+        cv.ellipse(7, 8, 4.5, 3, hexc('a8a0a8'))
+        cv.ellipse(10, 6, 1.6, 1.6, hexc('e8a0b0'))
+        cv.px(10, 8, hexc('2a2a30'))
+        cv.line(2, 9, 0, 12, hexc('e8a0b0'))
+    elif kind == 'bell':
+        cv.poly([(3, 10), (4, 4), (6.5, 2), (9, 4), (10, 10)], hexc('f0c040'))
+        cv.hline(2, 11, 10, hexc('c89830'))
+        cv.px(6, 12, hexc('a87820')); cv.px(7, 12, hexc('a87820'))
+    elif kind == 'acorn':
+        cv.ellipse(6.5, 8.5, 3.5, 4, hexc('b07840'))
+        cv.rect(2, 3, 11, 5, hexc('7a5030'))
+        cv.vline(6, 0, 2, hexc('5a3a20'))
+    elif kind == 'shell':
+        cv.poly([(1, 11), (6.5, 2), (12, 11)], hexc('f0c8b0'))
+        for x in (4, 6, 8):
+            cv.line(6, 3, x, 11, hexc('d8a088'))
+    cv.outline(0.5)
+    return cv
+
+
+UMBRELLA_COLORS = {'red': 'd84848', 'blue': '4a8ad0', 'yellow': 'f0c040'}
+
+
+def umbrella(color):
+    """Open umbrella seen from the front, held over a head outdoors."""
+    cv = Canvas(28, 16)
+    c = hexc(UMBRELLA_COLORS[color])
+    cv.poly([(1, 9), (4, 4), (9, 1), (14, 0), (19, 1), (24, 4), (27, 9)], c)
+    for x in (1, 7, 14, 21, 27):
+        cv.ellipse(x, 9, 2.6, 1.2, c)
+    cv.line(14, 1, 9, 9, W(c, -2))
+    cv.line(14, 1, 19, 9, W(c, -2))
+    cv.poly([(9, 1), (14, 0), (12, 4)], W(c, 2))
+    cv.vline(14, 9, 15, hexc('4a4a54'))
+    cv.outline(0.5)
+    return cv
+
+
+def umbrella_stand():
+    cv = Canvas(20, 30)
+    for i, (x, color) in enumerate(((5, 'red'), (9, 'blue'), (13, 'yellow'))):
+        c = hexc(UMBRELLA_COLORS[color])
+        cv.rect(x, 3 + i % 2, x + 2, 16, c)
+        cv.vline(x + 2, 3 + i % 2, 16, W(c, -2))
+        cv.hline(x - 1, x + 1, 1 + i % 2, hexc('4a4a54'))
+        cv.px(x - 1, 2 + i % 2, hexc('4a4a54'))
+    body = hexc('7a8090')
+    cv.rect(3, 14, 16, 29, body)
+    cv.rect(3, 14, 4, 29, W(body, 2))
+    cv.rect(15, 14, 16, 29, W(body, -2))
+    cv.hline(3, 16, 14, W(body, 3))
+    cv.outline(0.5)
+    return cv
+
+
 def trophy():
     cv = Canvas(20, 22)
     g = hexc('f0c040')

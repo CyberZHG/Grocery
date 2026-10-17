@@ -1,11 +1,11 @@
-import { drawChar, drawProductSmall, drawSprite, drawText, rect, textWidth } from '../core/assets';
+import { drawChar, drawCharSitting, drawProductSmall, drawSprite, drawText, rect, textWidth } from '../core/assets';
 import { storeName } from '../game/names';
 import { sfx } from '../core/audio';
 import { BREADS, FIXTURES, PRODUCT_BY_ID, type FixtureKind } from '../game/defs';
 import { fixtureCells, type Layout } from '../game/layout';
 import { dateOf, decorHoliday, weatherOf } from '../game/calendar';
 import { equipTier, stars, type EquipKind } from '../game/growth';
-import { OFFER_SECONDS, OVEN_OFFER_SECONDS, type Customer, type Line, type Sim, type Worker } from '../game/sim';
+import { OFFER_SECONDS, OVEN_OFFER_SECONDS, type Act, type CatAgent, type Customer, type Line, type Sim, type Worker } from '../game/sim';
 import type { FixtureState } from '../game/state';
 import type { Dir } from '../game/agent';
 
@@ -18,7 +18,7 @@ export type HitAction =
   | { type: 'fixture'; fixture: number }
   | { type: 'cell'; x: number; y: number }
   | { type: 'customer'; customer: Customer }
-  | { type: 'cat' }
+  | { type: 'cat'; guest?: boolean }
   | { type: 'spill'; id: number };
 
 export interface Hit {
@@ -43,7 +43,7 @@ export interface BuildView {
   selected: number | null;
   /** Fixture being dragged; drawn only as the ghost. */
   hidden?: number | null;
-  ghost: { kind: FixtureKind; x: number; y: number; vertical: boolean; ok: boolean } | null;
+  ghost: { kind: FixtureKind; x: number; y: number; vertical: boolean; ok: boolean; decor?: string; slots?: FixtureState['slots'] } | null;
 }
 
 interface Drawable {
@@ -222,18 +222,34 @@ export class WorldRenderer {
     }
   }
 
-  private drawCat(ctx: CanvasRenderingContext2D, sim: Sim): void {
-    const c = sim.cat;
-    const px = Math.round(c.mover.x * T) + 4;
-    const py = Math.round(c.mover.y * T) + 12;
-    const pose = c.mode === 'walk' ? (Math.floor(this.time * 6) % 2 ? 'walk1' : 'walk2') : c.mode;
-    const frame = `cat_${sim.state.catCoat}_${pose}`;
-    drawSprite(ctx, 'shadow', px, py + 12);
-    drawSprite(ctx, frame, px, py, c.mover.dir === 'left');
-    if (sim.state.catAcc) drawSprite(ctx, `cacc_${sim.state.catAcc}_${pose}`, px, py, c.mover.dir === 'left');
-    this.hits.push({ x: px - 4, y: py - 6, w: 32, h: 28, action: { type: 'cat' } });
-    if (c.bubble) this.bubble(ctx, c.bubble.icon, c.mover.x, c.mover.y + 0.6, false);
+  /** A cat on the floor, or curled up on top of a cat tower. */
+  private drawCat(ctx: CanvasRenderingContext2D, sim: Sim, c: CatAgent, coat: string, acc: string | null, guest: boolean): void {
+    const act = !c.mover.path.length || c.act?.kind === 'hop' ? this.actOf(sim, c) : null;
+    const u = act ? (sim.clock - act.at) / Math.max(0.01, act.until - act.at) : 0;
+    let dx = 0;
+    let dy = 0;
+    let pose: string = c.mode === 'walk' ? (Math.floor(this.time * 6) % 2 ? 'walk1' : 'walk2') : c.mode;
+    switch (act?.kind) {
+      case 'wiggle': dx = Math.round(Math.sin(this.time * 16)); pose = 'sit'; break;
+      case 'arch': dx = Math.round(Math.sin(this.time * 40) * 0.6); pose = 'stretch'; break;
+      case 'beg': dy = -3 - this.beat(1, 4); pose = 'sit'; break;
+      case 'play': dy = -Math.round(Math.abs(Math.sin(this.time * 7 + (c === sim.cat ? 0 : 1.6))) * 4); pose = dy < -2 ? 'stretch' : 'sit'; break;
+      case 'hop': dy = -Math.round(Math.sin(u * Math.PI) * 6); break;
+      case 'box': pose = 'loaf'; break;
+    }
+    const px0 = c.perch ? c.perch.x * T + 4 : Math.round(c.mover.x * T) + 4;
+    const py0 = c.perch ? c.perch.y * T - 23 : Math.round(c.mover.y * T) + 12;
+    const px = px0 + dx;
+    const py = py0 + dy;
+    if (!c.perch) drawSprite(ctx, 'shadow', px0, py0 + 12);
+    drawSprite(ctx, `cat_${coat}_${pose}`, px, py, c.mover.dir === 'left');
+    if (acc) drawSprite(ctx, `cacc_${acc}_${pose}`, px, py, c.mover.dir === 'left');
+    // tucked into the carton, only the head showing
+    if (act?.kind === 'box') drawSprite(ctx, 'carton', px + 2, py + 6);
+    this.hits.push({ x: px - 4, y: py - 6, w: 32, h: 28, action: guest ? { type: 'cat', guest: true } : { type: 'cat' } });
+    if (c.bubble) this.bubble(ctx, c.bubble.icon, (px - 4) / T, (py - 12) / T + 0.6, false);
   }
+
 
   /** Automatic sliding doors: two panels slide into the walls, clipped to the opening. */
   private drawDoor(ctx: CanvasRenderingContext2D, l: Layout): void {
@@ -299,14 +315,42 @@ export class WorldRenderer {
       } });
     }
     list.push({ y: l.h - 1.4, draw: () => drawSprite(ctx, 'plant', (l.w - 1) * T, (l.h - 1) * T - 16) });
+    const wet = sim.weather === 'rain' || sim.weather === 'snow';
+    if (sim.weather === 'rain') list.push({ y: l.h + 0.9, draw: () => drawSprite(ctx, 'umbrella_stand', (l.entrance + 2) * T + 6, (l.h + 1) * T - 12) });
     for (const p of l.pillars) list.push({ y: p.y + 0.5, draw: () => drawSprite(ctx, 'pillar', p.x * T, (p.y + 1) * T - 72) });
-    for (const w of sim.workers) list.push({ y: w.mover.y, draw: () => this.drawWorker(ctx, sim, w) });
-    list.push({ y: sim.cat.mover.y + 0.2, draw: () => this.drawCat(ctx, sim) });
-    for (const c of sim.customers) list.push({ y: c.mover.y, draw: () => this.drawCustomer(ctx, sim, c) });
+    for (const w of sim.workers) list.push({ y: this.seatOf(sim, w)?.y ?? w.mover.y, draw: () => this.drawWorker(ctx, sim, w) });
+    const catY = (c: CatAgent) => (c.perch ? c.perch.y + 0.55 : c.mover.y + 0.2);
+    list.push({ y: catY(sim.cat), draw: () => this.drawCat(ctx, sim, sim.cat, sim.state.catCoat, sim.state.catAcc, false) });
+    const g = sim.guest;
+    if (g?.agent) {
+      const a = g.agent;
+      list.push({ y: catY(a), draw: () => this.drawCat(ctx, sim, a, g.coat, g.acc, true) });
+    }
+    for (const c of sim.customers) {
+      list.push({ y: this.seatOf(sim, c)?.y ?? c.mover.y, draw: () => {
+        // umbrellas go up outside the door and come down inside: held to one side,
+        // canopy behind the head, shaft running down to the hand
+        const held = wet && c.umbrella && c.mover.y > l.h - 0.4;
+        const [px, py] = this.charPos(c.mover.x, c.mover.y);
+        const hx = c.mover.dir === 'left' ? px + 9 : px + 22;
+        if (held) drawSprite(ctx, `umbrella_${c.umbrella}`, hx - 14, py + 1);
+        this.drawCustomer(ctx, sim, c);
+        if (held) {
+          ctx.fillStyle = '#4a4a54';
+          ctx.fillRect(hx, py + 14, 1, 14);
+        }
+      } });
+    }
     list.sort((a, b) => a.y - b.y);
     for (const d of list) d.draw();
     if (!this.night && !build) this.drawStationFx(ctx, sim);
-    if (!build) this.drawPicks(ctx, sim);
+    this.drawProps(ctx, sim);
+    for (const f of sim.flashes) {
+      const a = 1 - (sim.clock - f.at) / 0.6;
+      ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(0, a) * 0.85})`;
+      const [px, py] = this.charPos(f.x, f.y);
+      ctx.fillRect(px + 2, py + 26, 26, 22);
+    }
     this.drawLight(ctx, sim);
     this.drawWeather(ctx, sim);
     if (build?.ghost) this.drawGhost(ctx, build.ghost);
@@ -371,6 +415,55 @@ export class WorldRenderer {
         for (let i = 0; i < 2; i++) ctx.fillRect(px + 8, 16 - 72 + 8 + i * 30 + 4, 48, 18);
       }
       if (s.kind !== 'bakery') this.drawServingFx(ctx, sim, s.kind, px, top);
+    }
+  }
+
+  /** Things handed over or floating up during interactions. */
+  private drawProps(ctx: CanvasRenderingContext2D, sim: Sim): void {
+    for (const p of sim.props) {
+      if (sim.clock < p.at) continue;
+      const u = Math.min(1, (sim.clock - p.at) / p.dur);
+      const [ax, ay] = this.charPos(p.x0, p.y0);
+      const [bx, by] = this.charPos(p.x1, p.y1);
+      const x = Math.round(ax + (bx - ax) * u + 14);
+      // hand height, with a low arc so nothing passes over a face
+      const y = Math.round(ay + (by - ay) * u + 28 - Math.sin(u * Math.PI) * 5);
+      if (p.kind === 'candy') {
+        ctx.fillStyle = '#2a2430';
+        ctx.fillRect(x - 1, y - 1, 6, 4);
+        ctx.fillStyle = '#f07aa0';
+        ctx.fillRect(x, y, 4, 2);
+        ctx.fillStyle = '#f8e070';
+        ctx.fillRect(x - 1, y, 1, 2);
+        ctx.fillRect(x + 4, y, 1, 2);
+      } else if (p.kind === 'sticker') {
+        ctx.fillStyle = '#f0c040';
+        ctx.fillRect(x + 1, y - 1, 1, 5);
+        ctx.fillRect(x - 1, y + 1, 5, 1);
+        ctx.fillRect(x, y, 3, 3);
+      } else if (p.kind === 'treat') {
+        drawSprite(ctx, 'treat', x - 2, y - 2);
+      } else if (p.kind === 'item') {
+        drawProductSmall(ctx, p.index ?? 0, x - 8, y - 8);
+      } else if (p.kind === 'notes') {
+        // little notes drifting up from someone humming
+        for (let i = 0; i < 3; i++) {
+          const v = ((sim.clock - p.at) / 1.2 + i / 3) % 1;
+          const nx = Math.round(ax + 20 + Math.sin(v * 6 + i) * 3);
+          const ny = Math.round(ay + 8 - v * 16);
+          ctx.fillStyle = `rgba(224, 122, 154, ${1 - v})`;
+          ctx.fillRect(nx, ny, 1, 4);
+          ctx.fillRect(nx + 1, ny, 2, 1);
+          ctx.fillRect(nx - 2, ny + 3, 2, 2);
+        }
+      } else if (p.kind === 'spark') {
+        const r = 2 + u * 6;
+        ctx.fillStyle = `rgba(255, 240, 160, ${1 - u})`;
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2;
+          ctx.fillRect(Math.round(ax + 16 + Math.cos(a) * r), Math.round(ay + 18 + Math.sin(a) * r), 2, 2);
+        }
+      }
     }
   }
 
@@ -546,19 +639,18 @@ export class WorldRenderer {
   }
 
   /** Items taken off shelves arc into the shopper's basket. */
-  private drawPicks(ctx: CanvasRenderingContext2D, sim: Sim): void {
-    for (const c of sim.customers) {
-      const pk = c.pick;
-      if (!pk) continue;
-      const u = (sim.clock - pk.at) / 0.9;
-      if (u < 0 || u >= 1) continue;
-      const [cx, cy] = this.charPos(c.mover.x, c.mover.y);
-      const x0 = pk.x * T + 8;
-      const y0 = pk.y * T - 14;
-      const x1 = cx + 8;
-      const y1 = cy + 22;
-      drawProductSmall(ctx, pk.index, Math.round(x0 + (x1 - x0) * u), Math.round(y0 + (y1 - y0) * u - Math.sin(u * Math.PI) * 10));
-    }
+  /** The item just taken, on its way into the basket; `behind` is true when the shelf is above (it comes down behind the head). */
+  private drawPick(ctx: CanvasRenderingContext2D, sim: Sim, c: Customer, behind: boolean): void {
+    const pk = c.pick;
+    if (!pk || pk.y < c.mover.y - 0.5 !== behind) return;
+    const u = (sim.clock - pk.at) / 0.9;
+    if (u < 0 || u >= 1) return;
+    const [cx, cy] = this.charPos(c.mover.x, c.mover.y);
+    const x0 = pk.x * T + 8;
+    const y0 = pk.y * T - 14;
+    const x1 = cx + 8;
+    const y1 = cy + 26;
+    drawProductSmall(ctx, pk.index, Math.round(x0 + (x1 - x0) * u), Math.round(y0 + (y1 - y0) * u - Math.sin(u * Math.PI) * 6));
   }
 
   /** Tints the scene for the time of day and adds warm light spilling from the store after dark. */
@@ -776,8 +868,8 @@ export class WorldRenderer {
 
   private drawGhost(ctx: CanvasRenderingContext2D, g: NonNullable<BuildView['ghost']>): void {
     const f: FixtureState = {
-      id: -1, kind: g.kind, x: g.x, y: g.y, vertical: g.vertical, placed: true,
-      slots: [{ product: null, stock: 0 }, { product: null, stock: 0 }],
+      id: -1, kind: g.kind, x: g.x, y: g.y, vertical: g.vertical, placed: true, decor: g.decor,
+      slots: g.slots ?? [{ product: null, stock: 0 }, { product: null, stock: 0 }],
     };
     this.drawFixture(ctx, f, false, 0.6);
     ctx.fillStyle = g.ok ? 'rgba(80, 200, 110, 0.35)' : 'rgba(220, 70, 70, 0.45)';
@@ -786,6 +878,61 @@ export class WorldRenderer {
 
   private charPos(x: number, y: number): [number, number] {
     return [Math.round(x * T), Math.round(y * T) - 18];
+  }
+
+  /** The bench someone is sitting on right now, with the draw depth just in front of it. */
+  private seatOf(sim: Sim, who: Worker | Customer): { f: FixtureState; y: number } | null {
+    if (who.mover.path.length) return null;
+    let id: number | null = null;
+    if ('task' in who) id = who.task.type === 'rest' && who.task.timer > 0 ? who.task.fixture : null;
+    else id = who.state === 'browse' ? who.seat : null;
+    if (id === null || sim.seats.get(id) !== who) return null;
+    const f = sim.state.fixtures.find((x) => x.id === id);
+    return f ? { f, y: f.y + 0.6 } : null;
+  }
+
+  /** Seated frame with the lap on the bench seat and the feet over its front edge. */
+  private drawSitting(ctx: CanvasRenderingContext2D, row: number, f: FixtureState): void {
+    drawSprite(ctx, 'shadow', f.x * T + 4, f.y * T + 27);
+    drawCharSitting(ctx, row, f.x * T, f.y * T - 26);
+  }
+
+  private actOf(sim: Sim, a: { act: Act | null }): Act | null {
+    const act = a.act;
+    return act && sim.clock >= act.at && sim.clock < act.until ? act : null;
+  }
+
+  /** Body pose for an interaction: which working frame, a vertical offset, and how far to crouch. */
+  private pose(sim: Sim, act: Act | null, seed: number): { work: 0 | 1 | null; dy: number; crouch: number } {
+    if (!act) return { work: null, dy: 0, crouch: 0 };
+    const u = (sim.clock - act.at) / Math.max(0.01, act.until - act.at);
+    switch (act.kind) {
+      case 'talk': return { work: this.beat(seed, 3), dy: this.beat(seed + 1, 1.5) ? -1 : 0, crouch: 0 };
+      case 'wave': return { work: this.beat(seed, 7), dy: 0, crouch: 0 };
+      case 'laugh': return { work: null, dy: -Math.round(Math.abs(Math.sin(this.time * 12 + seed)) * 2), crouch: 0 };
+      case 'point':
+      case 'reach':
+      case 'photo': return { work: 0, dy: 0, crouch: 0 };
+      case 'cheer': return { work: this.beat(seed, 8), dy: -1, crouch: 0 };
+      case 'stretch': return { work: u < 0.6 ? 1 : null, dy: u < 0.6 ? -1 : 0, crouch: 0 };
+      case 'hop': return { work: null, dy: -Math.round(Math.sin(u * Math.PI) * 5), crouch: 0 };
+      case 'crouch': return { work: 0, dy: 0, crouch: 5 };
+    }
+    return { work: null, dy: 0, crouch: 0 };
+  }
+
+  /** drawChar with an optional crouch: the body sinks and the legs are clipped at the floor line. */
+  private drawBody(ctx: CanvasRenderingContext2D, row: number, dir: Dir, frame: number, px: number, py: number, expr: 'happy' | 'sad' | null, work: 0 | 1 | null, crouch: number): void {
+    if (!crouch) {
+      drawChar(ctx, row, dir, frame, px, py, expr, work);
+      return;
+    }
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(px, py, T, 46);
+    ctx.clip();
+    drawChar(ctx, row, dir, 0, px, py + crouch, expr, work);
+    ctx.restore();
   }
 
   private beat(seed: number, rate = 5): 0 | 1 {
@@ -808,20 +955,32 @@ export class WorldRenderer {
   }
 
   private drawWorker(ctx: CanvasRenderingContext2D, sim: Sim, w: Worker): void {
-    const [px, py] = this.charPos(w.mover.x, w.mover.y);
+    const seat = this.seatOf(sim, w);
+    if (seat) {
+      this.drawSitting(ctx, w.row, seat.f);
+      return;
+    }
+    const [px, py0] = this.charPos(w.mover.x, w.mover.y);
     const t = w.task;
-    const work = this.working(w) ? this.beat(w.staffId, t.type === 'clean' ? 4 : 5) : null;
+    const act = !w.mover.path.length && !this.working(w) ? this.actOf(sim, w) : null;
+    const pose = this.pose(sim, act, w.staffId + 7);
+    const py = py0 + pose.dy;
+    const work = this.working(w) ? this.beat(w.staffId, t.type === 'clean' ? 4 : 5) : pose.work;
     const frame = w.mover.frame();
     let dir = w.mover.dir;
     if (t.type === 'none' && !w.mover.path.length && w.idleFor > 4) dir = this.glance(w.staffId + 3, dir);
-    drawSprite(ctx, 'shadow', px + 4, py + 42);
+    drawSprite(ctx, 'shadow', px + 4, py0 + 42);
     const stocking = t.type === 'restock' && t.phase === 'stocking' && work !== null;
     if (stocking) drawSprite(ctx, 'carton', dir === 'left' ? px + 14 : px - 2, py + 34);
     if (t.type === 'clean' && work !== null) this.drawMop(ctx, px, py, true);
-    drawChar(ctx, w.row, dir, frame, px, py, w.bubble?.icon === 'b_heart' ? 'happy' : null, work);
+    if (work !== null && !act) this.drawStockItem(ctx, sim, w, px, py, true);
+    this.drawBody(ctx, w.row, act ? w.mover.dir : dir, frame, px, py, w.bubble?.icon === 'b_heart' || act?.kind === 'laugh' ? 'happy' : null, work, pose.crouch);
     if (t.type === 'clean' && work !== null) this.drawMop(ctx, px, py, false);
     if (w.carrying && !stocking) drawSprite(ctx, 'carton', px + 6, py + 22 + (frame ? 1 : 0));
-    if (work !== null) this.drawWorkFx(ctx, sim, w, px, py);
+    if (work !== null && !act) {
+      this.drawStockItem(ctx, sim, w, px, py, false);
+      this.drawWorkFx(ctx, sim, w, px, py);
+    }
     if (w.bubble) this.bubble(ctx, w.bubble.icon, w.mover.x, w.mover.y, false);
   }
 
@@ -848,17 +1007,7 @@ export class WorldRenderer {
 
   private drawWorkFx(ctx: CanvasRenderingContext2D, sim: Sim, w: Worker, px: number, py: number): void {
     const t = w.task;
-    if (t.type === 'restock' && t.phase === 'stocking') {
-      const f = sim.state.fixtures.find((x) => x.id === t.fixture);
-      const id = f?.slots[t.slot].product;
-      if (!f || !id) return;
-      const sx = (f.vertical ? f.x : f.x + t.slot) * T + 8;
-      const sy = (f.vertical ? f.y + t.slot : f.y) * T - 16;
-      const u = (this.time * 2.6 + w.staffId * 0.3) % 1;
-      const x0 = w.mover.dir === 'left' ? px + 14 : px - 2;
-      const y0 = py + 30;
-      drawProductSmall(ctx, PRODUCT_BY_ID.get(id)!.index, Math.round(x0 + (sx - x0) * u), Math.round(y0 + (sy - y0) * u - Math.sin(u * Math.PI) * 12));
-    } else if (t.type === 'tidy') {
+    if (t.type === 'tidy') {
       for (let i = 0; i < 3; i++) {
         const ph = (this.time * 1.6 + i / 3) % 1;
         const a = Math.sin(ph * Math.PI);
@@ -890,6 +1039,23 @@ export class WorldRenderer {
     }
   }
 
+  /** Items going from the carton up onto the shelf; drawn behind the body when the shelf is above the worker. */
+  private drawStockItem(ctx: CanvasRenderingContext2D, sim: Sim, w: Worker, px: number, py: number, behind: boolean): void {
+    const t = w.task;
+    if (t.type !== 'restock' || t.phase !== 'stocking') return;
+    const f = sim.state.fixtures.find((x) => x.id === t.fixture);
+    const id = f?.slots[t.slot].product;
+    if (!f || !id) return;
+    const cy = f.vertical ? f.y + t.slot : f.y;
+    if (cy < w.mover.y - 0.5 !== behind) return;
+    const sx = (f.vertical ? f.x : f.x + t.slot) * T + 8;
+    const sy = cy * T - 16;
+    const u = (this.time * 2.6 + w.staffId * 0.3) % 1;
+    const x0 = w.mover.dir === 'left' ? px + 14 : px - 2;
+    const y0 = py + 30;
+    drawProductSmall(ctx, PRODUCT_BY_ID.get(id)!.index, Math.round(x0 + (sx - x0) * u), Math.round(y0 + (sy - y0) * u - Math.sin(u * Math.PI) * 6));
+  }
+
   private heart(ctx: CanvasRenderingContext2D, x: number, y: number, a: number): void {
     ctx.fillStyle = `rgba(240, 90, 120, ${a})`;
     ctx.fillRect(x, y, 2, 1);
@@ -901,20 +1067,31 @@ export class WorldRenderer {
   }
 
   private drawCustomer(ctx: CanvasRenderingContext2D, sim: Sim, c: Customer): void {
-    const [px, py] = this.charPos(c.mover.x, c.mover.y);
-    drawSprite(ctx, 'shadow', px + 4, py + 42);
+    const seat = this.seatOf(sim, c);
+    if (seat) {
+      this.drawSitting(ctx, c.row, seat.f);
+      this.hits.push({ x: seat.f.x * T + 6, y: seat.f.y * T - 18, w: 20, h: 32, action: { type: 'customer', customer: c } });
+      return;
+    }
+    const [px, py0] = this.charPos(c.mover.x, c.mover.y);
+    drawSprite(ctx, 'shadow', px + 4, py0 + 42);
     const still = !c.mover.path.length;
     const reaching = still && c.state === 'browse' && c.pick !== null && sim.clock - c.pick.at < 0.5;
     const paying = still && c.line?.kind === 'register' && this.serving(c.line) === c;
-    const work = reaching ? 0 : paying ? this.beat(c.id, 3) : null;
+    const act = still && !reaching && !paying ? this.actOf(sim, c) : null;
+    const pose = this.pose(sim, act, c.id);
+    const py = py0 + pose.dy;
+    const work = reaching ? 0 : paying ? this.beat(c.id, 3) : pose.work;
     let dir = c.mover.dir;
     if (still && c.state === 'queue' && c.line?.front() !== c && c.wait > 2) dir = this.glance(c.id, dir);
     const showBasket = c.basket.length > 0 && c.state !== 'leave';
     if (showBasket && dir === 'up') drawSprite(ctx, 'basket', px + 16, py + 26);
     const icon = c.bubble?.icon;
     const tired = c.state === 'queue' && c.wait > 8 * c.npc.patience;
-    const expr = icon === 'b_heart' ? 'happy' : icon === 'b_sad' || icon === 'b_wait' || icon === 'b_empty' || tired ? 'sad' : null;
-    drawChar(ctx, c.row, dir, c.mover.frame(), px, py, work === null ? expr : null, work);
+    const expr = icon === 'b_heart' || act?.kind === 'laugh' ? 'happy' : icon === 'b_sad' || icon === 'b_wait' || icon === 'b_empty' || tired ? 'sad' : null;
+    this.drawPick(ctx, sim, c, true);
+    this.drawBody(ctx, c.row, act ? c.mover.dir : dir, c.mover.frame(), px, py, work === null ? expr : null, work, pose.crouch);
+    this.drawPick(ctx, sim, c, false);
     this.hits.push({ x: px + 6, y: py + 4, w: 20, h: 40, action: { type: 'customer', customer: c } });
     if (showBasket && dir !== 'up') drawSprite(ctx, 'basket', dir === 'left' ? px + 2 : px + 14, py + 28);
     if (c.state === 'leave' && c.basket.length) drawSprite(ctx, 'carton', dir === 'left' ? px + 2 : px + 12, py + 24 + (c.mover.frame() ? 1 : 0));

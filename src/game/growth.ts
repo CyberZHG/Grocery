@@ -1,3 +1,4 @@
+import { streetFx } from './street';
 import { CATEGORIES, LEVELS, NPCS, PRODUCT_BY_ID, type Category, type ProductDef } from './defs';
 import { addExp, type Leveled } from './rules';
 import type { GameState } from './state';
@@ -98,5 +99,5 @@ export function gainCat(s: GameState, amount: number): number {
 
 /** Regulars who visit: the expansion roster plus friends introduced by close regulars. */
 export function rosterSize(s: GameState): number {
-  return Math.min(NPCS.length, LEVELS[s.level].roster + s.friends);
+  return Math.min(NPCS.length, LEVELS[s.level].roster + s.friends + streetFx(s.street).roster);
 }

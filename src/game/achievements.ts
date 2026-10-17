@@ -1,9 +1,9 @@
-import { CHALLENGES, doneCount, type ChallengeId } from './chain';
+import { CHALLENGES, completions, doneCount, tiersDone, type ChallengeId } from './chain';
 import { LEVELS } from './defs';
 import type { GameState, MiniKind } from './state';
 
 export type AchCategory =
-  | 'expand' | 'revenue' | 'savings' | 'days' | 'customers' | 'friends' | 'unlocks' | 'hires' | 'reputation' | 'catLevel' | 'gifts' | 'introduced' | 'goals' | 'branches' | 'challenges'
+  | 'expand' | 'revenue' | 'savings' | 'days' | 'customers' | 'friends' | 'unlocks' | 'hires' | 'reputation' | 'catLevel' | 'gifts' | 'introduced' | 'goals' | 'branches' | 'challenges' | 'treasures' | 'tiers' | 'street'
   | 'ch_rush' | 'ch_fresh' | 'ch_oldtown' | 'ch_school' | 'ch_suburb'
   | 'checkout' | 'change' | 'oden' | 'odenItems' | 'deli' | 'deliPounds'
   | 'bakery' | 'trays' | 'coffee' | 'coffeeSteps' | 'bagging' | 'bagItems';
@@ -34,7 +34,12 @@ function bestReputation(s: GameState): number {
   return Math.max(s.reputation.level, ...s.stores.map((x) => x.saved?.reputation.level ?? 0));
 }
 
-const challengeDone = (id: ChallengeId) => (s: GameState) => (s.stores.some((x) => x.challenge === id && x.done) ? 1 : 0);
+const challengeDone = (id: ChallengeId) => (s: GameState) => (s.stores.some((x) => x.challenge === id && completions(x) > 0) ? 1 : 0);
+
+/** Building levels on every street in the chain. */
+function streetLevels(s: GameState): number {
+  return [s.street, ...s.stores.map((x) => x.saved?.street ?? [])].flat().reduce((a, l) => a + (l?.level ?? 0), 0);
+}
 
 const manual = (k: MiniKind) => (s: GameState) => s.lifetime.manual[k];
 const amount = (k: MiniKind) => (s: GameState) => s.lifetime.amount[k];
@@ -56,6 +61,9 @@ const CATEGORIES: CategoryDef[] = [
   { cat: 'goals', tiers: [1, 5, 10], format: 'count', value: (s) => s.goals.completed },
   { cat: 'branches', tiers: [1, 3, 5], format: 'count', value: (s) => s.branch },
   { cat: 'challenges', tiers: [1, 3, 6], format: 'count', value: doneCount },
+  { cat: 'treasures', tiers: [1, 6, 12], format: 'count', value: (s) => Object.keys(s.catTreasures).length },
+  { cat: 'tiers', tiers: [1, 5, 20], format: 'count', value: tiersDone },
+  { cat: 'street', tiers: [1, 9, 27, 81], format: 'count', value: streetLevels },
   ...CHALLENGES.filter((c) => c.id !== 'main').map((c): CategoryDef => ({ cat: `ch_${c.id}` as AchCategory, tiers: [1], format: 'count', value: challengeDone(c.id) })),
   { cat: 'checkout', tiers: [1, 10, 50, 100], format: 'count', value: manual('checkout') },
   { cat: 'change', tiers: [1000, 10000, 30000, 50000], format: 'cents', value: amount('checkout') },

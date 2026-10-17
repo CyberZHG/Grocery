@@ -69,6 +69,11 @@ export function drawChar(ctx: CanvasRenderingContext2D, row: number, dir: 'down'
   blit(ctx, assets.chars, col * CHAR_W, row * CHAR_H, CHAR_W, CHAR_H, x, y, dir === 'left');
 }
 
+/** Seated on a bench, facing the viewer (column 21). */
+export function drawCharSitting(ctx: CanvasRenderingContext2D, row: number, x: number, y: number): void {
+  blit(ctx, assets.chars, 21 * CHAR_W, row * CHAR_H, CHAR_W, CHAR_H, x, y, false);
+}
+
 function blit(ctx: CanvasRenderingContext2D, img: CanvasImageSource, sx: number, sy: number, w: number, h: number, x: number, y: number, flip: boolean, scale = 1): void {
   const dw = w * scale;
   const dh = h * scale;

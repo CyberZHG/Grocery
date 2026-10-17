@@ -6,7 +6,7 @@ looks = [Look(hair='short', shirt='f4f0e8', pants='3a4a6a', apron='b83a3a', cap=
          Look(hair='ponytail', shirt='e8e4dc', pants='2a2a34', apron='3a7a4a')]
 for k in ['adult'] * 6 + ['kid', 'kid', 'elder', 'elder']:
     looks.append(random_look(rnd, k))
-img = Image.new('RGBA', (21 * 34, len(looks) * 50), (120, 130, 120, 255))
+img = Image.new('RGBA', (22 * 34, len(looks) * 50), (120, 130, 120, 255))
 for r, lk in enumerate(looks):
     for i, f in enumerate(char_row(lk)):
         f.to_image(img, i * 34, r * 50)

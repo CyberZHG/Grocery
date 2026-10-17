@@ -13,6 +13,7 @@ import type { UI } from '../ui/app';
 import { DAY_END, DAY_START, FIXTURES, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF_LOOKS, TRAITS, unlockedSkills, type Category, type Skill } from './defs';
 import { BATCH, Sim, type Line } from './sim';
 import { checkAchievements } from './achievements';
+import { catName, slotName } from './names';
 import { chainIncome, checkChallenge, fitFixtures, openBranch as openChainBranch, recordDay, spoil, STORE_BONUS, switchStore as switchChainStore } from './chain';
 import { sfx } from '../core/audio';
 import { progressGoals, refreshGoals, type GoalKind } from './goals';
@@ -21,7 +22,7 @@ import { gainReputation } from './growth';
 import { eventText, goalText } from '../ui/goals';
 import type { AwaySummary } from '../ui/app';
 import { achName } from '../ui/achievements';
-import { freshSkills, loadGame, unlockedBreads, newGame, saveGame, type DayStats, type GameState, type MiniKind, type StaffState } from './state';
+import { freshSkills, loadGame, totalLevels, unlockedBreads, newGame, saveGame, type DayStats, type GameState, type MiniKind, type StaffState } from './state';
 
 export type Phase = 'day' | 'night';
 
@@ -69,11 +70,11 @@ export class Game {
     this.ctx = this.canvas.getContext('2d')!;
     this.state = loadGame() ?? newGame();
     // floor plans can gain counters between versions; anything now in the way goes to storage
-    const moved = fitFixtures(this.state);
+    const fit = fitFixtures(this.state);
     const away = this.catchUp();
     this.enterNight(false);
     if (away) requestAnimationFrame(() => this.ui.showAway(away));
-    if (moved) requestAnimationFrame(() => this.ui.toast(t('expand.moved')));
+    requestAnimationFrame(() => this.toastFit(fit));
     this.bindInput();
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -99,6 +100,10 @@ export class Game {
       else if (e.type === 'served') this.goal('customers');
       else if (e.type === 'event') this.ui.toast(eventText(e.event));
       else if (e.type === 'tourArrived') this.ui.toast(t('event.tourArrived'));
+      else if (e.type === 'guestCat') {
+        const g = this.sim.guest!;
+        this.ui.toast(t('toast.guestCat', { store: slotName(this.state, e.store), name: g.name.trim() || t('store.catDefault') }));
+      }
       else if (e.type === 'staffLevel') {
         const name = e.staff < 0 ? t('staff.owner') : staffName(this.state.staff.find((s) => s.id === e.staff)?.name ?? 0);
         this.ui.toast(t('toast.staffLevel', { name, skill: t(`skill.${e.skill}`), n: e.level }), 'staffLevel');
@@ -139,6 +144,8 @@ export class Game {
   private endDay(): void {
     this.sim.endDayCosts();
     this.closeBooks(this.sim.stats);
+    const found = this.sim.stats.treasure;
+    if (found) this.ui.toast(t('toast.treasure', { name: catName(this.state), item: t(`treasure.${found}` as Key) }));
     this.state.history.push(this.sim.stats);
     if (this.state.history.length > 30) this.state.history.shift();
     this.state.day += 1;
@@ -176,12 +183,12 @@ export class Game {
         levels[s] = 1 + (rng.chance(0.3) ? rng.int(1, 2) : 0) + (s === focus ? rng.int(1, 4) + this.state.level : 0);
       }
       const skills = freshSkills(levels);
-      const total = Object.values(skills).reduce((a, b) => a + b.level - 1, 0);
+      const total = totalLevels({ skills });
       const traits = TRAITS.filter((tr) => open.includes(tr.skill));
       const trait = rng.chance(0.5) ? rng.pick(traits).id : null;
       out.push({
         id: this.state.nextId++, name, look, wage: 35 + total * 5 + (trait ? 8 : 0) + rng.int(0, 8),
-        role: 'auto', skills, hiredDay: this.state.day, trait,
+        role: 'auto', skills, hiredDay: this.state.day, trait, baseLevels: total,
       });
     }
     return out;
@@ -434,6 +441,11 @@ export class Game {
     }
     if (!hit) return;
     const a = hit.action;
+    if (a.type === 'cat' && a.guest) {
+      sfx('meow');
+      this.sim.petGuest();
+      return;
+    }
     if (a.type === 'cat') {
       sfx('meow');
       if (this.sim.petCat()) this.goal('petCat');
@@ -597,11 +609,16 @@ export class Game {
 
   private afterStoreChange(): void {
     this.state.candidates = [];
-    if (fitFixtures(this.state)) this.ui.toast(t('expand.moved'));
+    this.toastFit(fitFixtures(this.state));
     this.checkAchievements();
     saveGame(this.state);
     this.enterNight(false);
     this.fit();
+  }
+
+  toastFit(fit: { shifted: number; stored: number }): void {
+    if (fit.shifted) this.ui.toast(t('expand.shifted', { n: fit.shifted }));
+    if (fit.stored) this.ui.toast(t('expand.moved'));
   }
 
   /** Finishes the running store's challenge once its goal is met. */

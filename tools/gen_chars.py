@@ -542,20 +542,42 @@ def legs(cv, look, d, frame, top, pal):
             cv.px(x0 + dx, y + 1, f)
 
 
+def sit_legs(cv, look, top, pal):
+    """Seated, seen from the front: thighs come toward the viewer as a short lap, shins hang down to the shoes."""
+    P = pal['P'] if not look.skirt else pal['S']
+    p = pal['p'] if not look.skirt else pal['s']
+    F, f = pal['F'], pal['f']
+    for x in range(11, 21):
+        cv.px(x, top, light(P, 0.18))
+        cv.px(x, top + 1, P)
+    cv.px(15, top + 1, p)
+    cv.px(16, top + 1, p)
+    for x0 in (11, 17):
+        for y in range(top + 2, 44):
+            for dx in range(4):
+                cv.px(x0 + dx, y, p if dx == 3 else (pal['S'] if look.skirt else P))
+        for dx in range(4):
+            cv.px(x0 + dx, 44, F)
+            cv.px(x0 + dx, 45, f)
+
+
 EXPRESSION = {
     'happy': {7: 'SSSSSSSSSSSSSSSS', 8: 'SSSEESSSSSSEESSS', 9: 'sSESSESSSSESSESs', 11: '.sSSSSmSSmSSSSs.', 12: '.ssSSSSmmSSSSss.'},
     'sad': {6: 'SSSSESSSSSSESSSS', 11: '.sSSSSSmmSSSSSs.', 12: '.ssSSSmSSmSSSss.'},
 }
 
 
-def draw_frame(look, d, frame, expr=None, work=None):
+def draw_frame(look, d, frame, expr=None, work=None, sit=False):
     pal = palette(look)
-    if work is not None:
+    if work is not None or sit:
         frame = 0
     cv = Canvas(FW, FH)
     leg_len = 4 if look.kid else 6
     feet = 45
     legs_top = feet - 1 - leg_len
+    if sit:
+        # a seated body sits lower; the legs fold under it
+        legs_top += 1
     torso_rows = TORSO[d] if not look.kid else [TORSO[d][i] for i in KID_TORSO_ROWS]
     bob = 1 if frame != 0 else 0
     torso_top = legs_top - len(torso_rows) + 1 - bob
@@ -571,7 +593,10 @@ def draw_frame(look, d, frame, expr=None, work=None):
         paint(back, face_x - 1 + ox, head_top - 3 + oy, rows, pal)
     cv.blit(back, 0, 0)
 
-    legs(cv, look, d, frame, legs_top, pal)
+    if sit:
+        sit_legs(cv, look, legs_top, pal)
+    else:
+        legs(cv, look, d, frame, legs_top, pal)
     if look.skirt:
         sk = look.pants
         for i, w in enumerate((12, 13, 14, 15)):
@@ -668,11 +693,11 @@ def draw_frame(look, d, frame, expr=None, work=None):
     return cv
 
 
-FRAMES_PER_ROW = 21
+FRAMES_PER_ROW = 22
 
 
 def char_row(look):
-    """Columns: down 0-2, side 3-5, up 6-8, down happy 9-11, down upset 12-14, working down 15-16, side 17-18, up 19-20."""
+    """Columns: down 0-2, side 3-5, up 6-8, down happy 9-11, down upset 12-14, working down 15-16, side 17-18, up 19-20, seated 21."""
     frames = []
     for d in ('down', 'side', 'up'):
         for f in range(3):
@@ -683,6 +708,7 @@ def char_row(look):
     for d in ('down', 'side', 'up'):
         for w in range(2):
             frames.append(draw_frame(look, d, 0, work=w))
+    frames.append(draw_frame(look, 'down', 0, 'happy', sit=True))
     return frames
 
 

@@ -5,9 +5,8 @@ import { spriteIcon } from './achievements';
 
 import type { Game } from '../game/game';
 import { fitFixtures } from '../game/chain';
-import { chainPanel } from './chain';
 import { affinityExpToNext, npcExpToNext, skillExpToNext, skillSpeed, type Leveled } from '../game/rules';
-import { saveGame, type DayStats, type Role, type StaffState } from '../game/state';
+import { raiseOf, saveGame, wageOf, type DayStats, type Role, type StaffState } from '../game/state';
 import { charIcon, productIcon, type UI } from './app';
 import { h } from './dom';
 
@@ -57,7 +56,10 @@ export function staffPanel(g: Game, ui: UI): HTMLElement {
       },
     }, ROLES.map((r) => h('option', { value: r, selected: s.role === r }, [t(`role.${r}`)])));
     grid.append(card(STAFF_ROW0 + s.look, staffName(s.name), [
-      h('span', { class: 'muted' }, [t('common.perDay', { v: money(s.wage) })]),
+      h('span', { class: 'muted' }, [
+        t('common.perDay', { v: money(wageOf(s)) }),
+        raiseOf(s) > 0 ? h('span', { class: 'raise', title: t('staff.raiseHint') }, [t('staff.raise', { v: money(raiseOf(s)) })]) : null,
+      ]),
       h('label', { class: 'row' }, [h('span', {}, [t('staff.role')]), role]),
       h('button', {
         class: 'btn small warn', onclick: () => ui.confirm(t('staff.fireConfirm', { name: staffName(s.name) }), () => {
@@ -86,7 +88,7 @@ export function staffPanel(g: Game, ui: UI): HTMLElement {
     const fg = h('div', { class: 'cards' });
     for (const f of st.former) {
       fg.append(card(STAFF_ROW0 + f.look, staffName(f.name), [
-        h('span', { class: 'muted' }, [t('common.perDay', { v: money(f.wage) })]),
+        h('span', { class: 'muted' }, [t('common.perDay', { v: money(wageOf(f)) })]),
         h('button', { class: 'btn small', disabled: !night, onclick: () => { g.rehire(f.id); ui.rerenderPanel?.(); } }, [t('staff.rehire')]),
       ], f.skills, f.trait));
     }
@@ -161,10 +163,9 @@ export function expandPanel(g: Game, ui: UI): HTMLElement {
     h('div', { class: 'kv' }, [h('span', {}, [t('expand.current')]), h('span', {}, [t('expand.size', { w: cur.w, h: cur.h })])]),
   ]);
   if (!next) {
-    out.append(h('p', {}, [t('expand.max')]), chainPanel(g, ui));
+    out.append(h('p', {}, [t('expand.max')]));
     return out;
   }
-  const chain = chainPanel(g, ui);
   const unlocks: string[] = [];
   for (const s of next.stations) if (!cur.stations.includes(s)) unlocks.push(t(`station.${s}`));
   if (next.bagging && !cur.bagging) unlocks.push(t('station.bagging'));
@@ -182,7 +183,7 @@ export function expandPanel(g: Game, ui: UI): HTMLElement {
     onclick: () => {
       st.money -= next.cost;
       st.level += 1;
-      const moved = fitFixtures(st);
+      const fit = fitFixtures(st);
       g.checkChain();
       g.checkAchievements();
       saveGame(st);
@@ -190,11 +191,10 @@ export function expandPanel(g: Game, ui: UI): HTMLElement {
       g.fit();
       ui.closeModal();
       ui.refresh();
-      if (moved) ui.toast(t('expand.moved'));
+      g.toastFit(fit);
     },
   }, [t('expand.buy', { v: money(next.cost) })]));
   if (g.phase !== 'night') out.append(h('p', { class: 'muted' }, [t('common.nightOnly')]));
-  out.append(chain);
   return out;
 }
 

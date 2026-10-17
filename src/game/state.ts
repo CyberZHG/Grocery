@@ -5,6 +5,7 @@ import { collectionCount, freshProducts, UNLOCK_ORDER, type ProductProgress } fr
 import type { Leveled } from './rules';
 import type { ChallengeId } from './chain';
 import type { LayoutVariant } from './layout';
+import { emptyStreet, type Lot } from './street';
 
 export interface SlotState {
   product: string | null;
@@ -29,11 +30,27 @@ export interface StaffState {
   id: number;
   name: number;
   look: number;
+  /** base daily wage agreed at hiring; see wageOf for what is actually paid */
   wage: number;
   role: Role;
   skills: Record<Skill, Leveled>;
   hiredDay: number;
   trait: string | null;
+  /** total skill levels when the base wage was set */
+  baseLevels: number;
+}
+
+export function totalLevels(st: Pick<StaffState, 'skills'>): number {
+  return Object.values(st.skills).reduce((a, b) => a + b.level - 1, 0);
+}
+
+/** Raises follow the levels gained since hiring, growing more slowly as they pile up. */
+export function raiseOf(st: StaffState): number {
+  return Math.round(4 * Math.sqrt(Math.max(0, totalLevels(st) - st.baseLevels)));
+}
+
+export function wageOf(st: StaffState): number {
+  return st.wage + raiseOf(st);
 }
 
 export interface NpcState {
@@ -74,6 +91,8 @@ export interface DayStats {
   cleaned?: number;
   /** produce, dairy and meat units sold */
   fresh?: number;
+  /** what the cat brought in at closing */
+  treasure?: string;
   /** income from the other stores in the chain */
   chain?: number;
   spoiled?: number;
@@ -144,13 +163,17 @@ export interface GameState {
   collections: Category[];
   /** Units taken off shelves at night, already paid for; restocking uses them first. */
   inventory: Record<string, number>;
+  /** little things the cats have brought in, by kind */
+  catTreasures: Record<string, number>;
+  /** buildings on the lots around this store */
+  street: (Lot | null)[];
   savedAt: number;
 }
 
 /** Fields that belong to one store; switching stores swaps them in and out. */
 export const STORE_KEYS = [
   'level', 'fixtures', 'staff', 'candidates', 'former', 'bakery', 'history', 'reputation', 'equipment', 'style', 'storeName', 'openedDay', 'inventory', 'nightRestock',
-  'cat', 'catCoat', 'catName', 'catAcc',
+  'cat', 'catCoat', 'catName', 'catAcc', 'street',
 ] as const;
 export type StoreData = Pick<GameState, (typeof STORE_KEYS)[number]>;
 
@@ -162,6 +185,10 @@ export interface StoreSlot {
   progress: number;
   /** null for the active store */
   saved: StoreData | null;
+  /** advanced tiers taken on after the first challenge; 0 while on the first */
+  tier?: number;
+  /** staff id of the manager who runs this store while you're elsewhere */
+  manager?: number | null;
 }
 
 export const SAVE_VERSION = 1;
@@ -226,6 +253,8 @@ export function newGame(seed = Date.now() % 1e9): GameState {
     openedDay: 1,
     collections: [],
     inventory: {},
+    catTreasures: {},
+    street: emptyStreet(),
     savedAt: Date.now(),
   };
 }
@@ -291,11 +320,19 @@ export function migrate(data: unknown): GameState | null {
     s.breadsSeen ??= unlockedBreads(s).length;
     s.openedDay ??= 1;
     s.inventory ??= {};
+    s.catTreasures ??= {};
+    s.street ??= emptyStreet();
+    for (const slot of s.stores) if (slot.saved) slot.saved.street ??= emptyStreet();
     s.collections ??= CATEGORIES.filter((c) => collectionCount(c, s.products) === UNLOCK_ORDER[c].length);
     s.savedAt ??= Date.now();
     const skills = freshSkills();
     s.owner = { ...skills, ...s.owner };
-    for (const st of [...s.staff, ...s.candidates, ...s.former]) st.skills = { ...skills, ...st.skills };
+    const everyone = [s, ...s.stores.map((x) => x.saved).filter((x) => !!x)].flatMap((d) => [...d.staff, ...d.candidates, ...d.former]);
+    for (const st of everyone) {
+      st.skills = { ...skills, ...st.skills };
+      // staff from older saves keep today's wage; raises count from here
+      st.baseLevels ??= totalLevels(st);
+    }
     return s;
   } catch {
     return null;

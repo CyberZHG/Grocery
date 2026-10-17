@@ -190,7 +190,11 @@ for (const vp of VIEWPORTS) {
       g.checkChain();
       g.ui.refresh();
     });
-    const openExpand = () => page.evaluate(() => [...document.querySelectorAll('.bar .btn')].find((b) => b.textContent === 'Expand').click());
+    const openExpand = async () => {
+      await page.evaluate(() => [...document.querySelectorAll('.bar .btn')].find((b) => b.textContent === 'Expand').click());
+      await wait(100);
+      await page.evaluate(() => [...document.querySelectorAll('.modal .tabs .btn')].find((b) => b.textContent === 'Chain').click());
+    };
     await openExpand();
     await wait(150);
     await page.evaluate(() => [...document.querySelectorAll('.modal .btn.primary')].pop().click());
@@ -209,6 +213,28 @@ for (const vp of VIEWPORTS) {
     if (!(await page.$('.modal .challenge'))) throw new Error('goals panel has no store challenge');
     await page.evaluate(() => window.game.ui.closeModal());
     check('chain');
+  }, page);
+
+  await step(vp.name, 'street', async () => {
+    await page.evaluate(() => {
+      window.game.state.money = 1e6;
+      window.game.ui.refresh();
+      [...document.querySelectorAll('.bar .btn')].find((b) => b.textContent === 'Expand').click();
+    });
+    await wait(150);
+    await page.evaluate(() => [...document.querySelectorAll('.modal .tabs .btn')].find((b) => b.textContent === 'Street').click());
+    await wait(100);
+    await page.evaluate(() => document.querySelector('.modal .lot').click());
+    await wait(100);
+    await page.evaluate(() => document.querySelector('.modal .bld-opt').click());
+    await wait(100);
+    const built = await page.evaluate(() => window.game.state.street[0]);
+    if (!built) throw new Error('nothing was built');
+    await page.evaluate(() => [...document.querySelectorAll('.modal .btn.primary')].pop().click());
+    await wait(100);
+    if (await page.evaluate(() => window.game.state.street[0].level) !== 2) throw new Error('upgrade failed');
+    await page.evaluate(() => window.game.ui.closeModal());
+    check('street');
   }, page);
 
   for (const m of MINIS) {

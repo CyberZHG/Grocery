@@ -174,6 +174,9 @@ export function unlockedSkills(level: number): Skill[] {
   return out;
 }
 
+export const CAT_TREASURES = ['leaf', 'feather', 'bottlecap', 'button', 'ribbon', 'pebble', 'flower', 'sock', 'mouse', 'bell', 'acorn', 'shell'] as const;
+export const UMBRELLA_COLORS = ['red', 'blue', 'yellow'] as const;
+export const UMBRELLA_PRICE = 8;
 export const CAT_COATS = ['orange', 'black', 'white', 'calico', 'gray', 'tuxedo', 'shorthair', 'siamese'] as const;
 export type CatCoat = (typeof CAT_COATS)[number];
 

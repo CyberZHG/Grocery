@@ -3,7 +3,7 @@ import { Mover, type Dir } from './agent';
 import {
   BREAD_COST_RATIO, BREAD_PRICE, BREADS, COFFEE_COST_RATIO, favBread, DAY_END, DAY_START, DRINKS, FIXTURES, LAST_ENTRY,
   LEVELS, MEAT_COST_RATIO, MEAT_PRICE_LB, MEATS, NPC_ROW0, NPCS, ODEN_COST_RATIO, ODEN_ITEMS, ODEN_PRICE,
-  OWNER_ROW, PRODUCT_BY_ID, STAFF_ROW0, TRAIT_BY_ID, CATEGORIES, GIFT_KINDS, GIFT_LEVELS, unlockedSkills, type Bread, type Category, type BreadQuality, type DrinkDef, type Meat, type NpcDef,
+  OWNER_ROW, PRODUCT_BY_ID, STAFF_ROW0, TRAIT_BY_ID, CATEGORIES, CAT_TREASURES, UMBRELLA_COLORS, UMBRELLA_PRICE, GIFT_KINDS, GIFT_LEVELS, unlockedSkills, type Bread, type Category, type BreadQuality, type DrinkDef, type Meat, type NpcDef,
   type OdenItem, type Skill, type StationKind,
 } from './defs';
 import { demandMult, holidayOf, stationMult, trafficMult, weatherOf } from './calendar';
@@ -11,13 +11,14 @@ import {
   catAppeal, catLover, costOf, equipSpeed, gainCat, gainEquipment, gainReputation, gainSupplier, giftChance, PETS_PER_DAY, repTraffic, rosterSize, type EquipKind,
 } from './growth';
 import { collectionCount, collectionMult, isUnlocked, priceMult, productExpToNext, UNLOCK_ORDER, unlockedCount } from './progress';
+import { streetFx, type StreetFx } from './street';
 import { chainPriceMult, isFresh, peaksOf, perksOf, rulesOf, storeLayout, type Perks, type Rules } from './chain';
-import { accessTiles, entryTile, Grid, spawnTile, type Layout, type P, type StationSpot } from './layout';
+import { entryTile, fixtureCells, Grid, serveTiles, spawnTile, type Layout, type P, type StationSpot } from './layout';
 import {
   addExp, affinityValue, budgetMult, changeAffinity, makeCashPayment, npcExpToNext, roundCash, serviceReward, skillExpToNext, skillSpeed, waitPenalty,
   type CashPayment, type Leveled, type ServiceResult,
 } from './rules';
-import { openingBuzz, takeStored, unlockedBreads, type DayStats, type FixtureState, type GameState, type Role } from './state';
+import { openingBuzz, takeStored, unlockedBreads, wageOf, type DayStats, type FixtureState, type GameState, type Role } from './state';
 
 export interface BasketItem {
   kind: 'product' | 'oden' | 'deli' | 'coffee' | 'bread';
@@ -35,7 +36,8 @@ export type Order = OdenOrder | DeliOrder | CoffeeOrder;
 type Target =
   | { t: 'slot'; fixture: number; slot: number }
   | { t: 'station'; kind: StationKind }
-  | { t: 'bakery' };
+  | { t: 'bakery' }
+  | { t: 'decor'; fixture: number };
 
 type CustState = 'shop' | 'browse' | 'queue' | 'served' | 'leave';
 
@@ -43,6 +45,30 @@ export interface Bubble {
   icon: string;
   until: number;
 }
+
+/** A short body animation that goes with an interaction; drawn by the renderer. */
+export type ActKind = 'talk' | 'wave' | 'laugh' | 'point' | 'reach' | 'cheer' | 'stretch' | 'hop' | 'photo' | 'crouch'
+  | 'wiggle' | 'arch' | 'beg' | 'box' | 'play';
+
+export interface Act {
+  kind: ActKind;
+  at: number;
+  until: number;
+}
+
+/** Something handed over or floating up: candy, a sticker, a treat, a product, music notes, a spark. */
+export interface Prop {
+  kind: 'candy' | 'sticker' | 'treat' | 'item' | 'notes' | 'spark';
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  at: number;
+  dur: number;
+  index?: number;
+}
+
+type Actor = { bubble: Bubble | null; act: Act | null };
 
 export class Customer {
   mover: Mover;
@@ -67,6 +93,15 @@ export class Customer {
   manualServed = false;
   /** Greeting strength of the worker who welcomed this customer; softens waiting. */
   greet = 0;
+  /** Bench this customer is sitting on. */
+  seat: number | null = null;
+  act: Act | null = null;
+  /** running (playing tag) until this minute */
+  runUntil = -Infinity;
+  /** last chat, wave or photo, so nobody socializes nonstop */
+  socialAt = -Infinity;
+  /** umbrella colour on a wet day */
+  umbrella: string | null = null;
   /** Last item taken off a shelf, for the hand-to-basket animation. */
   pick: { index: number; x: number; y: number; at: number } | null = null;
 
@@ -123,6 +158,7 @@ export type Task =
   | { type: 'clean'; spill: number; timer: number }
   | { type: 'tidy'; fixture: number; timer: number }
   | { type: 'cat'; timer: number }
+  | { type: 'rest'; fixture: number; timer: number }
   | { type: 'none' };
 
 export interface Spill {
@@ -143,6 +179,10 @@ export class Worker {
   carrying = false;
   bubble: Bubble | null = null;
   idleFor = 0;
+  act: Act | null = null;
+  /** a short speed lift after a break on a bench */
+  boost = 1;
+  boostUntil = -Infinity;
 
   constructor(
     readonly staffId: number,
@@ -157,7 +197,7 @@ export class Worker {
 
   speed(s: Skill): number {
     const tr = this.trait ? TRAIT_BY_ID.get(this.trait) : undefined;
-    return skillSpeed(this.skills[s].level) * (tr && tr.skill === s ? tr.mult : 1);
+    return skillSpeed(this.skills[s].level) * (tr && tr.skill === s ? tr.mult : 1) * this.boost;
   }
 
   /** 0 at level 1, about 0.35 at level 10 and 0.7 at level 100. */
@@ -166,16 +206,47 @@ export class Worker {
   }
 }
 
+type CatGoal = 'tower' | 'fish' | 'friend' | 'leave' | 'rub' | 'follow' | 'box';
+
 export class CatAgent {
   mover: Mover;
   mode: 'walk' | 'sit' | 'sleep' | 'groom' | 'stretch' | 'loaf' = 'sleep';
   timer = 0;
   bubble: Bubble | null = null;
+  /** where the cat is headed and why */
+  goal: { kind: CatGoal; fixture?: number; who?: Mover; steps?: number } | null = null;
+  /** top of the cat tower it is lying on */
+  perch: P | null = null;
+  act: Act | null = null;
 
   constructor(p: P) {
     this.mover = new Mover(p);
   }
 }
+
+/** A cat from another store in the chain, dropping by for a while. */
+export interface GuestCat {
+  store: number;
+  coat: string;
+  acc: string | null;
+  name: string;
+  level: number;
+  mood: number;
+  arriveAt: number;
+  leaveAt: number;
+  agent: CatAgent | null;
+  gone: boolean;
+  /** the two cats have already sized each other up */
+  met?: boolean;
+}
+
+/** How likely each kind of shopper is to stop at a decoration. */
+const DECOR_VISIT: Record<string, Record<'adult' | 'kid' | 'elder', number>> = {
+  aquarium: { adult: 0.25, kid: 0.5, elder: 0.3 },
+  gumball: { adult: 0.05, kid: 0.6, elder: 0.03 },
+  magazine: { adult: 0.2, kid: 0.05, elder: 0.25 },
+  bench: { adult: 0.05, kid: 0.05, elder: 0.4 },
+};
 
 export type OvenState = { phase: 'idle' } | { phase: 'loading'; bread: Bread } | { phase: 'baking'; bread: Bread; t: number } | { phase: 'ready'; bread: Bread; t: number };
 export const BAKE_MIN = 18;
@@ -202,6 +273,7 @@ export type SimEvent =
   | { type: 'tourArrived' }
   | { type: 'unlock'; id: string }
   | { type: 'collection'; cat: Category }
+  | { type: 'guestCat'; store: number }
   | { type: 'closed' };
 
 export interface Floater {
@@ -227,6 +299,7 @@ export class Sim {
   stats: DayStats;
   readonly rules: Rules;
   readonly perks: Perks;
+  readonly street: StreetFx;
   priority = new Set<string>();
   playerPriority = new Set<string>();
   floaters: Floater[] = [];
@@ -240,14 +313,26 @@ export class Sim {
   stockouts = new Map<string, number>();
   /** Shelves a worker has faced up, with purchases left before they look picked over again. */
   tidy = new Map<number, { left: number; power: number }>();
+  /** bench fixture id → whoever is sitting on it */
+  seats = new Map<number, Customer | Worker>();
+  guest: GuestCat | null = null;
+  readonly weather: string;
+  /** camera flashes from customers photographing a cat */
+  flashes: { x: number; y: number; at: number }[] = [];
+  props: Prop[] = [];
+  private socialT = 0;
+  private queued: { at: number; who: Actor; icon: string | null; min: number; act?: ActKind }[] = [];
+  private greeted = false;
   private catCareAt = -Infinity;
   private nextSpill = 1;
   private nextCust = 1;
 
   constructor(readonly state: GameState) {
     this.layout = storeLayout(state);
+    this.weather = weatherOf(state.seed, state.day);
     this.rules = rulesOf(state);
     this.perks = perksOf(state);
+    this.street = streetFx(state.street);
     this.grid = new Grid(this.layout, this.placed());
     this.rng = new Rng((state.seed + state.day * 7919) | 0);
     this.stats = {
@@ -259,38 +344,529 @@ export class Sim {
   }
 
   /** Random open floor tile in the store interior, off the queues and away from where anyone is headed. */
+  /** A tile where a resting cat can be seen: open floor with nothing standing right in front of it. */
+  private catVisible(x: number, y: number): boolean {
+    const g = this.grid;
+    return g.walkable(x, y) && (!g.inside(x, y + 1) || g.walkable(x, y + 1));
+  }
+
   private catSpot(): P {
     const taken = this.cat ? this.allMovers().filter((m) => m !== this.cat.mover).map((m) => m.dest) : [];
+    const ok = (p: P) => this.catVisible(p.x, p.y) && !this.layout.reserved[p.y * this.layout.w + p.x] && !taken.some((t) => t.x === p.x && t.y === p.y);
     for (let i = 0; i < 40; i++) {
       const p = { x: this.rng.int(0, this.layout.w - 1), y: this.rng.int(1, this.layout.h - 3) };
-      if (!this.grid.walkable(p.x, p.y) || this.layout.reserved[p.y * this.layout.w + p.x]) continue;
-      if (taken.some((t) => t.x === p.x && t.y === p.y)) continue;
-      return p;
+      if (ok(p)) return p;
     }
-    return { x: 2, y: 1 };
+    for (let y = this.layout.h - 3; y >= 1; y--) {
+      for (let x = 0; x < this.layout.w; x++) if (ok({ x, y })) return { x, y };
+    }
+    return entryTile(this.layout);
+  }
+
+  // ---------- social ----------
+
+  /** A stocked slot next to this tile: where it is and what's on it. */
+  private stockNear(p: P): { p: P; index: number } | null {
+    for (const f of this.placed()) {
+      if (f.kind === 'decor') continue;
+      const cells = fixtureCells(f);
+      for (let i = 0; i < 2; i++) {
+        const sl = f.slots[i];
+        const c = cells[i];
+        if (sl.product && sl.stock > 0 && Math.abs(c.x - p.x) + Math.abs(c.y - p.y) === 1) return { p: { x: c.x, y: c.y - 0.6 }, index: PRODUCT_BY_ID.get(sl.product)!.index };
+      }
+    }
+    return null;
+  }
+
+  private nextToStock(p: P): boolean {
+    return this.placed().some((f) => f.kind !== 'decor' && f.slots.some((sl) => sl.stock > 0)
+      && fixtureCells(f).some((c) => Math.abs(c.x - p.x) + Math.abs(c.y - p.y) === 1));
+  }
+
+  /** Regulars who know each other: a fixed web, about one pair in five. */
+  private knows(a: NpcDef, b: NpcDef): boolean {
+    const i = Math.min(a.index, b.index);
+    const j = Math.max(a.index, b.index);
+    return ((i * 73 + j * 151 + this.state.seed) % 3) === 0 || (a.kind === 'elder' && b.kind === 'elder') || (a.kind === 'kid' && b.kind === 'kid');
+  }
+
+  /** Stop where you are for a moment, then carry on shopping. */
+  private pause(c: Customer, minutes: number, face?: P): void {
+    if (c.mover.path.length) this.walk(c.mover, c.mover.tile);
+    c.state = 'browse';
+    c.timer = Math.max(c.timer, minutes);
+    c.socialAt = this.clock;
+    if (face) this.faceToward(c.mover, face);
+  }
+
+  private bump(m: Mover): void {
+    const c = this.customers.find((x) => x.mover === m);
+    if (c && !c.bubble && c.state !== 'leave') {
+      c.bubble = { icon: 'b_exclaim', until: this.clock + 1 };
+      this.doAct(c, 'hop', 0.4);
+    }
+  }
+
+  /** A bubble that pops up a moment later, for little back-and-forth exchanges. */
+  private later(who: Actor, icon: string | null, after: number, min = 1.2, act?: ActKind): void {
+    this.queued.push({ at: this.clock + after, who, icon, min, act });
+  }
+
+  private flushLater(): void {
+    const due = this.queued.filter((q) => q.at <= this.clock);
+    if (!due.length) return;
+    this.queued = this.queued.filter((q) => q.at > this.clock);
+    for (const q of due) {
+      if (q.icon) q.who.bubble = { icon: q.icon, until: this.clock + q.min };
+      if (q.act) this.doAct(q.who, q.act, q.min);
+    }
+  }
+
+  private doAct(who: Actor, kind: ActKind, min: number): void {
+    who.act = { kind, at: this.clock, until: this.clock + min };
+  }
+
+  /** Starts `delay` minutes from now; the renderer skips it until then. */
+  private prop(kind: Prop['kind'], from: P, to: P, dur: number, index?: number, delay = 0): void {
+    this.props.push({ kind, x0: from.x, y0: from.y, x1: to.x, y1: to.y, at: this.clock + delay, dur, index });
+  }
+
+  /** Every so often, two people (or a person and a cat) near each other do something together. */
+  private socialize(dt: number): void {
+    this.flushLater();
+    this.socialT += dt;
+    if (this.socialT < 0.5 || this.closing) return;
+    this.socialT = 0;
+    const near = (a: Mover, b: Mover, d: number) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y) <= d;
+    const people = this.rng.shuffle(this.customers.filter((c) => (c.state === 'shop' || c.state === 'browse') && c.seat === null && !c.hurry
+      && !c.bubble && this.clock - c.socialAt > 25 && c.mover.y < this.layout.h - 0.5));
+    const cats = this.cats().filter((k) => k.mode !== 'sleep' && !k.perch && k.goal?.kind !== 'leave');
+    const idle = this.workers.filter((w) => w.task.type === 'none' && !w.bubble);
+    // a bubble plus the matching body animation
+    const say = (who: Actor, icon: string | null, min = 2, act?: ActKind) => {
+      if (icon) who.bubble = { icon, until: this.clock + min };
+      if (act) this.doAct(who, act, min);
+    };
+    const at = (m: Mover): P => ({ x: m.x, y: m.y });
+
+    // morning: staff say hello as the doors open
+    if (this.clock < DAY_START + 20 && !this.greeted) {
+      const [a, b] = this.workers;
+      if (a && b) {
+        this.greeted = true;
+        say(a, 'b_wave', 1.5, 'wave');
+        this.later(b, 'b_wave', 0.4, 1.5, 'wave');
+      }
+    }
+
+    // two shoppers
+    outer: for (const a of people) {
+      for (const b of people) {
+        if (a === b || !near(a.mover, b.mover, 2)) continue;
+        if (a.npc.kind === 'kid' && b.npc.kind === 'kid' && this.rng.chance(0.5)) {
+          // tag: one runs off, the other gives chase
+          const from = b.mover.tile;
+          say(a, 'b_laugh', 2);
+          say(b, 'b_laugh', 2);
+          a.state = b.state = 'browse';
+          a.timer = b.timer = 2;
+          a.socialAt = b.socialAt = this.clock;
+          a.runUntil = b.runUntil = this.clock + 2;
+          const run = [[2, 0], [-2, 0], [0, 2], [0, -2]].map(([dx, dy]) => ({ x: from.x + dx, y: from.y + dy })).filter((p) => this.grid.walkable(p.x, p.y) && p.y < this.layout.h - 1);
+          if (run.length) this.walk(b.mover, this.rng.pick(run));
+          this.walk(a.mover, from);
+          this.later(a, null, 2, 0.8, 'laugh');
+          this.later(b, null, 2, 0.8, 'laugh');
+        } else if (a.npc.kind === 'elder' && b.npc.kind === 'kid' && this.rng.chance(0.3)) {
+          // an older regular slips a kid a sweet
+          this.pause(a, 1.2, b.mover.tile);
+          this.pause(b, 1.2, a.mover.tile);
+          say(a, 'b_star', 1, 'reach');
+          this.prop('candy', at(a.mover), at(b.mover), 0.5);
+          this.later(b, 'b_heart', 0.5, 1, 'laugh');
+          b.affinityDelta += 0.3;
+        } else if (this.knows(a.npc, b.npc) && this.rng.chance(0.6)) {
+          const fav = this.recommendation(a, b);
+          if (fav) {
+            // word of mouth: a favourite gets added to the friend's list
+            this.pause(a, 1.5, b.mover.tile);
+            this.pause(b, 1.5, a.mover.tile);
+            say(a, 'b_star', 1.5, 'point');
+            const f = this.fixture(fav.t === 'slot' ? fav.fixture : -1);
+            const id = fav.t === 'slot' ? f?.slots[fav.slot].product : null;
+            if (id) this.prop('item', at(a.mover), at(b.mover), 0.6, PRODUCT_BY_ID.get(id)!.index);
+            this.later(b, 'b_question', 0.5, 1, 'talk');
+            b.targets.unshift(fav);
+          } else {
+            const len = this.rng.range(2, 3);
+            this.pause(a, len, b.mover.tile);
+            this.pause(b, len, a.mover.tile);
+            say(a, 'b_chat', len, 'talk');
+            say(b, 'b_laugh', len, 'laugh');
+            this.later(a, null, len / 2, len / 2, 'laugh');
+            this.later(b, null, len / 2, len / 2, 'talk');
+          }
+          a.affinityDelta += 0.3;
+          b.affinityDelta += 0.3;
+        } else if (this.rng.chance(0.25)) {
+          a.socialAt = b.socialAt = this.clock;
+          say(a, 'b_wave', 1.2, 'wave');
+          this.later(b, 'b_wave', 0.3, 1.2, 'wave');
+        } else continue;
+        break outer;
+      }
+    }
+    // friends waiting in the same line pass the time talking
+    for (const line of this.allLines()) {
+      for (let i = 0; i + 1 < line.members.length; i++) {
+        const [a, b] = [line.members[i], line.members[i + 1]];
+        if (a.bubble || b.bubble || !this.knows(a.npc, b.npc) || !this.rng.chance(0.05)) continue;
+        say(a, 'b_chat', 2, 'talk');
+        this.later(b, 'b_laugh', 0.5, 2, 'laugh');
+        a.wait = Math.max(0, a.wait - 2);
+        b.wait = Math.max(0, b.wait - 2);
+        break;
+      }
+    }
+    for (const c of people) {
+      if (c.bubble) continue;
+      const cat = cats.find((k) => near(k.mover, c.mover, c.npc.kind === 'kid' ? 2 : 3));
+      if (cat && c.npc.kind === 'kid' && this.rng.chance(0.5)) {
+        // a kid pounces on the cat: it either bolts or puts up with a pat
+        this.pause(c, 1.5, cat.mover.tile);
+        say(c, 'b_laugh', 0.6, 'hop');
+        this.later(c, null, 0.6, 0.9, 'crouch');
+        if (this.rng.chance(0.5)) {
+          say(cat, 'b_exclaim', 0.5, 'hop');
+          cat.mode = 'walk';
+          cat.goal = null;
+          this.walk(cat.mover, this.catSpot());
+        } else {
+          this.later(cat, 'b_heart', 0.6, 1.5, 'wiggle');
+          c.affinityDelta += 0.4;
+        }
+        break;
+      }
+      if (cat && cat.mode !== 'walk' && catLover(c.npc.index) && this.rng.chance(0.4)) {
+        this.pause(c, 1.2, cat.mover.tile);
+        say(c, 'b_camera', 1.2, 'photo');
+        this.flashes.push({ x: cat.mover.x, y: cat.mover.y, at: this.clock + 0.4 });
+        c.affinityDelta += 0.5;
+        break;
+      }
+      if (cat && near(cat.mover, c.mover, 1.5) && this.rng.chance(0.15)) {
+        this.pause(c, 1.2, cat.mover.tile);
+        say(c, 'b_heart', 1.2, 'crouch');
+        this.later(cat, 'b_heart', 0.3, 1.2, 'wiggle');
+        c.affinityDelta += 0.3;
+        if (cat === this.cat) this.state.cat.mood = Math.min(100, this.state.cat.mood + 1);
+        break;
+      }
+      const w = idle.find((x) => near(x.mover, c.mover, 3));
+      if (w && this.rng.chance(c.npc.kind === 'kid' ? 0.35 : 0.2)) {
+        this.pause(c, 1.8, w.mover.tile);
+        this.faceToward(w.mover, c.mover.tile);
+        say(c, 'b_question', 0.6, 'talk');
+        if (c.npc.kind === 'kid') {
+          // a sticker for the kid
+          this.later(w, 'b_star', 0.6, 0.8, 'reach');
+          this.prop('sticker', at(w.mover), at(c.mover), 0.5, undefined, 0.7);
+          this.later(c, 'b_heart', 1.2, 1, 'laugh');
+        } else {
+          // asking where something is: staff points the way, then thanks
+          this.later(w, 'b_chat', 0.6, 1, 'point');
+          this.later(c, 'b_star', 1.3, 0.8, 'wave');
+        }
+        this.gainSkill(w, 'greet', 0.3);
+        c.affinityDelta += 0.3;
+        break;
+      }
+    }
+    // staff on the move wave to a shopper they pass
+    const passing = this.workers.find((w) => !w.bubble && w.mover.path.length);
+    const shopper = passing && people.find((c) => !c.bubble && near(c.mover, passing.mover, 1.5));
+    if (passing && shopper && this.rng.chance(0.08)) {
+      say(passing, 'b_wave', 1, 'wave');
+      this.later(shopper, 'b_wave', 0.3, 1, 'wave');
+      shopper.socialAt = this.clock;
+    }
+    // staff with nothing to do have a word, stop to fuss over the cat, or stretch and yawn
+    const [w1, w2] = this.rng.shuffle(idle.filter((w) => !w.mover.path.length));
+    if (w1 && w2 && near(w1.mover, w2.mover, 3) && this.rng.chance(0.3)) {
+      this.faceToward(w1.mover, w2.mover.tile);
+      this.faceToward(w2.mover, w1.mover.tile);
+      say(w1, 'b_chat', 2, 'talk');
+      this.later(w2, 'b_laugh', 0.6, 1.6, 'laugh');
+    } else if (w1) {
+      const cat = cats.find((k) => near(k.mover, w1.mover, 1.5));
+      if (cat && this.rng.chance(0.2)) {
+        this.faceToward(w1.mover, cat.mover.tile);
+        say(w1, 'b_heart', 1.5, 'crouch');
+        this.later(cat, 'b_heart', 0.3, 1.2, 'wiggle');
+        if (cat === this.cat) this.state.cat.mood = Math.min(100, this.state.cat.mood + 1);
+      } else if (this.rng.chance(0.04)) {
+        w1.mover.face('down');
+        say(w1, 'b_zzz', 1.5, 'stretch');
+      }
+    }
+  }
+
+  /** Something the shopper liked that the friend could pick up here. */
+  private recommendation(a: Customer, b: Customer): Target | null {
+    const left = b.budget - b.spent;
+    for (const item of a.basket) {
+      if (item.kind !== 'product' || !a.npc.favs.includes(item.id) || b.basket.some((x) => x.id === item.id)) continue;
+      if (this.priceOf(item.id) > left) continue;
+      for (const f of this.placed()) {
+        const i = f.slots.findIndex((sl) => sl.product === item.id && sl.stock > 0);
+        if (i >= 0) return { t: 'slot', fixture: f.id, slot: i };
+      }
+    }
+    return null;
+  }
+
+  /** Rain or snow: an umbrella bought at the door or brought from home, and now and then wet footprints. */
+  private rainyEntry(c: Customer): void {
+    if (this.weather !== 'rain' && this.weather !== 'snow') return;
+    if (this.weather === 'rain' && this.rng.chance(0.25)) {
+      this.state.money += UMBRELLA_PRICE;
+      this.stats.revenue += UMBRELLA_PRICE;
+      this.state.lifetime.revenue += UMBRELLA_PRICE;
+      const e = entryTile(this.layout);
+      this.floaters.push({ text: `+$${UMBRELLA_PRICE.toFixed(2)}`, x: e.x + 0.5, y: e.y, t: 0, color: '#f0c040' });
+      c.umbrella = this.rng.pick([...UMBRELLA_COLORS]);
+    } else if (this.weather === 'rain' && this.rng.chance(0.6)) c.umbrella = this.rng.pick([...UMBRELLA_COLORS]);
+    if (this.spills.length < 5 && this.rng.chance(0.12)) {
+      const e = entryTile(this.layout);
+      const at = [1, 2, 3].map((k) => ({ x: e.x + this.rng.int(-1, 1), y: e.y - k })).find((p) => this.spillVisible(p.x, p.y));
+      if (at) this.spills.push({ id: this.nextSpill++, x: at.x, y: at.y, kind: 'puddle', age: 0 });
+    }
+  }
+
+  /** The store's own cat plus a visiting one, if any. */
+  cats(): CatAgent[] {
+    return this.guest?.agent ? [this.cat, this.guest.agent] : [this.cat];
   }
 
   private updateCat(dt: number): void {
-    const c = this.cat;
     const st = this.state.cat;
+    st.mood += (50 - st.mood) * 0.0008 * dt;
+    // the cat tower is the comfiest spot in the store
+    if (this.cat.perch) st.mood = Math.min(100, st.mood + 0.01 * dt);
+    if (gainCat(this.state, dt * 0.02)) this.emit({ type: 'growth', what: 'cat', level: st.level });
+    this.stepCat(this.cat, dt);
+    const g = this.guest;
+    if (!g || g.gone) return;
+    if (!g.agent) {
+      if (this.clock < g.arriveAt || this.closing) return;
+      g.agent = new CatAgent(spawnTile(this.layout, this.rng.chance(0.5)));
+      g.agent.mode = 'walk';
+      this.walk(g.agent.mover, entryTile(this.layout));
+      this.emit({ type: 'guestCat', store: g.store });
+      return;
+    }
+    const a = g.agent;
+    if ((this.clock >= g.leaveAt || this.closing) && a.goal?.kind !== 'leave') {
+      a.mode = 'walk';
+      a.perch = null;
+      a.goal = { kind: 'leave' };
+      this.walk(a.mover, spawnTile(this.layout, this.rng.chance(0.5)));
+    }
+    this.stepCat(a, dt);
+  }
+
+  private stepCat(c: CatAgent, dt: number): void {
     this.stepMover(c.mover, dt, 0.5);
     if (c.bubble && c.bubble.until < this.clock) c.bubble = null;
-    st.mood += (50 - st.mood) * 0.0008 * dt;
-    if (gainCat(this.state, dt * 0.02)) this.emit({ type: 'growth', what: 'cat', level: st.level });
     if (c.mode === 'walk') {
-      if (c.mover.path.length === 0) {
-        const r = this.rng.next();
-        c.mode = r < 0.3 ? 'sit' : r < 0.55 ? 'sleep' : r < 0.7 ? 'groom' : r < 0.9 ? 'loaf' : 'stretch';
-        c.timer = { sit: [15, 50], sleep: [40, 120], groom: [8, 20], loaf: [30, 90], stretch: [3, 6] }[c.mode].reduce((a, b) => this.rng.range(a, b));
+      if (c.mover.path.length) return;
+      if (c.goal?.kind === 'leave') {
+        if (this.guest?.agent === c) {
+          this.guest.agent = null;
+          this.guest.gone = true;
+        }
+        return;
       }
+      this.settleCat(c);
       return;
     }
     c.timer -= dt;
-    if (c.timer <= 0) {
-      c.mode = 'walk';
-      this.walk(c.mover, this.catSpot());
-    }
+    if (c.timer <= 0) this.wanderCat(c);
   }
+
+  /** Arrived somewhere: curl up on the tower, watch the fish, play with the other cat, or just rest. */
+  private settleCat(c: CatAgent): void {
+    const goal = c.goal;
+    c.goal = null;
+    const timer = (a: number, b: number) => this.rng.range(a, b);
+    const f = goal?.fixture !== undefined ? this.fixture(goal.fixture) : undefined;
+    if (goal?.kind === 'tower' && f?.placed && !this.cats().some((k) => k !== c && k.perch?.x === f.x && k.perch.y === f.y)) {
+      c.perch = { x: f.x, y: f.y };
+      c.mode = this.rng.pick(['sleep', 'loaf', 'sit'] as const);
+      c.timer = timer(40, 120);
+      return;
+    }
+    if (goal?.kind === 'fish' && f?.placed) {
+      c.mode = 'sit';
+      c.mover.face(f.x < c.mover.tile.x ? 'left' : 'right');
+      c.bubble = { icon: 'b_paw', until: this.clock + 3 };
+      c.timer = timer(10, 25);
+      return;
+    }
+    if (goal?.kind === 'friend') {
+      const other = this.cats().find((k) => k !== c);
+      if (other && this.guest && !this.guest.met && Math.abs(other.mover.tile.x - c.mover.tile.x) + Math.abs(other.mover.tile.y - c.mover.tile.y) <= 2) {
+        // first meeting today: a hiss and a stare before they warm up
+        this.guest.met = true;
+        for (const k of [c, other]) {
+          k.perch = null;
+          k.mode = 'sit';
+          k.timer = timer(4, 8);
+          k.bubble = { icon: 'b_exclaim', until: this.clock + 1.5 };
+          this.doAct(k, 'arch', 1.5);
+          this.faceToward(k.mover, (k === c ? other : c).mover.tile);
+        }
+        return;
+      }
+      if (other && Math.abs(other.mover.tile.x - c.mover.tile.x) + Math.abs(other.mover.tile.y - c.mover.tile.y) <= 2) {
+        for (const k of [c, other]) {
+          k.perch = null;
+          k.mode = 'sit';
+          k.timer = timer(12, 25);
+          k.bubble = { icon: 'b_heart', until: this.clock + 3 };
+          this.doAct(k, 'play', 4);
+          this.faceToward(k.mover, (k === c ? other : c).mover.tile);
+        }
+        this.state.cat.mood = Math.min(100, this.state.cat.mood + 5);
+        return;
+      }
+    }
+    if (goal?.kind === 'follow' && goal.who && (goal.steps ?? 0) > 0) {
+      const cust = this.customers.find((x) => x.mover === goal.who && x.state !== 'leave' && x.mover.y < this.layout.h - 1);
+      const to = cust ? this.beside(c.mover, cust.mover) : null;
+      if (cust && to) {
+        if (goal.steps === 3 && !cust.bubble) {
+          cust.bubble = { icon: 'b_heart', until: this.clock + 1.5 };
+          this.doAct(cust, 'laugh', 1);
+        }
+        c.goal = { ...goal, steps: goal.steps! - 1 };
+        this.walk(c.mover, to);
+        return;
+      }
+    }
+    if (goal?.kind === 'box' && goal.who) {
+      const w = this.workers.find((x) => x.mover === goal.who);
+      if (w && w.task.type === 'restock' && Math.abs(w.mover.x - c.mover.x) + Math.abs(w.mover.y - c.mover.y) <= 1.5) {
+        c.mode = 'loaf';
+        c.timer = timer(5, 9);
+        c.bubble = { icon: 'b_heart', until: this.clock + 1.5 };
+        this.doAct(c, 'box', c.timer);
+        if (!w.bubble) {
+          w.bubble = { icon: 'b_laugh', until: this.clock + 1.5 };
+          this.doAct(w, 'laugh', 1);
+        }
+        return;
+      }
+    }
+    if (goal?.kind === 'rub' && goal.who) {
+      const m = goal.who;
+      if (Math.abs(m.x - c.mover.x) + Math.abs(m.y - c.mover.y) <= 1.5) {
+        c.mode = 'sit';
+        c.timer = timer(8, 15);
+        c.bubble = { icon: 'b_heart', until: this.clock + 2 };
+        this.doAct(c, 'wiggle', 2);
+        this.faceToward(c.mover, m.tile);
+        const cust = this.customers.find((x) => x.mover === m);
+        const w = this.workers.find((x) => x.mover === m);
+        if (cust) {
+          cust.affinityDelta += catLover(cust.npc.index) ? 1 : 0.5;
+          if (!cust.bubble) {
+            cust.bubble = { icon: 'b_heart', until: this.clock + 2 };
+            this.doAct(cust, cust.state === 'queue' ? 'laugh' : 'crouch', 1.5);
+          }
+        } else if (w) {
+          // begging: up on its hind legs until a treat comes down
+          c.bubble = { icon: 'b_paw', until: this.clock + 1.5 };
+          this.doAct(c, 'beg', 1);
+          this.faceToward(w.mover, c.mover.tile);
+          this.later(w, 'b_heart', 0.5, 1, 'crouch');
+          this.prop('treat', { x: m.x, y: m.y }, { x: c.mover.x, y: c.mover.y }, 0.4, undefined, 0.6);
+          this.later(c, null, 1, 1, 'wiggle');
+          this.gainSkill(w, 'petcare', 0.5);
+          if (c === this.cat) this.state.cat.mood = Math.min(100, this.state.cat.mood + 3);
+        }
+        if (c === this.cat) this.state.cat.mood = Math.min(100, this.state.cat.mood + 2);
+        return;
+      }
+    }
+    // brushing past a stocked shelf, the cat sometimes knocks something off and sits there looking innocent
+    if (this.spills.length < 5 && this.rng.chance(0.06) && this.nextToStock(c.mover.tile) && this.spillVisible(c.mover.tile.x, c.mover.tile.y)) {
+      const t = c.mover.tile;
+      this.spills.push({ id: this.nextSpill++, x: t.x, y: t.y, kind: 'crumbs', age: 0 });
+      const from = this.stockNear(t);
+      if (from) this.prop('item', from.p, { x: t.x, y: t.y }, 0.5, from.index);
+      c.mode = 'sit';
+      c.timer = timer(6, 12);
+      return;
+    }
+    const r = this.rng.next();
+    c.mode = r < 0.3 ? 'sit' : r < 0.55 ? 'sleep' : r < 0.7 ? 'groom' : r < 0.9 ? 'loaf' : 'stretch';
+    c.timer = { sit: [15, 50], sleep: [40, 120], groom: [8, 20], loaf: [30, 90], stretch: [3, 6] }[c.mode].reduce((a, b) => this.rng.range(a, b));
+  }
+
+  private beside(m: Mover, other: Mover): P | null {
+    const t = other.tile;
+    const around = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: t.x + dx, y: t.y + dy })).filter((p) => this.catVisible(p.x, p.y));
+    return this.freeTile(m, around) ?? null;
+  }
+
+  private wanderCat(c: CatAgent): void {
+    c.mode = 'walk';
+    c.perch = null;
+    const decor = (kind: string) => this.placed().filter((f) => f.kind === 'decor' && f.decor === kind);
+    // a tile next to the decoration; for watching fish it has to be one where the cat stays in view
+    // (on the tower it is drawn on top, so where it jumps from doesn't matter)
+    const near = (f: FixtureState, inView: boolean) => {
+      const acc = serveTiles(this.grid, f, 0).filter((p) => !inView || this.catVisible(p.x, p.y));
+      return acc.length ? this.freeTile(c.mover, acc) ?? null : null;
+    };
+    const other = this.cats().find((k) => k !== c && k.goal?.kind !== 'leave');
+    const r = this.rng.next();
+    // cats are sociable: a good share of their wandering is toward someone
+    const tower = r < 0.3 ? this.rng.pick(decor('cat_tower')) : undefined;
+    const tank = r >= 0.3 && r < 0.42 ? this.rng.pick(decor('aquarium')) : undefined;
+    let to: P | null = null;
+    if (tower && (to = near(tower, false))) c.goal = { kind: 'tower', fixture: tower.id };
+    else if (tank && (to = near(tank, true))) c.goal = { kind: 'fish', fixture: tank.id };
+    else if (other && r >= 0.42 && r < 0.62) {
+      to = this.beside(c.mover, other.mover);
+      if (to) c.goal = { kind: 'friend' };
+    } else if (r >= 0.62 && r < 0.8) {
+      // rub against someone who is standing still
+      const still = [
+        ...this.customers.filter((x) => (x.state === 'browse' || x.state === 'queue') && x.seat === null && !x.mover.path.length).map((x) => x.mover),
+        ...this.workers.filter((w) => w.task.type === 'none' && !w.mover.path.length).map((w) => w.mover),
+      ].filter((m) => Math.abs(m.x - c.mover.x) + Math.abs(m.y - c.mover.y) <= 8 && m.y < this.layout.h);
+      const who = still.length ? this.rng.pick(still) : null;
+      to = who ? this.beside(c.mover, who) : null;
+      if (who && to) c.goal = { kind: 'rub', who };
+    } else if (r >= 0.8 && r < 0.88) {
+      // trail after a shopper for a bit
+      const walking = this.customers.filter((x) => x.state === 'shop' && x.mover.path.length && x.mover.y < this.layout.h - 1
+        && Math.abs(x.mover.x - c.mover.x) + Math.abs(x.mover.y - c.mover.y) <= 6);
+      const who = walking.length ? this.rng.pick(walking).mover : null;
+      to = who ? this.beside(c.mover, who) : null;
+      if (who && to) c.goal = { kind: 'follow', who, steps: 3 };
+    } else if (r >= 0.88 && r < 0.95) {
+      // the carton someone is unpacking looks like a fine place to sit
+      const w = this.workers.find((x) => x.task.type === 'restock' && x.task.phase === 'stocking' && !x.mover.path.length);
+      to = w ? this.beside(c.mover, w.mover) : null;
+      if (w && to) c.goal = { kind: 'box', who: w.mover };
+    }
+    this.walk(c.mover, to ?? this.catSpot());
+  }
+
 
   /** Player petting; limited per day so it stays a small daily ritual. */
   petCat(): boolean {
@@ -364,18 +940,21 @@ export class Sim {
     const roster = NPCS.slice(0, rosterSize(this.state));
     const appeal = Math.min(0.15, this.placed().length * 0.006);
     const rep = repTraffic(this.state.reputation.level);
-    const traffic = trafficMult(this.state.seed, this.state.day) * (1 + openingBuzz(this.state)) * this.rules.traffic;
+    const traffic = trafficMult(this.state.seed, this.state.day) * (1 + openingBuzz(this.state)) * this.rules.traffic * this.street.traffic;
     if (!broke) this.supplierGifts(false);
     this.rollEvent();
+    this.planGuest();
+    const guestAppeal = this.guest ? catAppeal(this.guest.level, this.guest.mood) : 0;
     const bakery = !!this.stationSpot('bakery');
     const bk = this.state.bakery;
     for (const npc of roster) {
       const st = this.state.npcs[npc.id];
       const aff = affinityValue(st.fond.level);
-      const cat = catLover(npc.index) ? catAppeal(this.state.cat.level, this.state.cat.mood) : 0;
+      const cat = catLover(npc.index) ? catAppeal(this.state.cat.level, this.state.cat.mood) + guestAppeal : 0;
       const fb = favBread(npc.index);
       const bread = bakery && bk[fb].good + bk[fb].golden > 0 ? 0.05 : 0;
-      const p = (0.22 + aff / 220 + appeal + rep + cat + bread) * traffic;
+      const kind = npc.kind === 'kid' ? this.street.kid : npc.kind === 'elder' ? this.street.elder : 1;
+      const p = (0.22 + aff / 220 + appeal + rep + cat + bread) * traffic * kind;
       if (this.rng.chance(p)) this.arrivals.push({ t: this.arrivalTime(), npc });
       if (aff > 70 && this.rng.chance((aff - 70) / 100)) this.arrivals.push({ t: this.arrivalTime(), npc });
     }
@@ -389,6 +968,22 @@ export class Sim {
   }
 
   /** Each store has its own busy hours; whoever doesn't come at a peak drops in any time. */
+  /** Now and then a cat from another store in the chain drops by for an hour or three. */
+  private planGuest(): void {
+    const others = this.state.stores.flatMap((x, i) => (i !== this.state.active && x.saved ? [{ i, d: x.saved }] : []));
+    if (!others.length || !this.rng.chance(0.35)) return;
+    const { i, d } = this.rng.pick(others);
+    const arriveAt = this.rng.range(9 * 60, 16 * 60);
+    this.guest = {
+      store: i, coat: d.catCoat, acc: d.catAcc, name: d.catName, level: d.cat.level, mood: d.cat.mood,
+      arriveAt, leaveAt: arriveAt + this.rng.range(60, 180), agent: null, gone: false,
+    };
+  }
+
+  petGuest(): void {
+    if (this.guest?.agent) this.guest.agent.bubble = { icon: 'b_heart', until: this.clock + 2 };
+  }
+
   private arrivalTime(): number {
     let r = this.rng.next();
     let t = this.rng.range(DAY_START, LAST_ENTRY);
@@ -451,10 +1046,13 @@ export class Sim {
       this.arrivals.sort((a, b) => a.t - b.t);
       this.emit({ type: 'tourArrived' });
     }
+    this.socialize(dtMin);
     this.assignTasks();
     for (const w of this.workers) this.updateWorker(w, dtMin);
     for (const line of this.allLines()) this.updateLine(line, dtMin);
     for (const f of this.floaters) f.t += dtMin;
+    this.flashes = this.flashes.filter((f) => this.clock - f.at < 0.6);
+    this.props = this.props.filter((p) => this.clock - p.at < p.dur);
     this.floaters = this.floaters.filter((f) => f.t < 4);
     if (this.closing && this.customers.length === 0) {
       this.done = true;
@@ -473,7 +1071,7 @@ export class Sim {
   private spawn(npc: NpcDef): void {
     const st = this.state.npcs[npc.id];
     const start = spawnTile(this.layout, this.rng.chance(0.5));
-    const budget = npc.budget * budgetMult(st.level) * this.rng.range(0.7, 1.2) * this.rules.budget * this.perks.budget;
+    const budget = npc.budget * budgetMult(st.level) * this.rng.range(0.7, 1.2) * this.rules.budget * this.perks.budget * this.street.budget;
     const c = new Customer(this.nextCust++, npc, start, budget);
     c.targets = this.planTargets(c);
     this.customers.push(c);
@@ -495,6 +1093,7 @@ export class Sim {
         best = w;
       }
     }
+    this.rainyEntry(c);
     if (!best) return;
     c.greet = best.power('greet');
     c.affinityDelta += c.greet * 0.8;
@@ -511,7 +1110,7 @@ export class Sim {
         const p = PRODUCT_BY_ID.get(s.product)!;
         const fav = npc.favs.includes(p.id);
         const like = npc.likes.includes(p.cat);
-        const prob = Math.min(0.95, (0.08 + (like ? 0.28 : 0) + (fav ? 0.75 : 0) + aff * 0.004) * demandMult(this.state.seed, this.state.day, p.id));
+        const prob = Math.min(0.95, (0.08 + (like ? 0.28 : 0) + (fav ? 0.75 : 0) + aff * 0.004) * demandMult(this.state.seed, this.state.day, p.id) * (this.street.cat[p.cat] ?? 1));
         if (this.rng.chance(prob)) picks.push({ tg: { t: 'slot', fixture: f.id, slot: i }, price: this.priceOf(p.id), w: fav ? 3 : like ? 2 : 1 });
       });
     }
@@ -532,14 +1131,21 @@ export class Sim {
       }
     }
     for (const s of this.layout.stations) {
-      const want = npc.stations[s.kind] * (0.5 + aff / 100) * stationMult(this.state.seed, this.state.day, s.kind);
+      const want = npc.stations[s.kind] * (0.5 + aff / 100) * stationMult(this.state.seed, this.state.day, s.kind) * (this.street.station[s.kind] ?? 1);
       if (this.rng.chance(want)) out.push(s.kind === 'bakery' ? { t: 'bakery' } : { t: 'station', kind: s.kind });
+    }
+    // at most one stop at a decoration per visit
+    for (const f of this.rng.shuffle(this.placed().filter((x) => x.kind === 'decor' && DECOR_VISIT[x.decor ?? '']))) {
+      if (this.rng.chance(DECOR_VISIT[f.decor!][npc.kind])) {
+        out.push({ t: 'decor', fixture: f.id });
+        break;
+      }
     }
     return this.orderTargets(out);
   }
 
   private targetPos(tg: Target): P {
-    if (tg.t === 'slot') {
+    if (tg.t === 'slot' || tg.t === 'decor') {
       const f = this.fixture(tg.fixture)!;
       return { x: f.x, y: f.y };
     }
@@ -571,7 +1177,7 @@ export class Sim {
   }
 
   private allMovers(): Mover[] {
-    return [...this.customers.map((c) => c.mover), ...this.workers.map((w) => w.mover), this.cat.mover];
+    return [...this.customers.map((c) => c.mover), ...this.workers.map((w) => w.mover), ...this.cats().map((k) => k.mover)];
   }
 
   /** Tiles where others stand still, so walkers route around them. */
@@ -586,6 +1192,17 @@ export class Sim {
   }
 
   /** Back-corridor spots where staff with nothing to do wait, clear of the door and the counters. */
+  /** Where staff stand to serve: registers, counters, bagging and the oven, for the jobs this worker does. */
+  private counterSpots(w: Worker): P[] {
+    const out: P[] = [];
+    if (this.canDo(w, 'register')) out.push(...this.registers.filter((l) => !l.worker).map((l) => l.staffSpot));
+    if (this.canDo(w, 'station')) out.push(...[...this.stations.values()].filter((l) => !l.worker).map((l) => l.staffSpot));
+    if (this.bagging && !this.bagging.worker && this.canDo(w, 'bagging')) out.push(this.bagging.staffSpot);
+    const bakery = this.stationSpot('bakery');
+    if (bakery && this.canDo(w, 'oven')) out.push(bakery.staff);
+    return out;
+  }
+
   private posts(): P[] {
     const d = this.layout.stockDoor;
     const out: P[] = [];
@@ -617,10 +1234,12 @@ export class Sim {
       const blocker = this.allMovers().find((o) => o !== m && o.path.length === 0 && o.tile.x === next.x && o.tile.y === next.y);
       if (blocker) {
         // the cat gets up and moves on when someone needs its spot
-        if (blocker === this.cat.mover && this.cat.mode !== 'walk' && m.path.length === 1) this.cat.timer = 0;
+        const cat = this.cats().find((k) => k.mover === blocker);
+        if (cat && cat.mode !== 'walk' && m.path.length === 1) cat.timer = 0;
         if (m.path.length > 1) {
           this.walk(m, m.dest);
         } else if (m.held < 1.5) {
+          if (m.held < 0.8 && m.held + dt >= 0.8) this.bump(m);
           m.held += dt;
           m.moving = false;
           return;
@@ -632,7 +1251,7 @@ export class Sim {
   }
 
   private updateCustomer(c: Customer, dt: number): void {
-    this.stepMover(c.mover, dt, 0.85 * this.rules.walk);
+    this.stepMover(c.mover, dt, 0.85 * this.rules.walk * (this.clock < c.runUntil ? 2 : 1));
     if (c.bubble && c.bubble.until < this.clock && c.state !== 'queue') c.bubble = null;
     if (c.state === 'leave') return;
     if (c.state === 'queue') {
@@ -646,14 +1265,15 @@ export class Sim {
       c.timer -= dt;
       if (c.timer <= 0) {
         c.state = 'shop';
+        if (c.seat !== null) this.seats.delete(c.seat);
+        c.seat = null;
       }
       return;
     }
     if (c.state === 'served') return;
     if (!c.sawCat && !c.bubble && catLover(c.npc.index)) {
       const a = c.mover.tile;
-      const b = this.cat.mover.tile;
-      if (Math.abs(a.x - b.x) + Math.abs(a.y - b.y) <= 2) {
+      if (this.cats().some((k) => Math.abs(a.x - k.mover.tile.x) + Math.abs(a.y - k.mover.tile.y) <= 2)) {
         c.sawCat = true;
         c.affinityDelta += 0.5;
         c.bubble = { icon: 'b_paw', until: this.clock + 3 };
@@ -672,7 +1292,7 @@ export class Sim {
         c.targets.shift();
         return;
       }
-      const acc = accessTiles(this.grid, f, tg.slot);
+      const acc = serveTiles(this.grid, f, tg.slot);
       const here = acc.find((p) => c.mover.at(p));
       if (!here) {
         if (!acc.length) {
@@ -703,10 +1323,65 @@ export class Sim {
       c.timer = 0.8;
       return;
     }
+    if (tg.t === 'decor') {
+      const f = this.fixture(tg.fixture);
+      const acc = f?.placed ? serveTiles(this.grid, f, 0) : [];
+      const taken = f?.decor === 'bench' && this.seats.has(f.id);
+      if (!f || !acc.length || taken) {
+        c.targets.shift();
+        return;
+      }
+      if (!acc.some((p) => c.mover.at(p))) {
+        this.walk(c.mover, this.freeTile(c.mover, acc) ?? acc[0]);
+        return;
+      }
+      c.targets.shift();
+      this.faceToward(c.mover, f);
+      this.useDecor(c, f);
+      return;
+    }
     const line = this.stations.get(tg.kind)!;
     c.targets.shift();
     c.order = this.makeOrder(tg.kind);
     this.join(c, line);
+  }
+
+  /** What a shopper does at a decoration. */
+  private useDecor(c: Customer, f: FixtureState): void {
+    c.state = 'browse';
+    c.timer = 1;
+    if (f.decor === 'aquarium') {
+      c.timer = 1.5;
+      c.affinityDelta += 0.4;
+      c.bubble ??= { icon: 'b_star', until: this.clock + 2 };
+      this.doAct(c, c.npc.kind === 'kid' ? 'laugh' : 'point', 1.5);
+    } else if (f.decor === 'gumball') {
+      this.doAct(c, 'reach', 0.8);
+      this.prop('candy', { x: f.x, y: f.y + 0.3 }, { x: c.mover.x, y: c.mover.y }, 0.4, undefined, 0.3);
+      this.state.money += 1;
+      this.stats.revenue += 1;
+      this.state.lifetime.revenue += 1;
+      this.floaters.push({ text: '+$1.00', x: f.x, y: f.y, t: 0, color: '#f0c040' });
+    } else if (f.decor === 'magazine') {
+      c.timer = 2;
+      this.doAct(c, 'photo', 2);
+      // an ad catches the eye: one more stop on the way
+      if (this.rng.chance(0.4)) {
+        const left = c.budget - c.spent;
+        const slots = this.placed().flatMap((x) => x.slots.map((sl, i) => ({ x, sl, i })))
+          .filter(({ sl }) => sl.product && sl.stock > 0 && this.priceOf(sl.product) <= left);
+        if (slots.length) {
+          const pick = this.rng.pick(slots);
+          c.targets.unshift({ t: 'slot', fixture: pick.x.id, slot: pick.i });
+        }
+      }
+    } else if (f.decor === 'bench') {
+      this.seats.set(f.id, c);
+      c.seat = f.id;
+      c.timer = 4;
+      c.affinityDelta += 0.6;
+      c.mover.face('down');
+    }
   }
 
   private faceToward(m: Mover, p: P): void {
@@ -997,7 +1672,7 @@ export class Sim {
     this.giveGifts(c.npc.id, fondBefore, st.fond.level);
     this.maybeBringFriend(c);
     const repMult = (c.manualServed ? 2 : 1) * (this.event?.kind === 'blogger' ? 2 : 1);
-    const repUps = gainReputation(this.state, Math.max(0, 1 + mood) * repMult);
+    const repUps = gainReputation(this.state, Math.max(0, 1 + mood) * repMult * this.street.rep);
     this.emit({ type: 'served' });
     if (repUps) this.emit({ type: 'growth', what: 'reputation', level: this.state.reputation.level });
     st.visits += 1;
@@ -1078,13 +1753,29 @@ export class Sim {
     }
     if (!w || !w.mover.at(line.staffSpot)) return;
     w.mover.face(line.kind === 'station' ? 'down' : this.layout.mirrored ? 'left' : 'right');
-    if (line.duration <= 0) line.duration = this.autoDuration(line, front, w);
+    if (line.duration <= 0) {
+      line.duration = this.autoDuration(line, front, w);
+      // the cashier knows this regular by name
+      if (line.kind === 'register' && this.state.npcs[front.npc.id].fond.level >= 8 && !w.bubble && this.rng.chance(0.5)) {
+        w.bubble = { icon: 'b_heart', until: this.clock + 1.5 };
+        this.doAct(w, 'wave', 1);
+        this.later(front, 'b_laugh', 0.5, 1.5, 'laugh');
+      }
+    }
     line.progress += dt;
     if (line.progress >= line.duration) {
       const skill = this.lineSkill(line);
       this.gainSkill(w, skill, line.kind === 'register' ? 2 + front.itemCount() * 0.3 : 3);
       this.equipExp(this.lineEquip(line), 1);
       this.finishService(line, { accuracy: 1, seconds: 0, manual: false });
+      const mate = this.workers.find((x) => x !== w && !x.bubble && Math.abs(x.mover.x - w.mover.x) + Math.abs(x.mover.y - w.mover.y) <= 1.5);
+      if (mate && !w.bubble && this.rng.chance(0.15)) {
+        // high five
+        w.bubble = { icon: 'b_star', until: this.clock + 1 };
+        this.doAct(w, 'cheer', 0.8);
+        this.doAct(mate, 'cheer', 0.8);
+        this.prop('spark', { x: (w.mover.x + mate.mover.x) / 2, y: (w.mover.y + mate.mover.y) / 2 }, { x: 0, y: 0 }, 0.5, undefined, 0.3);
+      }
       if (line.kind === 'bagging' && this.rng.chance(0.18 / w.speed('bagging'))) {
         const st = this.state.npcs[front.npc.id];
         changeAffinity(st.fond, -1);
@@ -1224,7 +1915,7 @@ export class Sim {
 
   private assignTasks(): void {
     const urgent = this.allLines().some((l) => !l.worker && l.members.length > 0);
-    const idle = this.workers.filter((w) => w.task.type === 'none' || (urgent && this.preemptable(w)));
+    const idle = this.workers.filter((w) => w.task.type === 'none' || w.task.type === 'rest' || (urgent && this.preemptable(w)));
     if (!idle.length) return;
     const claimed = this.claimed();
     type Job = { score: number; kind: JobKind; pos: P; apply: (w: Worker) => void };
@@ -1293,7 +1984,7 @@ export class Sim {
     const tidying = new Set(this.workers.map((w) => (w.task.type === 'tidy' ? w.task.fixture : -1)));
     for (const f of this.placed()) {
       if (f.kind === 'decor' || this.tidy.has(f.id) || tidying.has(f.id) || !f.slots.some((s) => s.product && s.stock > 0)) continue;
-      const acc = accessTiles(this.grid, f, 0);
+      const acc = serveTiles(this.grid, f, 0);
       if (!acc.length) continue;
       jobs.push({
         score: 0.5, kind: 'tidy', pos: { x: f.x, y: f.y },
@@ -1324,7 +2015,9 @@ export class Sim {
       const lineJob = job.kind === 'register' || job.kind === 'station' || job.kind === 'bagging';
       for (const w of idle) {
         if (!this.canDo(w, job.kind)) continue;
-        if (w.task.type !== 'none' && !(lineJob && this.preemptable(w))) continue;
+        if (w.task.type !== 'none' && w.task.type !== 'rest' && !(lineJob && this.preemptable(w))) continue;
+        // a break is only cut short for real work, not filler
+        if (w.task.type === 'rest' && job.score < 2) continue;
         const t = w.mover.tile;
         const d = Math.abs(t.x - job.pos.x) + Math.abs(t.y - job.pos.y);
         if (d < bd) {
@@ -1333,6 +2026,7 @@ export class Sim {
         }
       }
       if (best) {
+        this.standUp(best);
         best.carrying = false;
         job.apply(best);
       }
@@ -1342,19 +2036,61 @@ export class Sim {
         const r = this.registers.find((l) => !l.worker);
         if (r && !w.mover.at(r.staffSpot)) this.walk(w.mover, r.staffSpot);
       } else if (w.task.type === 'none' && w.idleFor > 1.5) {
+        w.idleFor = -Infinity;
+        // someone overdue for a break takes it; otherwise wait at a counter, ready for the next customer
+        if (this.clock - w.boostUntil > 150 && this.takeBreak(w)) continue;
+        const counter = this.freeTile(w.mover, this.counterSpots(w));
+        if (counter) {
+          if (!w.mover.at(counter)) this.walk(w.mover, counter);
+          continue;
+        }
+        if (this.takeBreak(w)) continue;
         const post = this.freeTile(w.mover, this.posts(), this.layout.stockDoor);
         if (post && !w.mover.at(post)) this.walk(w.mover, post);
-        w.idleFor = -Infinity;
       }
     }
   }
 
+  /** Idle staff sit on a free bench for a few minutes, then work a little faster for a while. */
+  private takeBreak(w: Worker): boolean {
+    if (this.clock < w.boostUntil + 30) return false;
+    for (const f of this.placed()) {
+      if (f.kind !== 'decor' || f.decor !== 'bench' || this.seats.has(f.id)) continue;
+      const acc = serveTiles(this.grid, f, 0);
+      const to = acc.length ? this.freeTile(w.mover, acc) : undefined;
+      if (!to) continue;
+      this.seats.set(f.id, w);
+      w.task = { type: 'rest', fixture: f.id, timer: 0 };
+      this.walk(w.mover, to);
+      return true;
+    }
+    return false;
+  }
+
+  private standUp(w: Worker): void {
+    if (w.task.type === 'rest') this.seats.delete(w.task.fixture);
+  }
+
   private updateWorker(w: Worker, dt: number): void {
+    if (w.boost > 1 && this.clock > w.boostUntil) w.boost = 1;
     this.stepMover(w.mover, dt, 1.0 * w.speed('walk'));
     w.idleFor = w.task.type === 'none' && w.mover.path.length === 0 ? w.idleFor + dt : 0;
     if (w.mover.moving) this.gainSkill(w, 'walk', dt * 0.05);
     if (w.bubble && w.bubble.until < this.clock) w.bubble = null;
     const t = w.task;
+    if (t.type === 'rest') {
+      if (w.mover.path.length) return;
+      w.mover.face('down');
+      t.timer += dt;
+      if (t.timer >= 8) {
+        this.standUp(w);
+        w.boost = 1.1;
+        w.boostUntil = this.clock + 90;
+        w.task = { type: 'none' };
+        this.doAct(w, 'stretch', 1);
+      }
+      return;
+    }
     if (t.type === 'clean') {
       if (w.mover.path.length) return;
       const sp = this.spills.find((s) => s.id === t.spill);
@@ -1447,7 +2183,7 @@ export class Sim {
       if (t.timer >= 0.8 / w.speed('storage')) {
         this.gainSkill(w, 'storage', 1);
         w.carrying = true;
-        const acc = accessTiles(this.grid, f, t.slot);
+        const acc = serveTiles(this.grid, f, t.slot);
         t.phase = 'toShelf';
         if (acc.length) this.walk(w.mover, this.freeTile(w.mover, acc)!);
       }
@@ -1456,6 +2192,11 @@ export class Sim {
     if (t.phase === 'toShelf') {
       t.phase = 'stocking';
       t.timer = 0;
+      if (!w.bubble && this.rng.chance(0.12)) {
+        // humming along while stocking
+        w.bubble = { icon: 'b_laugh', until: this.clock + 1.5 };
+        this.prop('notes', { x: w.mover.x, y: w.mover.y }, { x: 0, y: 0 }, 3);
+      }
       this.faceToward(w.mover, f.vertical ? { x: f.x, y: f.y + t.slot } : { x: f.x + t.slot, y: f.y });
       return;
     }
@@ -1602,10 +2343,19 @@ export class Sim {
     }
   }
 
+  /** A content cat sometimes leaves a little find by the register at closing. */
+  private catTreasure(): void {
+    if (!this.rng.chance(0.12 + this.state.cat.mood / 500)) return;
+    const k = this.rng.pick([...CAT_TREASURES]);
+    this.state.catTreasures[k] = (this.state.catTreasures[k] ?? 0) + 1;
+    this.stats.treasure = k;
+  }
+
   endDayCosts(): void {
-    const wages = this.state.staff.reduce((a, s) => a + s.wage, 0);
+    this.catTreasure();
+    const wages = this.state.staff.reduce((a, s) => a + wageOf(s), 0);
     this.state.money -= wages;
-    const rent = this.state.money <= 0 ? 0 : LEVELS[this.state.level].rent;
+    const rent = this.state.money <= 0 ? 0 : Math.round(LEVELS[this.state.level].rent * this.rules.rent);
     this.state.money -= rent;
     this.stats.rentWaived = rent === 0;
     this.stats.wages = wages;

@@ -7,6 +7,7 @@ from PIL import Image
 from pix import Canvas, hexc, tone, mix
 import gen_products as GP
 import gen_chars as GC
+import gen_street as GS
 import gen_world as GW
 import gen_mini as GM
 import gen_decor as GD
@@ -214,6 +215,9 @@ def atlas():
         'b_heart': GW.bubble(GW.ic_heart), 'b_sad': GW.bubble(GW.ic_sad), 'b_empty': GW.bubble(GW.ic_empty),
         'b_wait': GW.bubble(GW.ic_wait), 'b_star': GW.bubble(GW.ic_star, hexc('f0c040')),
         'b_paw': GW.bubble(GW.ic_paw), 'b_pricey': GW.bubble(GW.ic_pricey),
+        'b_chat': GW.bubble(GW.ic_chat), 'b_laugh': GW.bubble(GW.ic_laugh), 'b_wave': GW.bubble(GW.ic_wave),
+        'b_exclaim': GW.bubble(GW.ic_exclaim), 'b_question': GW.bubble(GW.ic_question), 'b_camera': GW.bubble(GW.ic_camera), 'b_zzz': GW.bubble(GW.ic_zzz),
+        'umbrella_stand': GW.umbrella_stand(),
         'drawer': GM.drawer(), 'tray': GM.tray(), 'counter_wood': GM.wood_counter(),
         'oden_pot': GM.oden_pot(), 'oden_box_back': GM.oden_box_back(), 'oden_box_front': GM.oden_box_front(), 'slicer': GM.slicer(), 'scale': GM.scale_box(),
         'bake_sheet': GM.bake_sheet(), 'bake_sheet_end': GM.bake_sheet_end(), 'oven_wall': GM.oven_wall(), 'oven_coil': GM.oven_coil(), 'oven_rail': GM.oven_rail(), 'coffee_cup': GM.coffee_cup(), 'cafe_wall': GM.cafe_wall(), 'cafe_counter': GM.cafe_counter(), 'cafe_head': GM.cafe_head(), 'cafe_tray': GM.cafe_tray(),
@@ -226,6 +230,14 @@ def atlas():
     for name, kind in (('register', 'register'), ('oden', 'oden'), ('deli', 'deli'), ('oven', 'oven'), ('coffee', 'coffee'), ('bagging', 'bagging')):
         for tier in (1, 2):
             items[f'{name}_t{tier}'] = GW.upgraded(kind, items[name], tier)
+    for name, fn in GS.BUILDINGS.items():
+        items[f'bld_{name}'] = fn()
+    items['bld_empty'] = GS.empty_lot()
+    items['bld_store'] = GS.mini_store()
+    for kind in GW.TREASURES:
+        items[f'treasure_{kind}'] = GW.treasure(kind)
+    for color in GW.UMBRELLA_COLORS:
+        items[f'umbrella_{color}'] = GW.umbrella(color)
     for k in ('sunny', 'cloudy', 'rain', 'snow', 'hot'):
         items[f'w_{k}'] = GW.weather_icon(k)
     for coat in GD.CAT_COATS:

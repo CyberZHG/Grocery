@@ -82,7 +82,7 @@ describe('long run with staff', () => {
     const s = newGame(8);
     s.level = 2;
     s.money = 20000;
-    s.staff.push({ id: 90, name: 0, look: 0, wage: 50, role: 'auto', skills: freshSkills({ checkout: 5, clean: 3 }), hiredDay: 1, trait: 'tidy' });
+    s.staff.push({ id: 90, name: 0, look: 0, wage: 50, role: 'auto', skills: freshSkills({ checkout: 5, clean: 3 }), hiredDay: 1, trait: 'tidy', baseLevels: 0 });
     // one level short of the third keepsake, so a good visit or two triggers a gift
     for (const n of Object.values(s.npcs)) n.fond = { level: 9, exp: 49 };
     let spills = 0;
@@ -233,7 +233,7 @@ describe('service skills', () => {
     const s = newGame(6);
     s.money = 5000;
     s.cat.mood = 30;
-    s.staff.push({ id: 91, name: 1, look: 1, wage: 50, role: 'auto', skills: freshSkills({ upsell: 200, display: 50, petcare: 50, storage: 100 }), hiredDay: 1, trait: null });
+    s.staff.push({ id: 91, name: 1, look: 1, wage: 50, role: 'auto', skills: freshSkills({ upsell: 200, display: 50, petcare: 50, storage: 100 }), hiredDay: 1, trait: null, baseLevels: 0 });
     const before = JSON.stringify(s.staff[0].skills);
     const sim = runDay(s);
     expect(sim.done).toBe(true);
@@ -378,7 +378,7 @@ describe('card-only counters', () => {
     const s = newGame(9);
     s.level = 3;
     s.money = 1e5;
-    s.staff.push({ id: 95, name: 2, look: 2, wage: 50, role: 'cashier', skills: freshSkills({ checkout: 5 }), hiredDay: 1, trait: null });
+    s.staff.push({ id: 95, name: 2, look: 2, wage: 50, role: 'cashier', skills: freshSkills({ checkout: 5 }), hiredDay: 1, trait: null, baseLevels: 0 });
     const sim = new Sim(s);
     sim.restockAll();
     sim.startDay();
@@ -399,5 +399,288 @@ describe('card-only counters', () => {
     const c = { itemCount: () => 5, cash: false } as never;
     const w = sim.workers[0];
     expect(durations.autoDuration(card, c, w)).toBeLessThan(durations.autoDuration(sim.registers[0], c, w));
+  });
+});
+
+describe('raises', () => {
+  it('wages grow with skill levels gained after hiring, more slowly over time', async () => {
+    const { raiseOf, wageOf } = await import('../src/game/state');
+    const st = { id: 1, name: 0, look: 0, wage: 50, role: 'auto' as const, skills: freshSkills({ checkout: 5 }), hiredDay: 1, trait: null, baseLevels: 4 };
+    expect(wageOf(st)).toBe(50);
+    st.skills.checkout.level = 9;
+    expect(raiseOf(st)).toBe(8);
+    st.skills.checkout.level = 105;
+    expect(raiseOf(st)).toBe(40);
+    const s = newGame(3);
+    s.staff.push({ ...st });
+    const sim = runDay(s);
+    expect(sim.stats.wages).toBe(wageOf(s.staff[0]));
+  });
+});
+
+describe('decorations and visiting cats', () => {
+  const place = (s: GameState, decor: string) => {
+    const l = buildLayout(s.level, s.stores[s.active].layout);
+    const placed = s.fixtures.filter((f) => f.placed);
+    for (let y = 1; y < l.h - 3; y++) {
+      for (let x = 1; x < l.w - 1; x++) {
+        const f = { kind: 'decor' as const, x, y, vertical: false };
+        if (!canPlace(l, placed, f)) continue;
+        s.fixtures.push({ id: s.nextId++, ...f, placed: true, decor, slots: [{ product: null, stock: 0 }, { product: null, stock: 0 }] });
+        return;
+      }
+    }
+    throw new Error(`no room for ${decor}`);
+  };
+
+  it('shoppers use decorations, staff take breaks on the bench, and the cat climbs its tower', () => {
+    const s = newGame(21);
+    s.level = 2;
+    s.money = 1e5;
+    for (const d of ['aquarium', 'gumball', 'magazine', 'bench', 'cat_tower']) place(s, d);
+    s.staff.push({ id: 96, name: 3, look: 3, wage: 50, role: 'auto', skills: freshSkills(), hiredDay: 1, trait: null, baseLevels: 0 });
+    const used = new Set<string>();
+    let rested = false;
+    let perched = false;
+    for (let d = 0; d < 3; d++) {
+      const sim = new Sim(s);
+      const proto = sim as unknown as { useDecor(c: unknown, f: { decor: string }): void };
+      const use = proto.useDecor.bind(sim);
+      proto.useDecor = (c, f) => {
+        used.add(f.decor);
+        use(c, f);
+      };
+      sim.restockAll();
+      sim.startDay();
+      for (let n = 0; n < 40000 && !sim.done; n++) {
+        sim.tickReal(0.04);
+        sim.update(0.1);
+        if (sim.workers.some((w) => w.boost > 1)) rested = true;
+        if (sim.cat.perch) perched = true;
+      }
+      sim.endDayCosts();
+      s.day += 1;
+    }
+    expect([...used].sort()).toEqual(['aquarium', 'bench', 'gumball', 'magazine']);
+    expect(rested).toBe(true);
+    expect(perched).toBe(true);
+  });
+
+  it('cats from other stores drop by and add their pull', async () => {
+    const { checkChallenge, openBranch } = await import('../src/game/chain');
+    const s = newGame(13);
+    s.level = LEVELS.length - 1;
+    s.reputation.level = 20;
+    s.money = 1e6;
+    s.cat.level = 20;
+    checkChallenge(s);
+    openBranch(s);
+    let visits = 0;
+    let seen = false;
+    for (let d = 0; d < 8; d++) {
+      const sim = new Sim(s);
+      sim.restockAll();
+      sim.startDay();
+      if (sim.guest) {
+        visits += 1;
+        expect(sim.guest.coat).not.toBe(s.catCoat);
+      }
+      for (let n = 0; n < 40000 && !sim.done; n++) {
+        sim.tickReal(0.04);
+        sim.update(0.1);
+        if (sim.guest?.agent) seen = true;
+      }
+      if (sim.guest) expect(sim.guest.agent === null || sim.closing).toBe(true);
+      sim.endDayCosts();
+      s.day += 1;
+    }
+    expect(visits).toBeGreaterThan(0);
+    expect(seen).toBe(true);
+  });
+});
+
+describe('life in the store', () => {
+  it('shoppers, staff and the cat interact with each other through the day', () => {
+    const s = newGame(31);
+    s.level = 2;
+    s.money = 1e5;
+    for (let i = 0; i < 3; i++) s.staff.push({ id: 120 + i, name: i, look: i, wage: 50, role: 'auto', skills: freshSkills(), hiredDay: 1, trait: null, baseLevels: 0 });
+    for (const n of Object.values(s.npcs)) n.fond = { level: 8, exp: 0 };
+    const seen = new Set<string>();
+    let flashes = 0;
+    for (let d = 0; d < 2; d++) {
+      const sim = new Sim(s);
+      sim.restockAll();
+      sim.startDay();
+      for (let n = 0; n < 40000 && !sim.done; n++) {
+        sim.tickReal(0.04);
+        sim.update(0.1);
+        for (const x of [...sim.customers, ...sim.workers, ...sim.cats()]) if (x.bubble) seen.add(x.bubble.icon);
+        flashes += sim.flashes.length ? 1 : 0;
+      }
+      sim.endDayCosts();
+      s.day += 1;
+    }
+    for (const icon of ['b_chat', 'b_laugh', 'b_wave', 'b_question']) expect(seen, icon).toContain(icon);
+    expect(flashes).toBeGreaterThan(0);
+  });
+
+  it('a happy cat brings in treasures over time', () => {
+    const s = newGame(5);
+    s.cat.mood = 100;
+    for (let d = 0; d < 30; d++) {
+      const sim = new Sim(s);
+      sim.restockAll();
+      sim.startDay();
+      sim.arrivals = [];
+      for (let n = 0; n < 40000 && !sim.done; n++) sim.update(1);
+      sim.endDayCosts();
+      s.cat.mood = 100;
+      s.day += 1;
+    }
+    expect(Object.values(s.catTreasures).reduce((a, b) => a + b, 0)).toBeGreaterThan(3);
+  });
+
+  it('on rainy days some shoppers buy umbrellas and track water in', async () => {
+    const { weatherOf } = await import('../src/game/calendar');
+    const s = newGame(8);
+    while (weatherOf(s.seed, s.day) !== 'rain') s.day += 1;
+    const sim = new Sim(s);
+    sim.restockAll();
+    sim.startDay();
+    let puddles = 0;
+    let umbrellas = 0;
+    const counted = new Set<number>();
+    for (let n = 0; n < 40000 && !sim.done; n++) {
+      sim.tickReal(0.04);
+      sim.update(0.1);
+      for (const c of sim.customers) if (c.umbrella && !counted.has(c.id)) {
+        counted.add(c.id);
+        umbrellas += 1;
+      }
+      puddles = Math.max(puddles, sim.spills.filter((p) => p.kind === 'puddle' && p.y >= sim.layout.h - 5).length);
+    }
+    expect(umbrellas).toBeGreaterThan(5);
+    expect(puddles).toBeGreaterThan(0);
+  });
+});
+
+describe('endgame: street, managers and tiers', () => {
+  it('buildings on the street change who comes and what they buy', async () => {
+    const { rosterSize } = await import('../src/game/growth');
+    const { streetFx, levelCost } = await import('../src/game/street');
+    const s = newGame(3);
+    const before = rosterSize(s);
+    s.street[0] = { id: 'apartments', level: 2 };
+    expect(rosterSize(s)).toBe(before + 20);
+    s.street[1] = { id: 'bus', level: 3 };
+    s.street[2] = { id: 'school', level: 1 };
+    const fx = streetFx(s.street);
+    expect(fx.traffic).toBeCloseTo(1.18);
+    expect(fx.cat.candy).toBeCloseTo(1.15);
+    expect(fx.kid).toBeCloseTo(1.15);
+    expect(levelCost('bus', 3)).toBe(levelCost('bus', 1) * 9);
+    const plain = newGame(3);
+    let a = 0;
+    let b = 0;
+    for (let d = 0; d < 6; d++) {
+      plain.day = s.day = 10 + d;
+      const x = new Sim(plain);
+      x.startDay();
+      const y = new Sim(s);
+      y.startDay();
+      a += x.arrivals.length;
+      b += y.arrivals.length;
+    }
+    expect(b).toBeGreaterThan(a);
+  });
+
+  it('a seasoned manager keeps more of an away store’s profit, up to 90%', async () => {
+    const { managerShare, MANAGER_SHARE, MAX_MANAGER_SHARE } = await import('../src/game/chain');
+    const slot = { challenge: 'rush' as const, layout: 'mirror' as const, done: false, progress: 0, saved: null, manager: 5 };
+    const novice = { id: 5, name: 0, look: 0, wage: 50, role: 'auto' as const, skills: freshSkills(), hiredDay: 1, trait: null, baseLevels: 0 };
+    expect(managerShare({ ...slot, manager: null }, [novice])).toBe(MANAGER_SHARE);
+    expect(managerShare(slot, [novice])).toBe(MANAGER_SHARE);
+    const veteran = { ...novice, skills: freshSkills({ checkout: 80, restock: 80 }), trait: 'tidy' };
+    expect(managerShare(slot, [veteran])).toBe(MAX_MANAGER_SHARE);
+  });
+
+  it('advanced tiers bring back stronger restrictions and stack a shrinking reward', async () => {
+    const { checkChallenge, completions, doneCount, goalOf, openBranch, perksOf, recordDay, rulesOf, startNextTier } = await import('../src/game/chain');
+    const s = newGame(12);
+    s.level = LEVELS.length - 1;
+    s.reputation.level = 20;
+    s.money = 1e6;
+    checkChallenge(s);
+    openBranch(s);
+    const st = { ...runDay(s).stats, customers: 5000, angry: 0 };
+    recordDay(s, st);
+    checkChallenge(s);
+    const base = goalOf(s.stores[1]).target;
+    const p1 = perksOf(s).service;
+    startNextTier(s, 1);
+    expect(doneCount(s)).toBe(2);
+    expect(rulesOf(s).patience).toBeLessThan(0.6);
+    expect(goalOf(s.stores[1]).target).toBeGreaterThan(base);
+    recordDay(s, { ...st, customers: 20000 });
+    expect(checkChallenge(s)).toBe('rush');
+    expect(completions(s.stores[1])).toBe(2);
+    const p2 = perksOf(s).service;
+    startNextTier(s, 1);
+    recordDay(s, { ...st, customers: 50000 });
+    checkChallenge(s);
+    const p3 = perksOf(s).service;
+    expect(p2).toBeGreaterThan(p1);
+    expect(p3 - p2).toBeLessThan(p2 - p1);
+    // the main store's tiers: higher rent, a takings goal
+    startNextTier(s, 0);
+    const { switchStore } = await import('../src/game/chain');
+    switchStore(s, 0);
+    expect(rulesOf(s).rent).toBe(1.25);
+    expect(goalOf(s.stores[0]).goal).toBe('revenue');
+  });
+});
+
+describe('expanding around existing fixtures', () => {
+  it('fixtures in the way of new counters move to a free spot nearby, stock and all', async () => {
+    const { fitFixtures } = await import('../src/game/chain');
+    const s = newGame(3);
+    s.level = 1;
+    const next = buildLayout(2);
+    const card = next.registers.find((r) => r.card)!;
+    const q = card.queue[2];
+    const f = { id: 99, kind: 'shelf' as const, x: q.x, y: q.y, vertical: true, placed: true, slots: [{ product: 'cola', stock: 9 }, { product: 'potato_chips', stock: 4 }] as GameState['fixtures'][0]['slots'] };
+    expect(canPlace(buildLayout(1), s.fixtures.filter((x) => x.placed), f)).toBe(true);
+    s.fixtures.push(f);
+    s.level = 2;
+    const fit = fitFixtures(s);
+    expect(fit).toEqual({ shifted: 1, stored: 0 });
+    expect(f.placed).toBe(true);
+    expect(f.slots[0].stock).toBe(9);
+    expect(Object.keys(s.inventory)).toHaveLength(0);
+    const others = s.fixtures.filter((x) => x !== f && x.placed);
+    expect(canPlace(next, others, f)).toBe(true);
+  });
+});
+
+describe('cat stays in view', () => {
+  it('a resting cat never settles right behind a fixture', () => {
+    const s = newGame(17);
+    s.level = 2;
+    for (let d = 0; d < 3; d++) {
+      const sim = new Sim(s);
+      sim.restockAll();
+      sim.startDay();
+      for (let n = 0; n < 40000 && !sim.done; n++) {
+        sim.tickReal(0.04);
+        sim.update(0.1);
+        const c = sim.cat;
+        if (c.mode === 'walk' || c.perch || c.mover.path.length || n % 10) continue;
+        const t = c.mover.tile;
+        if (sim.grid.inside(t.x, t.y + 1)) expect(sim.grid.walkable(t.x, t.y + 1), `${t.x},${t.y}`).toBe(true);
+      }
+      sim.endDayCosts();
+      s.day += 1;
+    }
   });
 });

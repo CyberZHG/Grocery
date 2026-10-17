@@ -1,6 +1,6 @@
 import { CAT_COATS, FIXTURES, LEVELS, type Category } from './defs';
 import { buildLayout, canPlace, type FixturePlacement, type Layout, type LayoutVariant } from './layout';
-import { newGame, stash, STORE_KEYS, type DayStats, type GameState, type StoreData, type StoreSlot } from './state';
+import { newGame, stash, STORE_KEYS, totalLevels, type DayStats, type FixtureState, type GameState, type StaffState, type StoreData, type StoreSlot } from './state';
 
 export type ChallengeId = 'main' | 'rush' | 'fresh' | 'oldtown' | 'school' | 'suburb';
 
@@ -15,9 +15,10 @@ export interface Rules {
   spill: number;
   /** share of unsold produce and chilled stock thrown out each night */
   spoil: number;
+  rent: number;
 }
 
-const NO_RULES: Rules = { patience: 1, traffic: 1, budget: 1, cash: null, walk: 1, spill: 1, spoil: 0 };
+const NO_RULES: Rules = { patience: 1, traffic: 1, budget: 1, cash: null, walk: 1, spill: 1, spoil: 0, rent: 1 };
 
 /** A busy period: center in game minutes, share of the day's visitors, and how far it spreads either side. */
 export type Peak = [minute: number, share: number, spread: number];
@@ -49,8 +50,11 @@ export const BRANCH_REP = 20;
 export const BRANCH_COST = [40000, 60000, 90000, 130000, 180000];
 /** Each finished store raises prices in every store. */
 export const STORE_BONUS = 0.02;
-/** Stores you are not running earn this share of their recent daily profit. */
+/** Stores you are not running earn this share of their recent daily profit; a good manager raises it. */
 export const MANAGER_SHARE = 0.5;
+export const MAX_MANAGER_SHARE = 0.9;
+/** The main store's advanced tiers: total takings, with rent going up each tier. */
+export const MAIN_TIER_TARGET = 200000;
 
 const FRESH: Category[] = ['produce', 'dairy', 'meat'];
 export function isFresh(cat: Category): boolean {
@@ -69,10 +73,47 @@ export function peaksOf(s: GameState): Peak[] {
   return CHALLENGE_BY_ID.get(activeSlot(s).challenge)!.peaks;
 }
 
+/** Challenges finished at this store, counting each advanced tier. */
+export function completions(slot: StoreSlot): number {
+  return (slot.tier ?? 0) + (slot.done ? 1 : 0);
+}
+
+/** Each advanced tier pushes the store's restrictions further from normal. */
 export function rulesOf(s: GameState): Rules {
   const slot = activeSlot(s);
   if (slot.done) return NO_RULES;
-  return { ...NO_RULES, ...CHALLENGE_BY_ID.get(slot.challenge)!.rules };
+  const n = slot.tier ?? 0;
+  const base = { ...NO_RULES, ...CHALLENGE_BY_ID.get(slot.challenge)!.rules };
+  if (!n) return base;
+  const k = 1 + 0.25 * n;
+  const push = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, 1 + (v - 1) * k));
+  return {
+    patience: push(base.patience, 0.25, 3),
+    traffic: push(base.traffic, 0.25, 3),
+    budget: push(base.budget, 0.4, 4),
+    cash: base.cash === null ? null : Math.min(1, base.cash + 0.03 * n),
+    walk: push(base.walk, 0.4, 1),
+    spill: push(base.spill, 1, 12),
+    spoil: base.spoil ? Math.min(0.6, base.spoil + 0.08 * n) : 0,
+    rent: slot.challenge === 'main' ? 1 + 0.25 * n : 1,
+  };
+}
+
+/** What the store is working toward at its current tier. */
+export function goalOf(slot: StoreSlot): { goal: Goal; target: number } {
+  const def = CHALLENGE_BY_ID.get(slot.challenge)!;
+  const n = slot.tier ?? 0;
+  if (slot.challenge === 'main') return n ? { goal: 'revenue', target: Math.round(MAIN_TIER_TARGET * (1 + 0.75 * (n - 1))) } : { goal: 'expand', target: 1 };
+  return { goal: def.goal, target: Math.round(def.target * (1 + 0.75 * n)) };
+}
+
+/** Takes on the next, harder tier of a finished challenge. */
+export function startNextTier(s: GameState, i: number): void {
+  const slot = s.stores[i];
+  if (!slot.done) return;
+  slot.tier = (slot.tier ?? 0) + 1;
+  slot.done = false;
+  slot.progress = 0;
 }
 
 /** Rewards from finished challenges; they apply in every store. */
@@ -88,17 +129,22 @@ export interface Perks {
 export function perksOf(s: GameState): Perks {
   const p: Perks = { price: 0, cat: {}, service: 1, affinity: 1, spill: 1, budget: 1 };
   for (const slot of s.stores) {
-    if (!slot.done) continue;
-    p.price += STORE_BONUS;
+    const c = completions(slot);
+    if (!c) continue;
+    // each advanced tier adds a little more, with diminishing steps: 1, 1/2, 1/3, ...
+    let x = 0;
+    for (let k = 1; k < c; k++) x += 1 / k;
+    p.price += STORE_BONUS * (1 + 0.25 * x);
     switch (slot.challenge) {
-      case 'rush': p.service = 1.12; break;
-      case 'fresh': for (const c of FRESH) p.cat[c] = (p.cat[c] ?? 0) + 0.05; break;
-      case 'oldtown': p.affinity = 1.2; break;
+      case 'main': p.price += 0.01 * x; break;
+      case 'rush': p.service = 1.12 + 0.03 * x; break;
+      case 'fresh': for (const k of FRESH) p.cat[k] = (p.cat[k] ?? 0) + 0.05 + 0.015 * x; break;
+      case 'oldtown': p.affinity = 1.2 + 0.05 * x; break;
       case 'school':
-        p.spill = 0.6;
-        for (const c of ['candy', 'snacks'] as Category[]) p.cat[c] = (p.cat[c] ?? 0) + 0.04;
+        p.spill = 0.6 / (1 + 0.1 * x);
+        for (const k of ['candy', 'snacks'] as Category[]) p.cat[k] = (p.cat[k] ?? 0) + 0.04 + 0.01 * x;
         break;
-      case 'suburb': p.budget = 1.08; break;
+      case 'suburb': p.budget = 1.08 + 0.02 * x; break;
     }
   }
   return p;
@@ -112,7 +158,7 @@ export function chainPriceMult(p: Perks, cat: Category): number {
 /** 0..1 progress toward the active store's challenge, plus the raw value. */
 export function progressOf(s: GameState, i = s.active): { value: number; target: number; ratio: number } {
   const slot = s.stores[i];
-  const def = CHALLENGE_BY_ID.get(slot.challenge)!;
+  const def = goalOf(slot);
   if (def.goal === 'expand') {
     const data = i === s.active ? s : slot.saved!;
     const max = LEVELS.length - 1;
@@ -127,7 +173,7 @@ export function progressOf(s: GameState, i = s.active): { value: number; target:
 export function recordDay(s: GameState, st: DayStats): void {
   const slot = activeSlot(s);
   if (slot.done) return;
-  switch (CHALLENGE_BY_ID.get(slot.challenge)!.goal) {
+  switch (goalOf(slot).goal) {
     case 'calm': slot.progress += st.customers - (st.angry ?? 0); break;
     case 'fresh': slot.progress += st.fresh ?? 0; break;
     case 'cash': slot.progress += st.cash ?? 0; break;
@@ -140,7 +186,7 @@ export function recordDay(s: GameState, st: DayStats): void {
 export function checkChallenge(s: GameState): ChallengeId | null {
   const slot = activeSlot(s);
   if (slot.done) return null;
-  const def = CHALLENGE_BY_ID.get(slot.challenge)!;
+  const def = goalOf(slot);
   const met = def.goal === 'expand'
     ? s.level >= LEVELS.length - 1 && s.reputation.level >= BRANCH_REP
     : slot.progress >= def.target;
@@ -169,12 +215,20 @@ function dailyProfit(d: DayStats): number {
   return d.revenue - d.goodsCost - d.wages - d.rent;
 }
 
-/** What one inactive store earns per day under its manager. */
+/** Share of profit a store keeps while you're away: 50% on its own, up to 90% under a seasoned manager. */
+export function managerShare(slot: StoreSlot, staff: StaffState[]): number {
+  const m = slot.manager != null ? staff.find((x) => x.id === slot.manager) : undefined;
+  if (!m) return MANAGER_SHARE;
+  const skill = Math.min(1, totalLevels(m) / 120);
+  return Math.min(MAX_MANAGER_SHARE, MANAGER_SHARE + 0.37 * skill + (m.trait ? 0.03 : 0));
+}
+
+/** What one inactive store earns per day. */
 export function storeIncome(slot: StoreSlot): number {
   const hist = slot.saved?.history.slice(-7) ?? [];
   if (!hist.length) return 0;
   const avg = hist.reduce((a, d) => a + dailyProfit(d), 0) / hist.length;
-  return Math.max(0, Math.round(avg * MANAGER_SHARE));
+  return Math.max(0, Math.round(avg * managerShare(slot, slot.saved!.staff)));
 }
 
 export function chainIncome(s: GameState): number {
@@ -200,7 +254,12 @@ export function switchStore(s: GameState, i: number): void {
 }
 
 export function doneCount(s: GameState): number {
-  return s.stores.filter((x) => x.done).length;
+  return s.stores.filter((x) => completions(x) > 0).length;
+}
+
+/** Advanced tiers finished across the chain. */
+export function tiersDone(s: GameState): number {
+  return s.stores.reduce((a, x) => a + Math.max(0, completions(x) - 1), 0);
 }
 
 /** Why the next branch can't open yet, or null when it can. */
@@ -238,22 +297,50 @@ export function openBranch(s: GameState): void {
   fitFixtures(s);
 }
 
-/** After a layout change, fixtures that no longer fit go to storage with their stock; returns how many moved. */
-export function fitFixtures(s: GameState): number {
+/**
+ * After a layout change, fixtures in the way are shifted to the nearest free spot (turning them if that helps),
+ * keeping their products and stock. Only when nothing fits anywhere do they go to storage.
+ */
+export function fitFixtures(s: GameState): { shifted: number; stored: number } {
   const layout = storeLayout(s);
   const kept: FixturePlacement[] = [];
-  let moved = 0;
+  const blocked: FixtureState[] = [];
   for (const f of s.fixtures) {
     if (!f.placed) continue;
     if (canPlace(layout, kept, f)) kept.push(f);
-    else {
-      f.placed = false;
-      for (const sl of f.slots) {
-        if (sl.product) stash(s, sl.product, sl.stock);
-        sl.stock = 0;
-      }
-      moved += 1;
+    else blocked.push(f);
+  }
+  let shifted = 0;
+  let stored = 0;
+  for (const f of blocked) {
+    const spot = nearestSpot(layout, kept, f);
+    if (spot) {
+      Object.assign(f, spot);
+      kept.push(f);
+      shifted += 1;
+      continue;
+    }
+    f.placed = false;
+    for (const sl of f.slots) {
+      if (sl.product) stash(s, sl.product, sl.stock);
+      sl.stock = 0;
+    }
+    stored += 1;
+  }
+  return { shifted, stored };
+}
+
+function nearestSpot(layout: Layout, kept: FixturePlacement[], f: FixtureState): { x: number; y: number; vertical: boolean } | null {
+  const turns = f.kind === 'decor' ? [f.vertical] : [f.vertical, !f.vertical];
+  const cands: { x: number; y: number; vertical: boolean; d: number }[] = [];
+  for (let y = 0; y < layout.h; y++) {
+    for (let x = 0; x < layout.w; x++) {
+      for (const vertical of turns) cands.push({ x, y, vertical, d: Math.abs(x - f.x) + Math.abs(y - f.y) + (vertical === f.vertical ? 0 : 0.5) });
     }
   }
-  return moved;
+  cands.sort((a, b) => a.d - b.d);
+  for (const c of cands) {
+    if (canPlace(layout, kept, { kind: f.kind, x: c.x, y: c.y, vertical: c.vertical })) return { x: c.x, y: c.y, vertical: c.vertical };
+  }
+  return null;
 }

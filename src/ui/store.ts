@@ -1,5 +1,5 @@
 import { money, t, type Key } from '../i18n';
-import { CAT_ACC_PRICE, CAT_ACCS, CATEGORIES, FLOOR_STYLES, LEVELS, SIGN_STYLES, STYLE_PRICE, STYLE_UNLOCK, WALL_STYLES } from '../game/defs';
+import { CAT_ACC_PRICE, CAT_ACCS, CAT_TREASURES, CATEGORIES, FLOOR_STYLES, LEVELS, SIGN_STYLES, STYLE_PRICE, STYLE_UNLOCK, WALL_STYLES } from '../game/defs';
 import { catName } from '../game/names';
 import { saveGame } from '../game/state';
 import type { Game } from '../game/game';
@@ -113,6 +113,16 @@ function catCard(g: Game, ui: UI): HTMLElement {
       h('span', { class: 'grow-eff' }, ['']),
     ]),
     h('p', { class: 'muted' }, [t('store.catHint')]),
+    h('div', { class: 'stack' }, [
+      h('span', { class: 'muted' }, [t('store.treasures', { n: Object.keys(g.state.catTreasures).length, total: CAT_TREASURES.length })]),
+      h('div', { class: 'treasures' }, CAT_TREASURES.map((k) => {
+        const n = g.state.catTreasures[k] ?? 0;
+        return h('div', { class: `treasure${n ? '' : ' none'}`, title: n ? t(`treasure.${k}` as Key) : '?' }, [
+          spriteIcon(`treasure_${k}`, 2),
+          h('span', {}, [n ? `×${n}` : '']),
+        ]);
+      })),
+    ]),
     h('div', { class: 'row wrap' }, [
       h('span', { class: 'muted' }, [t('store.catAcc')]),
       ...CAT_ACCS.map((a) => {
