@@ -431,6 +431,8 @@ export const en = {
   'menu.soundOn': 'Sound',
   'menu.music': 'Music',
   'menu.sfx': 'Effects',
+  'menu.play': 'Play',
+  'menu.nightPause': 'Pause at the start of every night',
   'npc.gifts': 'Gifts',
   'npc.favBread': 'Favorite bread',
   'toast.breadUnlock': 'New bread unlocked: {name}',

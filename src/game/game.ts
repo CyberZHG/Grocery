@@ -10,6 +10,7 @@ import { DeliGame } from '../mini/deli';
 import { OdenGame } from '../mini/oden';
 import { T, worldBounds, WorldRenderer, type BuildView, type Hit, type HitAction } from '../render/world';
 import type { UI } from '../ui/app';
+import { getPrefs } from '../core/prefs';
 import { DAY_END, DAY_START, MIDNIGHT, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF_LOOKS, TRAITS, unlockedSkills, type Category, type Skill } from './defs';
 import { BATCH, Sim, type Line } from './sim';
 import { checkAchievements } from './achievements';
@@ -115,7 +116,7 @@ export class Game {
   enterNight(showReport: boolean): void {
     this.phase = 'night';
     this.nightLeft = NIGHT_SECONDS;
-    this.nightPaused = false;
+    this.nightPaused = getPrefs().nightPause;
     this.makeSim();
     this.state.nightRestock += this.sim.restockAll();
     if (!this.state.candidates.length) this.state.candidates = this.makeCandidates();

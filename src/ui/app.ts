@@ -1,3 +1,4 @@
+import { getPrefs, setPrefs } from '../core/prefs';
 import { LOCALES, locale, money, onLocaleChange, setLocale, t, type Key } from '../i18n';
 import { NIGHT_SECONDS } from '../game/defs';
 import type { Game } from '../game/game';
@@ -493,6 +494,11 @@ export class UI {
       langs,
       h('h3', {}, [t('menu.sound')]),
       this.audioControls(),
+      h('h3', {}, [t('menu.play')]),
+      h('label', { class: 'row' }, [
+        h('input', { type: 'checkbox', checked: getPrefs().nightPause, onchange: (e: Event) => setPrefs({ nightPause: (e.target as HTMLInputElement).checked }) }),
+        h('span', {}, [t('menu.nightPause')]),
+      ]),
       h('h3', { class: 'keys-help' }, [t('menu.keys')]),
       h('p', { class: 'muted keys-help' }, [t('menu.keysHelp')]),
       h('h3', {}, [t('menu.data')]),

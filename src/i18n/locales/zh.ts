@@ -433,6 +433,8 @@ export const zh: Record<Key, string> = {
   'menu.soundOn': '声音',
   'menu.music': '音乐',
   'menu.sfx': '音效',
+  'menu.play': '游戏',
+  'menu.nightPause': '每晚开始时自动暂停',
   'npc.gifts': '回礼',
   'npc.favBread': '最爱面包',
   'toast.breadUnlock': '解锁新面包：{name}',

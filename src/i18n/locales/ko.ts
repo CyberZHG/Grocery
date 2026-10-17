@@ -433,6 +433,8 @@ export const ko: Record<Key, string> = {
   'menu.soundOn': '소리',
   'menu.music': '음악',
   'menu.sfx': '효과음',
+  'menu.play': '플레이',
+  'menu.nightPause': '매일 밤이 시작되면 일시 정지',
   'npc.gifts': '선물',
   'npc.favBread': '좋아하는 빵',
   'toast.breadUnlock': '새 빵 해금: {name}',

@@ -433,6 +433,8 @@ export const ja: Record<Key, string> = {
   'menu.soundOn': 'サウンド',
   'menu.music': '音楽',
   'menu.sfx': '効果音',
+  'menu.play': 'プレイ',
+  'menu.nightPause': '毎晩、夜になったら一時停止する',
   'npc.gifts': '贈り物',
   'npc.favBread': '好きなパン',
   'toast.breadUnlock': '新しいパンを解禁：{name}',
