@@ -9,6 +9,7 @@ export function storeName(s: GameState): string {
 export function slotName(s: GameState, i: number): string {
   const name = i === s.active ? s.storeName : s.stores[i].saved?.storeName ?? '';
   if (name.trim()) return name.trim();
+  if (s.stores[i].challenge === 'cafe') return t('cafe.name');
   return i === 0 ? t('store.defaultName') : t(`challenge.${s.stores[i].challenge}.name` as Key);
 }
 

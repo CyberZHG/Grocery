@@ -561,15 +561,110 @@ def sit_legs(cv, look, top, pal):
             cv.px(x0 + dx, 45, f)
 
 
+S16 = 'S' * 16
+POSE_FACE = {
+    ('down', 'talk'): {11: '.sSSSSmEEmSSSSs.', 12: '.ssSSSSmmSSSSss.'},
+    ('down', 'laugh'): {7: S16, 8: 'SSSEESSSSSSEESSS', 9: 'sSESSESSSSESSESs', 11: '.sSSSmEEEEmSSSs.', 12: '.ssSSSmmmmSSss..'},
+    ('down', 'yawn'): {7: S16, 8: S16, 9: 'sSSEESSSSSSEESSs', 11: '.sSSSSmEEmSSSSs.', 12: '.ssSSSmEEmSSSss.'},
+    ('side', 'talk'): {11: '.sSSSSSSSSSSSES.', 12: '.ssSSSSSSSSSSm..'},
+    ('side', 'laugh'): {7: 'SSSsSSSSSSSSSSS.', 8: 'SSsrSSSSSSSSSSS.', 9: 'SSSsSSSSSSSEESSS', 11: '.sSSSSSSSSSSSEE.', 12: '.ssSSSSSSSSSSm..'},
+}
+
+# Interaction poses. Each gives the view, a face, how the legs sit, an extra lift of the body, and arms as
+# (shoulder -> hand) lines; 'late' arms are painted over the head. Coordinates use t = torso top, h = head top.
+POSES = {
+    'wave1': ('down', 'happy', None, 0, lambda t, h: [((9, t + 2), (9, t + 9), 0), ((22, t + 2), (25, t - 7), 1)]),
+    'wave2': ('down', 'happy', None, 0, lambda t, h: [((9, t + 2), (9, t + 9), 0), ((22, t + 2), (27, t - 4), 1)]),
+    'cheer1': ('down', 'happy', None, 1, lambda t, h: [((9, t + 2), (5, t - 7), 1), ((22, t + 2), (26, t - 7), 1)]),
+    'cheer2': ('down', 'laugh', None, 0, lambda t, h: [((9, t + 2), (4, t - 4), 1), ((22, t + 2), (27, t - 4), 1)]),
+    'talk1': ('down', 'talk', None, 0, lambda t, h: [((9, t + 2), (9, t + 9), 0), ((22, t + 2), (23, t + 6), 0), ((23, t + 6), (20, t + 2), 0)]),
+    'talk2': ('down', None, None, 0, lambda t, h: [((9, t + 2), (8, t + 6), 0), ((8, t + 6), (11, t + 3), 0), ((22, t + 2), (22, t + 9), 0)]),
+    'laugh1': ('down', 'laugh', None, 0, lambda t, h: [((9, t + 2), (12, t + 7), 0), ((22, t + 2), (19, t + 7), 0)]),
+    'laugh2': ('down', 'laugh', None, 1, lambda t, h: [((9, t + 2), (11, t + 6), 0), ((22, t + 2), (20, t + 6), 0)]),
+    'crouch': ('down', 'happy', 'crouch', 0, lambda t, h: [((9, t + 2), (9, t + 8), 0), ((22, t + 2), (25, t + 9), 0)]),
+    'photo': ('down', None, None, 0, lambda t, h: [((9, t + 2), (12, h + 12), 1), ((22, t + 2), (19, h + 12), 1)]),
+    'stretch': ('down', 'yawn', None, 1, lambda t, h: [((9, t + 2), (5, t - 11), 1), ((22, t + 2), (26, t - 11), 1)]),
+    'hop': ('down', 'happy', 'hop', 0, lambda t, h: [((9, t + 2), (5, t - 1), 0), ((22, t + 2), (26, t - 1), 0)]),
+    'drink': ('down', None, 'sit', 0, lambda t, h: [((9, t + 2), (9, t + 9), 0), ((22, t + 2), (18, h + 12), 1)]),
+    'give': ('down', 'happy', None, 0, lambda t, h: [((9, t + 2), (13, t + 5), 0), ((22, t + 2), (18, t + 5), 0)]),
+    's_talk1': ('side', 'talk', None, 0, lambda t, h: [((15, t + 2), (17, t + 6), 0), ((17, t + 6), (21, t + 2), 0)]),
+    's_talk2': ('side', None, None, 0, lambda t, h: [((15, t + 2), (19, t + 5), 0)]),
+    's_laugh1': ('side', 'laugh', None, 0, lambda t, h: [((15, t + 2), (17, t + 7), 0)]),
+    's_laugh2': ('side', 'laugh', None, 1, lambda t, h: [((15, t + 2), (18, t + 6), 0)]),
+    's_point': ('side', None, None, 0, lambda t, h: [((15, t + 2), (24, t + 1), 0)]),
+    's_crouch': ('side', 'happy', 'crouch', 0, lambda t, h: [((15, t + 2), (22, t + 8), 0)]),
+    's_photo': ('side', None, None, 0, lambda t, h: [((15, t + 2), (20, h + 11), 1)]),
+    's_wave1': ('side', None, None, 0, lambda t, h: [((15, t + 2), (17, t - 8), 1)]),
+    's_wave2': ('side', None, None, 0, lambda t, h: [((15, t + 2), (21, t - 6), 1)]),
+    's_give': ('side', 'happy', None, 0, lambda t, h: [((15, t + 2), (23, t + 4), 0)]),
+}
+POSE_ORDER = list(POSES)
+
+
+def limb(cv, a, b, tp):
+    """A two-pixel sleeve from shoulder a to hand b, with a skin-coloured hand at the end."""
+    (x0, y0), (x1, y1) = a, b
+    n = max(abs(x1 - x0), abs(y1 - y0), 1)
+    for i in range(n + 1):
+        x = round(x0 + (x1 - x0) * i / n)
+        y = round(y0 + (y1 - y0) * i / n)
+        near_hand = i >= n - 1
+        cv.px(x, y, tp['S'] if near_hand else tp['C'])
+        cv.px(x + 1, y, tp['s'] if near_hand else tp['c'])
+
+
+def camera(cv, x, y):
+    cv.rect(x, y, x + 7, y + 4, hexc('3a3a44'))
+    cv.rect(x + 2, y - 1, x + 4, y - 1, hexc('3a3a44'))
+    cv.rect(x + 3, y + 1, x + 4, y + 3, hexc('8ab0d8'))
+    cv.px(x + 6, y + 1, hexc('f0f0a0'))
+
+
+def crouch_legs(cv, look, d, top, pal):
+    P = pal['P'] if not look.skirt else pal['S']
+    p = pal['p'] if not look.skirt else pal['s']
+    F, f = pal['F'], pal['f']
+    if d == 'side':
+        cv.rect(13, top, 20, top + 1, P)
+        cv.rect(18, top + 2, 20, 43, P)
+        cv.vline(20, top + 2, 43, p)
+        cv.rect(12, top + 2, 14, 43, p)
+        cv.rect(18, 44, 22, 45, F)
+        cv.rect(10, 44, 14, 45, f)
+        return
+    cv.rect(10, top, 21, top + 1, P)
+    for x0 in (10, 19):
+        cv.rect(x0, top + 2, x0 + 2, 43, P)
+        cv.vline(x0 + 2, top + 2, 43, p)
+        cv.rect(x0 - 1, 44, x0 + 3, 44, F)
+        cv.rect(x0 - 1, 45, x0 + 3, 45, f)
+
+
+def hop_legs(cv, look, top, pal):
+    P = pal['P'] if not look.skirt else pal['S']
+    p = pal['p'] if not look.skirt else pal['s']
+    for x0 in (12, 16):
+        cv.rect(x0, top, x0 + 3, top + 2, P)
+        cv.vline(x0 + 3, top, top + 2, p)
+        cv.rect(x0, top + 3, x0 + 3, top + 3, pal['F'])
+        cv.rect(x0, top + 4, x0 + 3, top + 4, pal['f'])
+
+
 EXPRESSION = {
     'happy': {7: 'SSSSSSSSSSSSSSSS', 8: 'SSSEESSSSSSEESSS', 9: 'sSESSESSSSESSESs', 11: '.sSSSSmSSmSSSSs.', 12: '.ssSSSSmmSSSSss.'},
     'sad': {6: 'SSSSESSSSSSESSSS', 11: '.sSSSSSmmSSSSSs.', 12: '.ssSSSmSSmSSSss.'},
 }
 
 
-def draw_frame(look, d, frame, expr=None, work=None, sit=False):
+def draw_frame(look, d, frame, expr=None, work=None, sit=False, pose=None):
     pal = palette(look)
-    if work is not None or sit:
+    spec = POSES.get(pose)
+    lift = 0
+    leg_mode = None
+    if spec:
+        d, expr, leg_mode, lift, _ = spec
+        sit = leg_mode == 'sit'
+    if work is not None or sit or spec:
         frame = 0
     cv = Canvas(FW, FH)
     leg_len = 4 if look.kid else 6
@@ -578,9 +673,13 @@ def draw_frame(look, d, frame, expr=None, work=None, sit=False):
     if sit:
         # a seated body sits lower; the legs fold under it
         legs_top += 1
+    if leg_mode == 'crouch':
+        legs_top += 3 if look.kid else 5
+    if leg_mode == 'hop':
+        legs_top -= 3
     torso_rows = TORSO[d] if not look.kid else [TORSO[d][i] for i in KID_TORSO_ROWS]
     bob = 1 if frame != 0 else 0
-    torso_top = legs_top - len(torso_rows) + 1 - bob
+    torso_top = legs_top - len(torso_rows) + 1 - bob - lift
     head_top = torso_top - 14
     face_x = 8
 
@@ -595,6 +694,10 @@ def draw_frame(look, d, frame, expr=None, work=None, sit=False):
 
     if sit:
         sit_legs(cv, look, legs_top, pal)
+    elif leg_mode == 'crouch':
+        crouch_legs(cv, look, d, legs_top, pal)
+    elif leg_mode == 'hop':
+        hop_legs(cv, look, legs_top, pal)
     else:
         legs(cv, look, d, frame, legs_top, pal)
     if look.skirt:
@@ -618,6 +721,8 @@ def draw_frame(look, d, frame, expr=None, work=None, sit=False):
         if d == 'up':
             swing = -swing
         dys = (swing, -swing)
+        if spec:
+            dys = (None, None)
         if work is not None:
             dys = (-4, 0) if work == 0 else (0, -4)
             if d == 'up':
@@ -655,7 +760,14 @@ def draw_frame(look, d, frame, expr=None, work=None, sit=False):
             cv.px(x, torso_top + 4, look.apron)
         cv.px(15, torso_top + 5, look.apron); cv.px(16, torso_top + 5, look.apron)
         cv.px(15, torso_top + 6, shade(look.apron, 0.2)); cv.px(16, torso_top + 6, shade(look.apron, 0.2))
-    if d == 'side' and work is not None:
+    late = []
+    if spec:
+        for a, b, over in spec[4](torso_top, head_top):
+            if over:
+                late.append((a, b))
+            else:
+                limb(cv, a, b, tp)
+    elif d == 'side' and work is not None:
         paint(cv, 16 if work == 0 else 13, torso_top + 2, WORK_ARM if work == 0 else WORK_ARM[:1] + WORK_ARM[2:], tp)
     elif d == 'side':
         swing = 0 if frame == 0 else (2 if frame == 1 else -2)
@@ -664,9 +776,11 @@ def draw_frame(look, d, frame, expr=None, work=None, sit=False):
         paint(cv, 13 + swing, torso_top + 1, rows, arm_pal)
 
     face = list(FACE[d])
-    if expr and d == 'down':
+    if expr in ('happy', 'sad') and d == 'down':
         for row, line in EXPRESSION[expr].items():
             face[row] = line
+    for row, line in POSE_FACE.get((d, expr), {}).items():
+        face[row] = line
     paint(cv, face_x, head_top, face, pal)
     style = HAIR[look.hair]
     hair_rows = style[d] or HAIR['short'][d]
@@ -687,13 +801,17 @@ def draw_frame(look, d, frame, expr=None, work=None, sit=False):
         ox, oy, rows = GLASSES[d]
         paint(cv, face_x + ox, head_top + oy, rows, pal)
     cv.blit(hair, 0, 0)
+    for a, b in late:
+        limb(cv, a, b, tp)
+    if pose in ('photo', 's_photo'):
+        camera(cv, 12 if pose == 'photo' else 19, head_top + (8 if pose == 'photo' else 7))
     if d == 'up' and work is not None:
         paint(cv, 8 if work == 0 else 22, torso_top - 6, RAISED_ARM, tp)
     cv.outline(0.45)
     return cv
 
 
-FRAMES_PER_ROW = 22
+FRAMES_PER_ROW = 22 + len(POSES)
 
 
 def char_row(look):
@@ -709,6 +827,8 @@ def char_row(look):
         for w in range(2):
             frames.append(draw_frame(look, d, 0, work=w))
     frames.append(draw_frame(look, 'down', 0, 'happy', sit=True))
+    for pose in POSE_ORDER:
+        frames.append(draw_frame(look, 'down', 0, pose=pose))
     return frames
 
 

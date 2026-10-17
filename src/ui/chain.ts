@@ -1,8 +1,9 @@
 import { money, staffName, t, type Key } from '../i18n';
 import {
-  BRANCH_COST, BRANCH_REP, branchBlocker, CHALLENGE_BY_ID, CHALLENGES, doneCount, goalOf, MANAGER_SHARE, managerShare, progressOf, STORE_BONUS, startNextTier, storeIncome,
+  BRANCH_COST, BRANCH_REP, branchBlocker, isCafe, CHALLENGE_BY_ID, CHALLENGES, doneCount, goalOf, MANAGER_SHARE, managerShare, progressOf, STORE_BONUS, startNextTier, storeIncome,
 } from '../game/chain';
 import { saveGame, type StaffState } from '../game/state';
+import { CAFE_TOYS, CAT_COATS } from '../game/defs';
 import type { Game } from '../game/game';
 import { slotName } from '../game/names';
 import type { UI } from './app';
@@ -54,6 +55,12 @@ export function challengeCard(g: Game, i: number): HTMLElement {
   ]);
 }
 
+/** Coats no store has: these cats live at the cafe. */
+function residentCoats(s: Game['state']): string[] {
+  const used = new Set([s.catCoat, ...s.stores.map((x) => x.saved?.catCoat)]);
+  return CAT_COATS.filter((c) => !used.has(c));
+}
+
 /** Pick one of the store's own staff to run it while you're elsewhere. */
 function managerRow(g: Game, i: number): HTMLElement {
   const s = g.state;
@@ -100,6 +107,18 @@ export function chainPanel(g: Game, ui: UI): HTMLElement {
           }, [t('chain.switch')]),
     ]);
     const income = here ? null : h('div', { class: 'muted' }, [t('chain.income', { v: money(storeIncome(slot)) })]);
+    if (isCafe(slot)) {
+      const fixtures = here ? s.fixtures : slot.saved?.fixtures ?? [];
+      const toys = new Set(fixtures.filter((f) => f.decor?.startsWith('toy_')).map((f) => f.decor)).size;
+      out.append(h('div', { class: 'card stack' }, [
+        head, income,
+        h('p', { class: 'muted' }, [t('cafe.hint')]),
+        h('div', { class: 'kv' }, [h('span', {}, [t('cafe.toysLabel')]), h('span', {}, [`${toys} / ${CAFE_TOYS.length}`])]),
+        h('div', { class: 'kv' }, [h('span', {}, [t('cafe.cats')]), h('span', {}, [t('cafe.catsValue', { n: CAT_COATS.length, home: residentCoats(s).length })])]),
+        managerRow(g, i),
+      ]));
+      return;
+    }
     const next = slot.done
       ? h('button', {
           class: 'btn small', disabled: !night,

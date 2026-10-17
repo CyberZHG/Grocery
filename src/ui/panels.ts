@@ -4,7 +4,7 @@ import { rosterSize } from '../game/growth';
 import { spriteIcon } from './achievements';
 
 import type { Game } from '../game/game';
-import { fitFixtures } from '../game/chain';
+import { fitFixtures, inCafe } from '../game/chain';
 import { affinityExpToNext, npcExpToNext, skillExpToNext, skillSpeed, type Leveled } from '../game/rules';
 import { raiseOf, saveGame, wageOf, type DayStats, type Role, type StaffState } from '../game/state';
 import { charIcon, productIcon, type UI } from './app';
@@ -158,6 +158,7 @@ export function regularsPanel(g: Game): HTMLElement {
 export function expandPanel(g: Game, ui: UI): HTMLElement {
   const st = g.state;
   const cur = LEVELS[st.level];
+  if (inCafe(st)) return h('p', { class: 'muted' }, [t('cafe.noExpand')]);
   const next = LEVELS[st.level + 1];
   const out = h('div', { class: 'stack' }, [
     h('div', { class: 'kv' }, [h('span', {}, [t('expand.current')]), h('span', {}, [t('expand.size', { w: cur.w, h: cur.h })])]),

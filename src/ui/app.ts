@@ -37,7 +37,7 @@ export function charIcon(row: number, scale = 1): HTMLElement {
     style: {
       width: `${32 * scale}px`, height: `${40 * scale}px`,
       backgroundImage: `url(${base}assets/chars.png?v=${__BUILD__})`,
-      backgroundSize: `${704 * scale}px auto`,
+      backgroundSize: `${46 * 32 * scale}px auto`,
       backgroundPosition: `0 -${(row * 48 + 2) * scale}px`,
     },
   });

@@ -1,8 +1,8 @@
-import { CAT_COATS, FIXTURES, LEVELS, type Category } from './defs';
+import { CAT_COATS, FIXTURES, LEVELS, STORE_STYLE, type Category } from './defs';
 import { buildLayout, canPlace, type FixturePlacement, type Layout, type LayoutVariant } from './layout';
 import { newGame, stash, STORE_KEYS, totalLevels, type DayStats, type FixtureState, type GameState, type StaffState, type StoreData, type StoreSlot } from './state';
 
-export type ChallengeId = 'main' | 'rush' | 'fresh' | 'oldtown' | 'school' | 'suburb';
+export type ChallengeId = 'main' | 'rush' | 'fresh' | 'oldtown' | 'school' | 'suburb' | 'cafe';
 
 /** Restrictions a branch runs under until its challenge is done. */
 export interface Rules {
@@ -23,7 +23,7 @@ const NO_RULES: Rules = { patience: 1, traffic: 1, budget: 1, cash: null, walk: 
 /** A busy period: center in game minutes, share of the day's visitors, and how far it spreads either side. */
 export type Peak = [minute: number, share: number, spread: number];
 
-type Goal = 'expand' | 'calm' | 'fresh' | 'cash' | 'cleaned' | 'revenue';
+type Goal = 'expand' | 'calm' | 'fresh' | 'cash' | 'cleaned' | 'revenue' | 'none';
 
 export interface ChallengeDef {
   id: ChallengeId;
@@ -44,6 +44,22 @@ export const CHALLENGES: ChallengeDef[] = [
   { id: 'suburb', layout: 'side_mirror', rules: { traffic: 0.55, budget: 1.8 }, peaks: [[780, 0.45, 200], [1110, 0.3, 90]], goal: 'revenue', target: 150000 },
 ];
 export const CHALLENGE_BY_ID = new Map(CHALLENGES.map((c) => [c.id, c]));
+
+/** A new store's own look counts as bought, so it can be reused elsewhere. */
+function ownStyle(s: GameState, style: { floor: string; wall: string; sign: string }): void {
+  for (const key of [`floor:${style.floor}`, `wall:${style.wall}`, `sign:${style.sign}`]) if (!s.owned.includes(key)) s.owned.push(key);
+}
+
+/** The cat cafe: a store with no challenge, opened once every challenge is done; late morning and afternoon tea are busiest. */
+export const CAFE_PEAKS: Peak[] = [[630, 0.35, 120], [930, 0.45, 120]];
+
+export function isCafe(slot: StoreSlot): boolean {
+  return slot.challenge === 'cafe';
+}
+
+export function inCafe(s: GameState): boolean {
+  return isCafe(activeSlot(s));
+}
 
 export const BRANCH_REP = 20;
 /** Cost of opening each branch in turn. */
@@ -70,18 +86,18 @@ export function storeLayout(s: GameState, level = s.level): Layout {
 }
 
 export function peaksOf(s: GameState): Peak[] {
-  return CHALLENGE_BY_ID.get(activeSlot(s).challenge)!.peaks;
+  return inCafe(s) ? CAFE_PEAKS : CHALLENGE_BY_ID.get(activeSlot(s).challenge)!.peaks;
 }
 
 /** Challenges finished at this store, counting each advanced tier. */
 export function completions(slot: StoreSlot): number {
-  return (slot.tier ?? 0) + (slot.done ? 1 : 0);
+  return isCafe(slot) ? 0 : (slot.tier ?? 0) + (slot.done ? 1 : 0);
 }
 
 /** Each advanced tier pushes the store's restrictions further from normal. */
 export function rulesOf(s: GameState): Rules {
   const slot = activeSlot(s);
-  if (slot.done) return NO_RULES;
+  if (slot.done || isCafe(slot)) return NO_RULES;
   const n = slot.tier ?? 0;
   const base = { ...NO_RULES, ...CHALLENGE_BY_ID.get(slot.challenge)!.rules };
   if (!n) return base;
@@ -101,6 +117,7 @@ export function rulesOf(s: GameState): Rules {
 
 /** What the store is working toward at its current tier. */
 export function goalOf(slot: StoreSlot): { goal: Goal; target: number } {
+  if (isCafe(slot)) return { goal: 'none', target: 0 };
   const def = CHALLENGE_BY_ID.get(slot.challenge)!;
   const n = slot.tier ?? 0;
   if (slot.challenge === 'main') return n ? { goal: 'revenue', target: Math.round(MAIN_TIER_TARGET * (1 + 0.75 * (n - 1))) } : { goal: 'expand', target: 1 };
@@ -159,6 +176,7 @@ export function chainPriceMult(p: Perks, cat: Category): number {
 export function progressOf(s: GameState, i = s.active): { value: number; target: number; ratio: number } {
   const slot = s.stores[i];
   const def = goalOf(slot);
+  if (def.goal === 'none') return { value: 0, target: 0, ratio: 0 };
   if (def.goal === 'expand') {
     const data = i === s.active ? s : slot.saved!;
     const max = LEVELS.length - 1;
@@ -172,7 +190,7 @@ export function progressOf(s: GameState, i = s.active): { value: number; target:
 /** Folds a finished day into the active store's challenge. */
 export function recordDay(s: GameState, st: DayStats): void {
   const slot = activeSlot(s);
-  if (slot.done) return;
+  if (slot.done || isCafe(slot)) return;
   switch (goalOf(slot).goal) {
     case 'calm': slot.progress += st.customers - (st.angry ?? 0); break;
     case 'fresh': slot.progress += st.fresh ?? 0; break;
@@ -185,7 +203,7 @@ export function recordDay(s: GameState, st: DayStats): void {
 /** Marks the active store's challenge done when its goal is met; returns it if it just finished. */
 export function checkChallenge(s: GameState): ChallengeId | null {
   const slot = activeSlot(s);
-  if (slot.done) return null;
+  if (slot.done || isCafe(slot)) return null;
   const def = goalOf(slot);
   const met = def.goal === 'expand'
     ? s.level >= LEVELS.length - 1 && s.reputation.level >= BRANCH_REP
@@ -263,8 +281,13 @@ export function tiersDone(s: GameState): number {
 }
 
 /** Why the next branch can't open yet, or null when it can. */
+/** Stores counted toward opening branches; the cafe isn't one of them. */
+function branchCount(s: GameState): number {
+  return s.stores.filter((x) => !isCafe(x)).length;
+}
+
 export function branchBlocker(s: GameState): 'max' | 'challenge' | 'money' | null {
-  const k = s.stores.length;
+  const k = branchCount(s);
   if (k >= CHALLENGES.length) return 'max';
   if (doneCount(s) < k) return 'challenge';
   if (s.money < BRANCH_COST[k - 1]) return 'money';
@@ -273,7 +296,7 @@ export function branchBlocker(s: GameState): 'max' | 'challenge' | 'money' | nul
 
 /** Opens the next branch and moves the owner there. Starter fixtures that don't fit its plan go to storage. */
 export function openBranch(s: GameState): void {
-  const k = s.stores.length;
+  const k = branchCount(s);
   const def = CHALLENGES[k];
   s.money -= BRANCH_COST[k - 1];
   const best = Math.max(s.reputation.level, ...s.stores.map((x) => x.saved?.reputation.level ?? 0));
@@ -281,20 +304,55 @@ export function openBranch(s: GameState): void {
   const coats = new Set([s.catCoat, ...s.stores.map((x) => x.saved?.catCoat)]);
   s.stores[s.active].saved = takeOut(s);
   s.stores.push({ challenge: def.id, layout: def.layout, done: false, progress: 0, saved: null });
-  s.active = k;
+  s.active = s.stores.length - 1;
   s.branch += 1;
   putIn(s, {
     ...takeOut(fresh),
     reputation: { level: Math.max(1, Math.floor(best / 4)), exp: 0 },
     catCoat: CAT_COATS.find((c) => !coats.has(c)) ?? fresh.catCoat,
     openedDay: s.day,
+    style: { ...STORE_STYLE[def.id] },
   });
+  ownStyle(s, STORE_STYLE[def.id]);
   const layout = storeLayout(s);
   for (const f of s.fixtures) {
     f.id = s.nextId++;
     if (layout.mirrored) f.x = layout.w - f.x - (f.vertical || f.kind === 'decor' ? 1 : 2);
   }
   fitFixtures(s);
+}
+
+/** Opens the cat cafe once every store's challenge is done; true if it just opened. Tables and two toys come with it. */
+export function ensureCafe(s: GameState): boolean {
+  if (s.stores.some(isCafe) || !CHALLENGES.every((c) => s.stores.some((x) => x.challenge === c.id && completions(x) > 0))) return false;
+  const fresh = newGame((s.seed * 17 + 101) % 1e9);
+  const coats = new Set([s.catCoat, ...s.stores.map((x) => x.saved?.catCoat)]);
+  const layout = buildLayout(0, 'cafe');
+  const fixtures: FixtureState[] = [];
+  const add = (decor: string, spots: [number, number][]) => {
+    for (const [x, y] of spots) {
+      const f: FixtureState = { id: s.nextId++, kind: 'decor', x, y, vertical: false, placed: true, decor, slots: [{ product: null, stock: 0 }, { product: null, stock: 0 }] };
+      if (canPlace(layout, fixtures, f)) {
+        fixtures.push(f);
+        return;
+      }
+    }
+  };
+  for (const [x, y] of [[2, 3], [4, 3], [6, 3], [2, 5], [4, 5], [6, 5]] as [number, number][]) add('table', [[x, y]]);
+  add('toy_box', [[10, 4], [9, 4], [10, 5]]);
+  add('toy_ball', [[10, 6], [9, 6], [8, 6]]);
+  const best = Math.max(s.reputation.level, ...s.stores.map((x) => x.saved?.reputation.level ?? 0));
+  ownStyle(s, STORE_STYLE.cafe);
+  s.stores.push({
+    challenge: 'cafe', layout: 'cafe', done: false, progress: 0,
+    saved: {
+      ...takeOut(fresh), fixtures, openedDay: s.day,
+      style: { ...STORE_STYLE.cafe },
+      reputation: { level: Math.max(1, Math.floor(best / 4)), exp: 0 },
+      catCoat: CAT_COATS.find((c) => !coats.has(c)) ?? fresh.catCoat,
+    },
+  });
+  return true;
 }
 
 /**

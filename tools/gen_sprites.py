@@ -8,6 +8,7 @@ from pix import Canvas, hexc, tone, mix
 import gen_products as GP
 import gen_chars as GC
 import gen_street as GS
+import gen_cafe as GCF
 import gen_world as GW
 import gen_mini as GM
 import gen_decor as GD
@@ -233,6 +234,14 @@ def atlas():
     for name, fn in GS.BUILDINGS.items():
         items[f'bld_{name}'] = fn()
     items['bld_empty'] = GS.empty_lot()
+    items['decor_table'] = GCF.table()
+    items['cafe_chair'] = GCF.chair()
+    for kind in GCF.TOYS:
+        items[f'decor_toy_{kind}'] = GCF.toy(kind)
+    items['toy_tunnel_front'] = GCF.tunnel_front()
+    for kind, n in GCF.TOY_FRAMES.items():
+        for k in range(n):
+            items[f'toyf_{kind}_{k}'] = GCF.toy_frame(kind, k)
     items['bld_store'] = GS.mini_store()
     for kind in GW.TREASURES:
         items[f'treasure_{kind}'] = GW.treasure(kind)

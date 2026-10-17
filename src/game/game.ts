@@ -14,7 +14,7 @@ import { DAY_END, DAY_START, FIXTURES, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF
 import { BATCH, Sim, type Line } from './sim';
 import { checkAchievements } from './achievements';
 import { catName, slotName } from './names';
-import { chainIncome, checkChallenge, fitFixtures, openBranch as openChainBranch, recordDay, spoil, STORE_BONUS, switchStore as switchChainStore } from './chain';
+import { chainIncome, checkChallenge, ensureCafe, fitFixtures, inCafe, openBranch as openChainBranch, recordDay, spoil, STORE_BONUS, switchStore as switchChainStore } from './chain';
 import { sfx } from '../core/audio';
 import { progressGoals, refreshGoals, type GoalKind } from './goals';
 import { COLLECTION_BONUS } from './progress';
@@ -169,6 +169,7 @@ export class Game {
     const used = new Set([...this.state.staff, ...this.state.former].map((s) => s.name));
     const out: StaffState[] = [];
     const open: Skill[] = unlockedSkills(this.state.level).filter((s) => s !== 'clean');
+    if (inCafe(this.state) && !open.includes('coffee')) open.push('coffee');
     const takenLooks = new Set([...this.state.staff, ...this.state.former].map((s) => s.look));
     const looks = rng.shuffle([...Array(STAFF_LOOKS).keys()].filter((l) => !takenLooks.has(l)));
     for (let i = 0; i < Math.min(3, looks.length); i++) {
@@ -443,7 +444,7 @@ export class Game {
     const a = hit.action;
     if (a.type === 'cat' && a.guest) {
       sfx('meow');
-      this.sim.petGuest();
+      a.guest.bubble = { icon: 'b_heart', until: this.sim.clock + 2 };
       return;
     }
     if (a.type === 'cat') {
@@ -623,6 +624,10 @@ export class Game {
 
   /** Finishes the running store's challenge once its goal is met. */
   checkChain(): void {
+    if (ensureCafe(this.state)) {
+      sfx('fanfare');
+      this.ui.toast(t('cafe.opened'), 'ach');
+    }
     const id = checkChallenge(this.state);
     if (!id) return;
     sfx('fanfare');

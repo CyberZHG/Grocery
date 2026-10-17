@@ -1,7 +1,7 @@
-import { drawChar, drawCharSitting, drawProductSmall, drawSprite, drawText, rect, textWidth } from '../core/assets';
+import { drawChar, drawCharPose, drawCharSitting, drawProductSmall, type CharPose, drawSprite, drawText, rect, textWidth } from '../core/assets';
 import { storeName } from '../game/names';
 import { sfx } from '../core/audio';
-import { BREADS, FIXTURES, PRODUCT_BY_ID, type FixtureKind } from '../game/defs';
+import { BREADS, FIXTURES, PRODUCT_BY_ID, TOY_FRAME_COUNT, TOY_PLAY, type CafeToy, type FixtureKind, type ToyPlay } from '../game/defs';
 import { fixtureCells, type Layout } from '../game/layout';
 import { dateOf, decorHoliday, weatherOf } from '../game/calendar';
 import { equipTier, stars, type EquipKind } from '../game/growth';
@@ -18,7 +18,7 @@ export type HitAction =
   | { type: 'fixture'; fixture: number }
   | { type: 'cell'; x: number; y: number }
   | { type: 'customer'; customer: Customer }
-  | { type: 'cat'; guest?: boolean }
+  | { type: 'cat'; guest?: CatAgent }
   | { type: 'spill'; id: number };
 
 export interface Hit {
@@ -223,30 +223,166 @@ export class WorldRenderer {
   }
 
   /** A cat on the floor, or curled up on top of a cat tower. */
+  /** The cafe toy a cat is playing with right now, and how. */
+  private toyPlay(sim: Sim, c: CatAgent): { f: FixtureState; kind: ToyPlay } | null {
+    if (c.toy === null) return null;
+    const f = sim.state.fixtures.find((x) => x.id === c.toy);
+    if (!f?.decor?.startsWith('toy_')) return null;
+    return { f, kind: TOY_PLAY[f.decor.slice(4) as CafeToy] };
+  }
+
   private drawCat(ctx: CanvasRenderingContext2D, sim: Sim, c: CatAgent, coat: string, acc: string | null, guest: boolean): void {
     const act = !c.mover.path.length || c.act?.kind === 'hop' ? this.actOf(sim, c) : null;
     const u = act ? (sim.clock - act.at) / Math.max(0.01, act.until - act.at) : 0;
     let dx = 0;
     let dy = 0;
     let pose: string = c.mode === 'walk' ? (Math.floor(this.time * 6) % 2 ? 'walk1' : 'walk2') : c.mode;
+    const seed = c === sim.cat ? 0 : 3;
     switch (act?.kind) {
-      case 'wiggle': dx = Math.round(Math.sin(this.time * 16)); pose = 'sit'; break;
-      case 'arch': dx = Math.round(Math.sin(this.time * 40) * 0.6); pose = 'stretch'; break;
-      case 'beg': dy = -3 - this.beat(1, 4); pose = 'sit'; break;
-      case 'play': dy = -Math.round(Math.abs(Math.sin(this.time * 7 + (c === sim.cat ? 0 : 1.6))) * 4); pose = dy < -2 ? 'stretch' : 'sit'; break;
-      case 'hop': dy = -Math.round(Math.sin(u * Math.PI) * 6); break;
-      case 'box': pose = 'loaf'; break;
+      case 'wiggle': pose = this.beat(seed, 3) ? 'rub' : 'sit'; break;
+      case 'arch': dx = Math.round(Math.sin(this.time * 40) * 0.6); pose = 'hiss'; break;
+      case 'beg': pose = this.beat(seed, 2) ? 'beg' : 'bat2'; break;
+      case 'play': {
+        // pounce, leap, swat, land
+        const k = Math.floor(this.time * 5 + seed) % 4;
+        pose = (['pounce', 'leap', 'bat1', 'sit'] as const)[k];
+        dy = k === 1 ? -4 : 0;
+        break;
+      }
+      case 'hop': dy = -Math.round(Math.sin(u * Math.PI) * 6); pose = 'leap'; break;
+      case 'box': pose = 'peek'; break;
+      case 'eat': pose = 'sniff'; break;
+      case 'swipe': pose = 'bat2'; break;
     }
-    const px0 = c.perch ? c.perch.x * T + 4 : Math.round(c.mover.x * T) + 4;
-    const py0 = c.perch ? c.perch.y * T - 23 : Math.round(c.mover.y * T) + 12;
+    let px0 = c.perch ? c.perch.x * T + 4 : Math.round(c.mover.x * T) + 4;
+    let py0 = c.perch ? c.perch.top : Math.round(c.mover.y * T) + 12;
+    let dir = c.mover.dir;
+    let floor = !c.perch;
+    if (c.tag) {
+      // tag: full gallop while moving, crouched and ready when stopped
+      pose = c.mover.path.length ? (Math.floor(this.time * 9) % 2 ? 'run1' : 'run2') : act?.kind === 'swipe' ? 'bat2' : act?.kind === 'hop' ? 'leap' : 'pounce';
+      if (act?.kind === 'hop') dy = -Math.round(Math.sin(u * Math.PI) * 6);
+    }
+    // playing with a cafe toy
+    const play = this.toyPlay(sim, c);
+    let cover: (() => void) | null = null;
+    if (play) {
+      const { f, kind } = play;
+      const name = this.toySprite(f) ?? `decor_${f.decor}`;
+      const [, , tw, th] = rect(name);
+      const cx = f.x * T + 16;
+      const bottom = (f.y + 1) * T;
+      const t = this.time;
+      switch (kind) {
+        case 'chase': {
+          if (f.decor !== 'toy_laser') {
+            // a real ball: the cat runs to wherever it rolled, crouches, then bats it
+            const moving = c.mover.path.length > 0;
+            pose = moving ? (Math.floor(t * 8) % 2 ? 'run1' : 'run2') : act?.kind === 'swipe' ? 'bat2' : 'pounce';
+            break;
+          }
+          // the laser dot loops around and the cat runs after it
+          const a = t * 1.8 + f.id;
+          const tx = Math.round(cx + Math.cos(a) * 26);
+          const ty = Math.round(bottom - 8 + Math.sin(a) * 9);
+          if (f.decor === 'toy_laser') {
+            ctx.fillStyle = 'rgba(255, 60, 60, 0.35)';
+            ctx.fillRect(tx - 2, ty - 2, 5, 5);
+            ctx.fillStyle = '#ff3a3a';
+            ctx.fillRect(tx - 1, ty - 1, 3, 3);
+          } else drawSprite(ctx, name, tx - Math.round(tw / 2), ty - th + 4);
+          const b = a - 0.7;
+          px0 = Math.round(cx + Math.cos(b) * 26) - 12;
+          py0 = Math.round(bottom - 20 + Math.sin(b) * 9);
+          dir = -Math.sin(b) < 0 ? 'left' : 'right';
+          pose = Math.floor(t * 8) % 2 ? 'run1' : 'run2';
+          break;
+        }
+        case 'bat': pose = this.beat(f.id, 4) ? 'bat1' : 'bat2'; break;
+        case 'scratch': pose = this.beat(f.id, 5) ? 'scratch1' : 'scratch2'; break;
+        case 'nap': px0 = cx - 12; py0 = bottom - Math.round(th * 0.55) - 14; pose = 'sleep'; floor = false; break;
+        case 'perch': px0 = cx - 12; py0 = bottom - th - 14 + (f.decor === 'toy_tower' ? 4 : 2); pose = 'loaf'; floor = false; break;
+        case 'hide': {
+          cover = () => drawSprite(ctx, name, f.x * T + Math.round((T - tw) / 2), bottom - th);
+          floor = false;
+          if (f.decor === 'toy_tunnel') {
+            // the whole tunnel is already drawn behind the cat; its walls (openings cut out) go over it
+            cover = () => drawSprite(ctx, 'toy_tunnel_front', f.x * T + Math.round((T - tw) / 2), bottom - th);
+            // runs in one end, out of sight inside, out the other end, a pause, then back through
+            const left = f.x * T + Math.round((T - tw) / 2);
+            const ph = (t * 0.22 + f.id * 0.37) % 1;
+            const u = ph < 0.4 ? ph / 0.4 : ph < 0.5 ? 1 : ph < 0.9 ? 1 - (ph - 0.5) / 0.4 : 0;
+            const ease = u * u * (3 - 2 * u);
+            px0 = Math.round(left - 10 + (tw - 4) * ease);
+            py0 = bottom - 19;
+            const moving = (ph < 0.4 || (ph >= 0.5 && ph < 0.9));
+            pose = moving ? (Math.floor(t * 8) % 2 ? 'run1' : 'run2') : 'sit';
+            dir = ph < 0.5 ? (moving ? 'right' : 'left') : moving ? 'left' : 'right';
+            break;
+          }
+          // tucked inside, popping its head out now and then
+          px0 = cx - 12;
+          py0 = bottom - 18;
+          // mostly out of sight; now and then the head pops up over the edge
+          const out = (t + f.id) % 3 < 1;
+          dy = out ? 5 - th : 0;
+          pose = 'peek';
+          break;
+        }
+        case 'kick': pose = this.beat(f.id, 4) ? 'roll1' : 'roll2'; break;
+      }
+      // side-on to the toy, slide in so the front paws actually reach it (paws sit at x≈21 facing right)
+      const into = { bat: 4, scratch: 2, kick: 6 }[kind as string];
+      const side = Math.round(c.mover.y) === f.y && c.mover.path.length === 0;
+      if (into !== undefined && side) {
+        const toyLeft = cx - Math.round(tw / 2);
+        const toyRight = toyLeft + tw;
+        dir = c.mover.x < f.x ? 'right' : 'left';
+        px0 = dir === 'right' ? toyLeft + into - 22 : toyRight - into - 2;
+      }
+    }
+    // never slide along in a resting pose: anything still on the move walks
+    const resting = !['walk1', 'walk2', 'run1', 'run2', 'leap'].includes(pose);
+    if (resting && c.mover.path.length && !c.perch && !play) pose = Math.floor(this.time * 6) % 2 ? 'walk1' : 'walk2';
+    // a big jump in where the cat should be (onto a toy, out of a box) is shown as a leap with an arc
+    const shown = this.catShown.get(c) ?? { x: px0, y: py0, jump: 0 };
+    this.catShown.set(c, shown);
+    const gx = px0 - shown.x;
+    const gy = py0 - shown.y;
+    const gap = Math.hypot(gx, gy);
+    if (gap < 20 && !shown.jump) {
+      shown.x = px0;
+      shown.y = py0;
+    } else {
+      if (!shown.jump) shown.jump = gap;
+      const step = Math.max(160, shown.jump / 0.35) * this.frameDt;
+      if (gap <= step) {
+        shown.x = px0;
+        shown.y = py0;
+        shown.jump = 0;
+      } else {
+        shown.x += (gx / gap) * step;
+        shown.y += (gy / gap) * step;
+        const k = 1 - gap / shown.jump;
+        px0 = Math.round(shown.x);
+        py0 = Math.round(shown.y - Math.sin(k * Math.PI) * 10);
+        pose = 'leap';
+        dir = gx < 0 ? 'left' : 'right';
+        dx = 0;
+        dy = 0;
+        floor = true;
+        cover = null;
+      }
+    }
     const px = px0 + dx;
     const py = py0 + dy;
-    if (!c.perch) drawSprite(ctx, 'shadow', px0, py0 + 12);
-    drawSprite(ctx, `cat_${coat}_${pose}`, px, py, c.mover.dir === 'left');
-    if (acc) drawSprite(ctx, `cacc_${acc}_${pose}`, px, py, c.mover.dir === 'left');
+    if (floor) drawSprite(ctx, 'shadow', Math.round(shown.x), Math.round(shown.y) + 12);
+    drawSprite(ctx, `cat_${coat}_${pose}`, px, py, dir === 'left');
+    if (acc) drawSprite(ctx, `cacc_${acc}_${pose}`, px, py, dir === 'left');
+    cover?.();
     // tucked into the carton, only the head showing
-    if (act?.kind === 'box') drawSprite(ctx, 'carton', px + 2, py + 6);
-    this.hits.push({ x: px - 4, y: py - 6, w: 32, h: 28, action: guest ? { type: 'cat', guest: true } : { type: 'cat' } });
+    if (act?.kind === 'box') drawSprite(ctx, 'carton', px + 2, py + 15);
+    this.hits.push({ x: px - 4, y: py - 6, w: 32, h: 28, action: guest ? { type: 'cat', guest: c } : { type: 'cat' } });
     if (c.bubble) this.bubble(ctx, c.bubble.icon, (px - 4) / T, (py - 12) / T + 0.6, false);
   }
 
@@ -281,6 +417,7 @@ export class WorldRenderer {
 
   draw(ctx: CanvasRenderingContext2D, sim: Sim, dt: number, build: BuildView | null): void {
     this.time += dt;
+    this.frameDt = dt;
     this.hits = [];
     this.prompts = [];
     this.updateDoor(sim, dt);
@@ -297,9 +434,19 @@ export class WorldRenderer {
     }
     const list: Drawable[] = [];
     this.holidayFloor(sim, list, ctx);
+    const rolling = new Set(sim.cats().map((k) => this.toyPlay(sim, k)).filter((p) => p?.f.decor === 'toy_laser').map((p) => p!.f.id));
+    this.activeToys = new Set([
+      ...sim.cats().map((k) => k.toy).filter((x): x is number => x !== null),
+      ...sim.rollingToys(),
+      ...sim.customers.map((c) => c.using).filter((x): x is number => x !== null),
+    ]);
     for (const f of sim.placed()) {
-      if (build?.hidden === f.id) continue;
-      const bottom = f.vertical ? f.y + 1 : f.y;
+      if (build?.hidden === f.id || rolling.has(f.id)) continue;
+      if (f.decor === 'table') {
+        list.push({ y: f.y + 0.3, draw: () => drawSprite(ctx, 'cafe_chair', f.x * T + 5, f.y * T - 14) });
+        if (!build && sim.seats.has(f.id)) list.push({ y: f.y + 0.55, draw: () => this.drawCup(ctx, f) });
+      }
+      const bottom = f.vertical ? f.y + 1 : f.at?.y ?? f.y;
       list.push({ y: bottom + 0.5, draw: () => this.drawFixture(ctx, f, build?.selected === f.id) });
     }
     l.registers.forEach((r, i) => list.push({ y: r.y + 0.5, draw: () => this.drawRegister(ctx, sim, i) }));
@@ -319,8 +466,13 @@ export class WorldRenderer {
     if (sim.weather === 'rain') list.push({ y: l.h + 0.9, draw: () => drawSprite(ctx, 'umbrella_stand', (l.entrance + 2) * T + 6, (l.h + 1) * T - 12) });
     for (const p of l.pillars) list.push({ y: p.y + 0.5, draw: () => drawSprite(ctx, 'pillar', p.x * T, (p.y + 1) * T - 72) });
     for (const w of sim.workers) list.push({ y: this.seatOf(sim, w)?.y ?? w.mover.y, draw: () => this.drawWorker(ctx, sim, w) });
-    const catY = (c: CatAgent) => (c.perch ? c.perch.y + 0.55 : c.mover.y + 0.2);
+    const catY = (c: CatAgent) => {
+      const play = this.toyPlay(sim, c);
+      if (play && (play.kind === 'nap' || play.kind === 'perch' || play.kind === 'hide')) return play.f.y + 0.55;
+      return c.perch ? c.perch.depth : c.mover.y + 0.2;
+    };
     list.push({ y: catY(sim.cat), draw: () => this.drawCat(ctx, sim, sim.cat, sim.state.catCoat, sim.state.catAcc, false) });
+    for (const k of sim.visitors) list.push({ y: catY(k), draw: () => this.drawCat(ctx, sim, k, k.coat!, k.acc ?? null, true) });
     const g = sim.guest;
     if (g?.agent) {
       const a = g.agent;
@@ -710,6 +862,11 @@ export class WorldRenderer {
   }
 
   private doorUntil = 0;
+  private frameDt = 0;
+  /** Toys being played with this frame: by a cat, rolling, or in a customer's hand. */
+  private activeToys = new Set<number>();
+  /** Where each cat was last drawn, so a sudden change of spot becomes a jump instead of a teleport. */
+  private catShown = new WeakMap<CatAgent, { x: number; y: number; jump: number }>();
 
   /** Open while a worker fetches stock nearby, held briefly so it doesn't flicker. */
   private stockDoorOpen(sim: Sim): boolean {
@@ -726,13 +883,16 @@ export class WorldRenderer {
 
   drawFixture(ctx: CanvasRenderingContext2D, f: FixtureState, selected: boolean, alpha = 1): void {
     if (f.kind === 'decor') {
-      const name = `decor_${f.decor ?? 'plant_small'}`;
-      const [, , , sh] = rect(name);
+      const name = this.toySprite(f) ?? `decor_${f.decor ?? 'plant_small'}`;
+      const [, , sw, sh] = rect(name);
+      // a rolling toy is drawn wherever it has ended up
+      const fx = (f.at?.x ?? f.x) * T;
+      const fy = (f.at?.y ?? f.y) * T;
       ctx.globalAlpha = alpha;
-      drawSprite(ctx, name, f.x * T, (f.y + 1) * T - sh);
+      drawSprite(ctx, name, Math.round(fx + (T - sw) / 2), Math.round(fy + T - sh));
       ctx.globalAlpha = 1;
-      if (selected) drawSprite(ctx, 'select', f.x * T, f.y * T);
-      this.hits.push({ x: f.x * T, y: (f.y + 1) * T - sh, w: T, h: sh, action: { type: 'fixture', fixture: f.id } });
+      if (selected) drawSprite(ctx, 'select', Math.round(fx), Math.round(fy));
+      this.hits.push({ x: fx, y: fy + T - sh, w: T, h: sh, action: { type: 'fixture', fixture: f.id } });
       return;
     }
     const [hh, hv] = FIX_H[f.kind];
@@ -804,6 +964,23 @@ export class WorldRenderer {
       const b = Math.min(gw, x + 3);
       if (b > a) ctx.fillRect(x0 + a, y0 + y, b - a, 1);
     }
+  }
+
+  /**
+   * The frame for an animated toy: quick while it's being played with, a slow sway for hanging toys
+   * left alone, and squashed while a cat lies on a bed or cushion. Null means the static sprite.
+   */
+  private toySprite(f: FixtureState): string | null {
+    const kind = f.decor?.startsWith('toy_') ? (f.decor.slice(4) as CafeToy) : null;
+    const n = kind ? TOY_FRAME_COUNT[kind] : undefined;
+    if (!kind || !n) return null;
+    const active = this.activeToys.has(f.id);
+    const frame = (rate: number) => `toyf_${kind}_${Math.floor(this.time * rate + f.id * 0.3) % n}`;
+    if (kind === 'bed' || kind === 'cushion') return active ? `toyf_${kind}_1` : null;
+    if (kind === 'hammock' || kind === 'box') return active ? frame(2) : null;
+    if (active) return frame(kind === 'spring' || kind === 'dangle' ? 6 : 9);
+    if (kind === 'wand' || kind === 'fishing' || kind === 'ribbon' || kind === 'dangle') return frame(1.2);
+    return null;
   }
 
   /** Small-icon positions for one slot, relative to the sprite's left and top, ordered back to front. */
@@ -888,11 +1065,40 @@ export class WorldRenderer {
     else id = who.state === 'browse' ? who.seat : null;
     if (id === null || sim.seats.get(id) !== who) return null;
     const f = sim.state.fixtures.find((x) => x.id === id);
-    return f ? { f, y: f.y + 0.6 } : null;
+    // at a cafe table the sitter is behind the table; on a bench in front of it
+    return f ? { f, y: f.y + (f.decor === 'table' ? 0.4 : 0.6) } : null;
+  }
+
+  private sipping(f: FixtureState): boolean {
+    return (this.time + f.id * 0.7) % 4 < 0.8;
+  }
+
+  /** A coffee cup on the table, raised to the mouth in the sipping frame every few seconds. */
+  private drawCup(ctx: CanvasRenderingContext2D, f: FixtureState): void {
+    const sip = this.sipping(f);
+    // sipping: the rim at the mouth (face row 11 of the seated frame), held in the raised hand
+    const x = f.x * T + (sip ? 14 : 8);
+    const y = f.y * T + (sip ? -3 : 5);
+    ctx.fillStyle = '#2a2430';
+    ctx.fillRect(x - 1, y - 1, 7, 7);
+    ctx.fillStyle = '#f4efe6';
+    ctx.fillRect(x, y, 5, 5);
+    ctx.fillStyle = '#8a5a3a';
+    ctx.fillRect(x, y, 5, 1);
+    if (!sip) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      const ph = (this.time * 0.8 + f.id) % 1;
+      ctx.fillRect(x + 2, Math.round(y - 2 - ph * 5), 1, 2);
+    }
   }
 
   /** Seated frame with the lap on the bench seat and the feet over its front edge. */
   private drawSitting(ctx: CanvasRenderingContext2D, row: number, f: FixtureState): void {
+    if (f.decor === 'table') {
+      if (this.sipping(f)) drawCharPose(ctx, row, 'drink', false, f.x * T, f.y * T - 31);
+      else drawCharSitting(ctx, row, f.x * T, f.y * T - 31);
+      return;
+    }
     drawSprite(ctx, 'shadow', f.x * T + 4, f.y * T + 27);
     drawCharSitting(ctx, row, f.x * T, f.y * T - 26);
   }
@@ -903,26 +1109,61 @@ export class WorldRenderer {
   }
 
   /** Body pose for an interaction: which working frame, a vertical offset, and how far to crouch. */
-  private pose(sim: Sim, act: Act | null, seed: number): { work: 0 | 1 | null; dy: number; crouch: number } {
-    if (!act) return { work: null, dy: 0, crouch: 0 };
+  /**
+   * How an interaction looks: a dedicated frame for the front and side views (side frames face right and are
+   * flipped for left), plus a small vertical offset for jumps. From behind the face doesn't show, so the
+   * working poses stand in.
+   */
+  private pose(sim: Sim, act: Act | null, seed: number, dir: Dir): { frame: CharPose | null; work: 0 | 1 | null; dy: number; crouch: number } {
+    const none = { frame: null, work: null, dy: 0, crouch: 0 };
+    if (!act) return none;
     const u = (sim.clock - act.at) / Math.max(0.01, act.until - act.at);
-    switch (act.kind) {
-      case 'talk': return { work: this.beat(seed, 3), dy: this.beat(seed + 1, 1.5) ? -1 : 0, crouch: 0 };
-      case 'wave': return { work: this.beat(seed, 7), dy: 0, crouch: 0 };
-      case 'laugh': return { work: null, dy: -Math.round(Math.abs(Math.sin(this.time * 12 + seed)) * 2), crouch: 0 };
-      case 'point':
-      case 'reach':
-      case 'photo': return { work: 0, dy: 0, crouch: 0 };
-      case 'cheer': return { work: this.beat(seed, 8), dy: -1, crouch: 0 };
-      case 'stretch': return { work: u < 0.6 ? 1 : null, dy: u < 0.6 ? -1 : 0, crouch: 0 };
-      case 'hop': return { work: null, dy: -Math.round(Math.sin(u * Math.PI) * 5), crouch: 0 };
-      case 'crouch': return { work: 0, dy: 0, crouch: 5 };
+    const side = dir === 'left' || dir === 'right';
+    const pick = (front: CharPose, profile: CharPose) => ({ ...none, frame: side ? profile : front });
+    const two = (a: CharPose, b: CharPose, sa: CharPose, sb: CharPose, rate: number) => (this.beat(seed, rate) ? pick(a, sa) : pick(b, sb));
+    if (dir === 'up') {
+      if (act.kind === 'crouch') return { ...none, work: 0, crouch: 5 };
+      if (act.kind === 'hop') return { ...none, dy: -Math.round(Math.sin(u * Math.PI) * 5) };
+      return act.kind === 'laugh' ? none : { ...none, work: this.beat(seed, act.kind === 'wave' ? 7 : 3) };
     }
-    return { work: null, dy: 0, crouch: 0 };
+    switch (act.kind) {
+      case 'talk': return two('talk1', 'talk2', 's_talk1', 's_talk2', 3);
+      case 'wave': return two('wave1', 'wave2', 's_wave1', 's_wave2', 6);
+      case 'laugh': return two('laugh1', 'laugh2', 's_laugh1', 's_laugh2', 6);
+      case 'cheer': return two('cheer1', 'cheer2', 's_wave1', 's_wave2', 7);
+      case 'point': return pick('give', 's_point');
+      case 'reach':
+      case 'read': return pick('give', 's_give');
+      case 'photo': return pick('photo', 's_photo');
+      case 'crouch': return pick('crouch', 's_crouch');
+      case 'stretch': return u < 0.7 ? { ...none, frame: 'stretch' } : none;
+      case 'hop': return { ...none, frame: 'hop', dy: -Math.round(Math.sin(u * Math.PI) * 3) };
+    }
+    return none;
+  }
+
+  /** A small open magazine held in both hands (front) or out in front (side). */
+  private drawMagazine(ctx: CanvasRenderingContext2D, dir: Dir, px: number, py: number): void {
+    const side = dir === 'left' || dir === 'right';
+    const x = side ? (dir === 'left' ? px + 2 : px + 22) : px + 12;
+    const y = py + (side ? 29 : 31);
+    ctx.fillStyle = '#2a2430';
+    ctx.fillRect(x - 1, y - 1, 10, 8);
+    ctx.fillStyle = '#f4f0e8';
+    ctx.fillRect(x, y, 8, 6);
+    ctx.fillStyle = '#e07a9a';
+    ctx.fillRect(x, y, 4, 6);
+    ctx.fillStyle = '#9aa0ac';
+    ctx.fillRect(x + 5, y + 2, 2, 1);
+    ctx.fillRect(x + 5, y + 4, 2, 1);
   }
 
   /** drawChar with an optional crouch: the body sinks and the legs are clipped at the floor line. */
-  private drawBody(ctx: CanvasRenderingContext2D, row: number, dir: Dir, frame: number, px: number, py: number, expr: 'happy' | 'sad' | null, work: 0 | 1 | null, crouch: number): void {
+  private drawBody(ctx: CanvasRenderingContext2D, row: number, dir: Dir, frame: number, px: number, py: number, expr: 'happy' | 'sad' | null, work: 0 | 1 | null, crouch: number, pose: CharPose | null = null): void {
+    if (pose) {
+      drawCharPose(ctx, row, pose, dir === 'left', px, py);
+      return;
+    }
     if (!crouch) {
       drawChar(ctx, row, dir, frame, px, py, expr, work);
       return;
@@ -963,7 +1204,7 @@ export class WorldRenderer {
     const [px, py0] = this.charPos(w.mover.x, w.mover.y);
     const t = w.task;
     const act = !w.mover.path.length && !this.working(w) ? this.actOf(sim, w) : null;
-    const pose = this.pose(sim, act, w.staffId + 7);
+    const pose = this.pose(sim, act, w.staffId + 7, w.mover.dir);
     const py = py0 + pose.dy;
     const work = this.working(w) ? this.beat(w.staffId, t.type === 'clean' ? 4 : 5) : pose.work;
     const frame = w.mover.frame();
@@ -974,7 +1215,7 @@ export class WorldRenderer {
     if (stocking) drawSprite(ctx, 'carton', dir === 'left' ? px + 14 : px - 2, py + 34);
     if (t.type === 'clean' && work !== null) this.drawMop(ctx, px, py, true);
     if (work !== null && !act) this.drawStockItem(ctx, sim, w, px, py, true);
-    this.drawBody(ctx, w.row, act ? w.mover.dir : dir, frame, px, py, w.bubble?.icon === 'b_heart' || act?.kind === 'laugh' ? 'happy' : null, work, pose.crouch);
+    this.drawBody(ctx, w.row, act ? w.mover.dir : dir, frame, px, py, w.bubble?.icon === 'b_heart' || act?.kind === 'laugh' ? 'happy' : null, work, pose.crouch, pose.frame);
     if (t.type === 'clean' && work !== null) this.drawMop(ctx, px, py, false);
     if (w.carrying && !stocking) drawSprite(ctx, 'carton', px + 6, py + 22 + (frame ? 1 : 0));
     if (work !== null && !act) {
@@ -1079,7 +1320,7 @@ export class WorldRenderer {
     const reaching = still && c.state === 'browse' && c.pick !== null && sim.clock - c.pick.at < 0.5;
     const paying = still && c.line?.kind === 'register' && this.serving(c.line) === c;
     const act = still && !reaching && !paying ? this.actOf(sim, c) : null;
-    const pose = this.pose(sim, act, c.id);
+    const pose = this.pose(sim, act, c.id, c.mover.dir);
     const py = py0 + pose.dy;
     const work = reaching ? 0 : paying ? this.beat(c.id, 3) : pose.work;
     let dir = c.mover.dir;
@@ -1090,7 +1331,8 @@ export class WorldRenderer {
     const tired = c.state === 'queue' && c.wait > 8 * c.npc.patience;
     const expr = icon === 'b_heart' || act?.kind === 'laugh' ? 'happy' : icon === 'b_sad' || icon === 'b_wait' || icon === 'b_empty' || tired ? 'sad' : null;
     this.drawPick(ctx, sim, c, true);
-    this.drawBody(ctx, c.row, act ? c.mover.dir : dir, c.mover.frame(), px, py, work === null ? expr : null, work, pose.crouch);
+    this.drawBody(ctx, c.row, act ? c.mover.dir : dir, c.mover.frame(), px, py, work === null ? expr : null, work, pose.crouch, pose.frame);
+    if (act?.kind === 'read' && c.mover.dir !== 'up') this.drawMagazine(ctx, c.mover.dir, px, py);
     this.drawPick(ctx, sim, c, false);
     this.hits.push({ x: px + 6, y: py + 4, w: 20, h: 40, action: { type: 'customer', customer: c } });
     if (showBasket && dir !== 'up') drawSprite(ctx, 'basket', dir === 'left' ? px + 2 : px + 14, py + 28);

@@ -1,7 +1,8 @@
 import { money, productName, t, type Key } from '../i18n';
-import { CATEGORIES, DECOR_KINDS, DECOR_PRICE, DECOR_UNLOCK, FIXTURES, NPCS, PRODUCT_BY_ID, PRODUCTS, type Category, type DecorKind, type FixtureKind, type ProductDef } from '../game/defs';
+import { CAFE_TOYS, CATEGORIES, DECOR_KINDS, DECOR_PRICE, DECOR_UNLOCK, FIXTURES, TABLE_PRICE, TOY_PRICE, type CafeToy, NPCS, PRODUCT_BY_ID, PRODUCTS, type Category, type DecorKind, type FixtureKind, type ProductDef } from '../game/defs';
 import { rosterSize } from '../game/growth';
 import { categoryLevels, collectionMult, isUnlocked, levelsNeeded, MAX_PRODUCT_LEVEL, priceMult, productExpToNext, unlockIndex } from '../game/progress';
+import { inCafe } from '../game/chain';
 import type { Game } from '../game/game';
 import { canPlace, type FixturePlacement } from '../game/layout';
 import { saveGame, stash, type FixtureState } from '../game/state';
@@ -11,6 +12,19 @@ import { productIcon } from './app';
 import { clear, h } from './dom';
 
 const KINDS: FixtureKind[] = ['shelf', 'produce', 'fridge', 'freezer'];
+
+function decorPrice(decor: string): number {
+  if (decor === 'table') return TABLE_PRICE;
+  if (decor.startsWith('toy_')) return TOY_PRICE[decor.slice(4) as CafeToy];
+  return DECOR_PRICE[decor as DecorKind] ?? FIXTURES.decor.price;
+}
+
+function fixtureLabel(f: FixtureState): string {
+  if (f.kind !== 'decor') return t(`fixture.${f.kind}` as Key);
+  if (f.decor === 'table') return t('cafe.table');
+  if (f.decor?.startsWith('toy_')) return t(`toy.${f.decor.slice(4)}` as Key);
+  return t(`decor.${f.decor}` as Key);
+}
 
 export class BuildMode {
   private selected: number | null = null;
@@ -90,6 +104,7 @@ export class BuildMode {
       if (this.valid(cand)) {
         this.snapshot();
         Object.assign(f, { x: c.x, y: c.y, placed: true });
+        delete f.at;
         this.placing = null;
         this.fresh = false;
         this.selected = f.id;
@@ -117,6 +132,7 @@ export class BuildMode {
         this.snapshot();
         f.x = c.x;
         f.y = c.y;
+        delete f.at;
         this.game.rebuild();
         this.sync();
       } else {
@@ -162,6 +178,7 @@ export class BuildMode {
         this.snapshot();
         f.x = d.x;
         f.y = d.y;
+        delete f.at;
         this.game.rebuild();
       } else {
         this.ui.toast(t('build.invalid'));
@@ -238,8 +255,8 @@ export class BuildMode {
     this.render();
   }
 
-  private buy(kind: FixtureKind, decor?: DecorKind): void {
-    const price = decor ? DECOR_PRICE[decor] : FIXTURES[kind].price;
+  private buy(kind: FixtureKind, decor?: string): void {
+    const price = decor ? decorPrice(decor) : FIXTURES[kind].price;
     if (this.state.money < price) {
       this.ui.toast(t('build.noMoney'));
       return;
@@ -294,7 +311,7 @@ export class BuildMode {
   }
 
   private refundValue(f: FixtureState): number {
-    return (f.decor ? DECOR_PRICE[f.decor as DecorKind] ?? FIXTURES.decor.price : FIXTURES[f.kind].price) * 0.5;
+    return (f.decor ? decorPrice(f.decor) : FIXTURES[f.kind].price) * 0.5;
   }
 
   private pick(fixtureId: number, slot: number): void {
@@ -319,7 +336,7 @@ export class BuildMode {
     if (this.placing) {
       const f = this.placing;
       this.el.append(h('div', { class: 'row' }, [
-        h('span', { class: 'tag' }, [t(`fixture.${f.kind}` as Key)]),
+        h('span', { class: 'tag' }, [fixtureLabel(f)]),
         h('button', { class: 'btn small', onclick: () => this.rotate(f) }, [t('build.rotate')]),
         h('button', { class: 'btn small ghost', onclick: () => this.cancelPlacing() }, [t('common.cancel')]),
       ]));
@@ -328,7 +345,7 @@ export class BuildMode {
     const sel = this.selected !== null ? st.fixtures.find((f) => f.id === this.selected) : null;
     if (sel && sel.kind === 'decor') {
       this.el.append(h('div', { class: 'row wrap' }, [
-        h('span', { class: 'tag' }, [t(`decor.${sel.decor}` as Key)]),
+        h('span', { class: 'tag' }, [fixtureLabel(sel)]),
         h('button', { class: 'btn small warn', onclick: () => this.sell(sel) }, [t('build.sell', { v: money(this.refundValue(sel)) })]),
       ]));
       return;
@@ -351,6 +368,23 @@ export class BuildMode {
       ]));
       return;
     }
+    if (inCafe(st)) {
+      // the cafe sells no groceries: tables and cat toys only
+      const owned = new Set(st.fixtures.map((f) => f.decor));
+      this.el.append(h('div', { class: 'row wrap' }, [
+        h('span', { class: 'tag' }, [t('build.buy')]),
+        h('button', { class: 'btn small', disabled: st.money < TABLE_PRICE, onclick: () => this.buy('decor', 'table') }, [`${t('cafe.table')} ${money(TABLE_PRICE)}`]),
+      ]));
+      this.el.append(h('div', { class: 'row wrap' }, [
+        h('span', { class: 'tag' }, [t('cafe.toys', { n: CAFE_TOYS.filter((k) => owned.has(`toy_${k}`)).length, total: CAFE_TOYS.length })]),
+        ...CAFE_TOYS.map((k) => h('button', {
+          class: `btn small${owned.has(`toy_${k}`) ? ' active' : ''}`, disabled: st.money < TOY_PRICE[k],
+          onclick: () => this.buy('decor', `toy_${k}`),
+        }, [`${t(`toy.${k}` as Key)} ${money(TOY_PRICE[k])}`])),
+      ]));
+      this.storedRow();
+      return;
+    }
     const shop = KINDS.map((k) => h('button', { class: 'btn small', disabled: st.money < FIXTURES[k].price, onclick: () => this.buy(k) }, [
       `${t(`fixture.${k}` as Key)} ${money(FIXTURES[k].price)}`,
     ]));
@@ -365,13 +399,16 @@ export class BuildMode {
         ]);
       }),
     ]));
-    const stored = st.fixtures.filter((f) => !f.placed);
-    if (stored.length) {
-      this.el.append(h('div', { class: 'row wrap' }, [
-        h('span', { class: 'tag' }, [t('build.storage')]),
-        ...stored.map((f) => h('button', { class: 'btn small', onclick: () => this.startPlacing(f) }, [f.kind === 'decor' ? t(`decor.${f.decor}` as Key) : t(`fixture.${f.kind}` as Key)])),
-      ]));
-    }
+    this.storedRow();
+  }
+
+  private storedRow(): void {
+    const stored = this.state.fixtures.filter((f) => !f.placed);
+    if (!stored.length) return;
+    this.el.append(h('div', { class: 'row wrap' }, [
+      h('span', { class: 'tag' }, [t('build.storage')]),
+      ...stored.map((f) => h('button', { class: 'btn small', onclick: () => this.startPlacing(f) }, [fixtureLabel(f)])),
+    ]));
   }
 }
 

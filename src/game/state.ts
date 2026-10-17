@@ -1,4 +1,4 @@
-import { BREAD_UNLOCK, BREADS, CAT_COATS, CATEGORIES, NPCS, SKILLS, START_MONEY, type Bread, type Category, type CatCoat, type FixtureKind, type Skill } from './defs';
+import { BREAD_UNLOCK, BREADS, CAT_COATS, CATEGORIES, NPCS, SKILLS, START_MONEY, STORE_STYLE, type Bread, type Category, type CatCoat, type FixtureKind, type Skill } from './defs';
 import type { GoalsState } from './goals';
 import { freshGrowth, type CatState, type EquipKind } from './growth';
 import { collectionCount, freshProducts, UNLOCK_ORDER, type ProductProgress } from './progress';
@@ -22,6 +22,8 @@ export interface FixtureState {
   slots: [SlotState, SlotState];
   /** decor fixtures only */
   decor?: string;
+  /** where a rolling toy has ended up, in tiles; unset until it first moves */
+  at?: { x: number; y: number };
 }
 
 export type Role = 'auto' | 'cashier' | 'stocker' | 'service';
@@ -322,6 +324,16 @@ export function migrate(data: unknown): GameState | null {
     s.inventory ??= {};
     s.catTreasures ??= {};
     s.street ??= emptyStreet();
+    // branches opened before every store had its own look get theirs, unless they were already renovated
+    const plain = (st: { floor: string; wall: string; sign: string }) => st.floor === 'cream' && st.wall === 'beige' && st.sign === 'wood';
+    s.stores.forEach((slot, i) => {
+      if (slot.challenge === 'main') return;
+      const look = STORE_STYLE[slot.challenge];
+      const data = i === s.active ? s : slot.saved;
+      if (!look || !data || !plain(data.style)) return;
+      data.style = { ...look };
+      for (const key of [`floor:${look.floor}`, `wall:${look.wall}`, `sign:${look.sign}`]) if (!s.owned.includes(key)) s.owned.push(key);
+    });
     for (const slot of s.stores) if (slot.saved) slot.saved.street ??= emptyStreet();
     s.collections ??= CATEGORIES.filter((c) => collectionCount(c, s.products) === UNLOCK_ORDER[c].length);
     s.savedAt ??= Date.now();

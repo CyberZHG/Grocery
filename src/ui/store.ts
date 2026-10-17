@@ -1,6 +1,7 @@
 import { money, t, type Key } from '../i18n';
-import { CAT_ACC_PRICE, CAT_ACCS, CAT_TREASURES, CATEGORIES, FLOOR_STYLES, LEVELS, SIGN_STYLES, STYLE_PRICE, STYLE_UNLOCK, WALL_STYLES } from '../game/defs';
-import { catName } from '../game/names';
+import { CAT_ACC_PRICE, CAT_ACCS, CAT_COATS, CAT_TREASURES, CATEGORIES, FLOOR_STYLES, LEVELS, SIGN_STYLES, STYLE_PRICE, STYLE_UNLOCK, WALL_STYLES } from '../game/defs';
+import { catName, slotName } from '../game/names';
+import { inCafe } from '../game/chain';
 import { saveGame } from '../game/state';
 import type { Game } from '../game/game';
 import {
@@ -67,6 +68,7 @@ export function storePanel(g: Game, ui: UI): HTMLElement {
     ]),
     h('h3', {}, [t('store.cat')]),
     catCard(g, ui),
+    inCafe(s) ? cafeCats(g) : null,
     h('h3', {}, [t('store.equipment')]),
     h('div', { class: 'card' }, EQUIPMENT.filter((k) => equipOpen(s.level, k)).map((k) =>
       row(t(`equip.${k}` as Key), s.equipment[k], equipExpToNext, t('store.equipEffect', { v: equipSpeed(s.equipment[k].level).toFixed(2) })),
@@ -79,6 +81,46 @@ export function storePanel(g: Game, ui: UI): HTMLElement {
     trends(s.history.slice(-30)),
   ]);
   return out;
+}
+
+/** At the cat cafe: every store's cat, then the coats that live here. */
+function cafeCats(g: Game): HTMLElement {
+  const s = g.state;
+  const cards: HTMLElement[] = [];
+  s.stores.forEach((slot, i) => {
+    const d = slot.saved;
+    if (i === s.active || !d) return;
+    const name = d.catName.trim() || t('store.catDefault');
+    cards.push(h('div', { class: 'card cafe-cat' }, [
+      h('div', { class: 'card-head' }, [
+        h('span', { class: 'layered' }, [spriteIcon(`cat_${d.catCoat}_sit`, 2), d.catAcc ? spriteIcon(`cacc_${d.catAcc}_sit`, 2) : null]),
+        h('div', { class: 'card-title' }, [
+          h('strong', {}, [name]),
+          h('span', { class: 'muted' }, [`${t(`coat.${d.catCoat}` as Key)} · ${slotName(s, i)}`]),
+        ]),
+      ]),
+      row(t('store.cat'), d.cat, catExpToNext, ''),
+      h('div', { class: 'grow-row' }, [
+        h('span', { class: 'grow-name' }, [t('store.catMood')]),
+        h('span', { class: 'grow-lv' }, [`${Math.round(d.cat.mood)}`]),
+        h('div', { class: 'meter heart' }, [h('div', { class: 'fill', style: { width: `${d.cat.mood}%` } })]),
+        h('span', { class: 'grow-eff' }, ['']),
+      ]),
+    ]));
+  });
+  const used = new Set([s.catCoat, ...s.stores.map((x) => x.saved?.catCoat)]);
+  for (const coat of CAT_COATS.filter((c) => !used.has(c))) {
+    cards.push(h('div', { class: 'card cafe-cat' }, [
+      h('div', { class: 'card-head' }, [
+        spriteIcon(`cat_${coat}_sleep`, 2),
+        h('div', { class: 'card-title' }, [
+          h('strong', {}, [t(`coat.${coat}` as Key)]),
+          h('span', { class: 'muted' }, [t('cafe.resident')]),
+        ]),
+      ]),
+    ]));
+  }
+  return h('div', { class: 'stack' }, [h('h3', {}, [t('cafe.allCats', { n: cards.length + 1 })]), h('div', { class: 'cards' }, cards)]);
 }
 
 function catCard(g: Game, ui: UI): HTMLElement {
@@ -260,7 +302,8 @@ function renovate(g: Game, ui: UI): void {
         const price = STYLE_PRICE[key][i];
         const owned = price === 0 || s.owned.includes(`${key}:${st}`);
         return h('button', {
-          class: `reno${s.style[key] === st ? ' active' : ''}`, disabled: !open || (!owned && s.money < price),
+          // owned styles stay selectable whatever the reputation
+          class: `reno${s.style[key] === st ? ' active' : ''}`, disabled: !owned && (!open || s.money < price),
           onclick: () => {
             if (!owned) {
               s.money -= price;
@@ -275,7 +318,7 @@ function renovate(g: Game, ui: UI): void {
         }, [
           spriteIcon(preview(st), key === 'wall' ? 1 : 2),
           h('span', {}, [t(`reno.${key}.${st}` as Key)]),
-          !open ? h('small', { class: 'muted' }, [t('reno.needs', { n: unlock[i] })]) : owned ? null : h('small', { class: 'muted' }, [money(price)]),
+          owned ? null : !open ? h('small', { class: 'muted' }, [t('reno.needs', { n: unlock[i] })]) : h('small', { class: 'muted' }, [money(price)]),
         ]);
       })),
     ]);

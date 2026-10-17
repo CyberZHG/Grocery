@@ -1,4 +1,4 @@
-import { FIXTURES, LEVELS, type FixtureKind, type StationKind } from './defs';
+import { FIXTURES, isRolling, LEVELS, type FixtureKind, type LevelDef, type StationKind } from './defs';
 
 export interface P {
   x: number;
@@ -48,7 +48,7 @@ export interface Layout {
 }
 
 /** Each store in the chain gets its own floor plan. */
-export type LayoutVariant = 'base' | 'mirror' | 'pillars' | 'side' | 'pillars_mirror' | 'side_mirror';
+export type LayoutVariant = 'base' | 'mirror' | 'pillars' | 'side' | 'pillars_mirror' | 'side_mirror' | 'cafe';
 export const LAYOUT_VARIANTS: LayoutVariant[] = ['base', 'mirror', 'pillars', 'side', 'pillars_mirror', 'side_mirror'];
 
 export interface FixturePlacement {
@@ -56,6 +56,7 @@ export interface FixturePlacement {
   x: number;
   y: number;
   vertical: boolean;
+  decor?: string;
 }
 
 export function fixtureCells(f: FixturePlacement): P[] {
@@ -63,8 +64,12 @@ export function fixtureCells(f: FixturePlacement): P[] {
   return f.vertical ? [{ x: f.x, y: f.y }, { x: f.x, y: f.y + 1 }] : [{ x: f.x, y: f.y }, { x: f.x + 1, y: f.y }];
 }
 
+/** The cat cafe never grows: one register and a coffee counter. */
+export const CAFE_LEVEL: LevelDef = { w: 14, h: 10, registers: 1, cards: 0, stations: ['coffee'], bagging: false, cost: 0, roster: 60, rent: 60 };
+
 export function buildLayout(level: number, variant: LayoutVariant = 'base'): Layout {
-  const l = baseLayout(level, variant.startsWith('pillars'), variant.startsWith('side'));
+  if (variant === 'cafe') return baseLayout(CAFE_LEVEL, -1, false, false);
+  const l = baseLayout(LEVELS[level], level, variant.startsWith('pillars'), variant.startsWith('side'));
   return variant === 'mirror' || variant.endsWith('_mirror') ? mirror(l) : l;
 }
 
@@ -90,8 +95,7 @@ function mirror(l: Layout): Layout {
   };
 }
 
-function baseLayout(level: number, withPillars: boolean, side: boolean): Layout {
-  const def = LEVELS[level];
+function baseLayout(def: LevelDef, level: number, withPillars: boolean, side: boolean): Layout {
   const { w, h } = def;
   const rows = h + 2;
   const reserved = new Uint8Array(w * rows);
@@ -199,7 +203,8 @@ export class Grid {
     this.w = layout.w;
     this.rows = layout.rows;
     this.block = layout.solid.slice();
-    for (const f of fixtures) for (const c of fixtureCells(f)) this.block[c.y * this.w + c.x] = 1;
+    // rolling toys are small enough to step over
+    for (const f of fixtures) if (!isRolling(f.decor)) for (const c of fixtureCells(f)) this.block[c.y * this.w + c.x] = 1;
   }
 
   inside(x: number, y: number): boolean {

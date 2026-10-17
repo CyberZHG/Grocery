@@ -189,19 +189,65 @@ export const DECOR_UNLOCK: Record<DecorKind, number> = {
 export const DECOR_PRICE: Record<DecorKind, number> = {
   plant_small: 40, flowers: 60, bench: 120, cactus: 80, lamp: 600, gumball: 900, magazine: 1200, cat_tower: 300, aquarium: 3000,
 };
-export const FLOOR_STYLES = ['cream', 'wood', 'blue', 'terrazzo', 'mint'] as const;
-export const WALL_STYLES = ['beige', 'mint', 'brick', 'navy'] as const;
-export const SIGN_STYLES = ['wood', 'metal', 'chalk', 'neon'] as const;
+/** How a cat plays with a toy; the renderer animates each style. */
+export type ToyPlay = 'chase' | 'bat' | 'scratch' | 'nap' | 'hide' | 'perch' | 'kick';
+
+export const CAFE_TOYS = [
+  'ball', 'pingpong', 'bellball', 'laser', 'mouse', 'wand', 'fishing', 'ribbon', 'spring', 'dangle',
+  'post', 'board', 'bed', 'hammock', 'cushion', 'tunnel', 'box', 'tower', 'window', 'kicker',
+] as const;
+export type CafeToy = (typeof CAFE_TOYS)[number];
+
+export const TOY_PLAY: Record<CafeToy, ToyPlay> = {
+  ball: 'chase', pingpong: 'chase', bellball: 'chase', laser: 'chase', mouse: 'chase',
+  wand: 'bat', fishing: 'bat', ribbon: 'bat', spring: 'bat', dangle: 'bat',
+  post: 'scratch', board: 'scratch', bed: 'nap', hammock: 'nap', cushion: 'nap',
+  tunnel: 'hide', box: 'hide', tower: 'perch', window: 'perch', kicker: 'kick',
+};
+
+export const TOY_PRICE: Record<CafeToy, number> = {
+  box: 300, pingpong: 400, ball: 500, mouse: 600, bellball: 800, kicker: 900, ribbon: 1000, wand: 1200,
+  laser: 1500, fishing: 1500, cushion: 1500, board: 1800, spring: 2000, dangle: 2500, bed: 3000,
+  post: 4000, tunnel: 5000, hammock: 6000, window: 8000, tower: 12000,
+};
+/** Animation frames per toy (sprites toyf_<toy>_<n>), mirroring TOY_FRAMES in tools/gen_cafe.py. */
+export const TOY_FRAME_COUNT: Partial<Record<CafeToy, number>> = {
+  ball: 4, bellball: 3, pingpong: 3, mouse: 3, kicker: 3, wand: 4, fishing: 4, ribbon: 4, spring: 4, dangle: 4, hammock: 2, box: 2, cushion: 2, bed: 2,
+};
+
+/** Small toys that actually roll around: their spot changes as cats bat them and shoppers kick them. */
+export const ROLLING_TOYS = ['toy_ball', 'toy_pingpong', 'toy_bellball', 'toy_mouse'];
+export function isRolling(decor: string | undefined): boolean {
+  return !!decor && ROLLING_TOYS.includes(decor);
+}
+
+/** Customers can play with these themselves, drawing a cat over. */
+export const HAND_TOYS: CafeToy[] = ['wand', 'fishing', 'ribbon', 'laser'];
+export const TABLE_PRICE = 400;
+
+/** Each store opens with its own look (keyed by its challenge); it can still be renovated like any other. */
+export const STORE_STYLE: Record<string, { floor: string; wall: string; sign: string }> = {
+  main: { floor: 'cream', wall: 'beige', sign: 'wood' },
+  rush: { floor: 'terrazzo', wall: 'tile', sign: 'neon' },
+  fresh: { floor: 'checker', wall: 'green', sign: 'awning' },
+  oldtown: { floor: 'parquet', wall: 'plaster', sign: 'red' },
+  school: { floor: 'lino', wall: 'pastel', sign: 'crayon' },
+  suburb: { floor: 'concrete', wall: 'metal', sign: 'metal' },
+  cafe: { floor: 'wood', wall: 'mint', sign: 'chalk' },
+};
+export const FLOOR_STYLES = ['cream', 'wood', 'blue', 'terrazzo', 'mint', 'checker', 'parquet', 'lino', 'concrete'] as const;
+export const WALL_STYLES = ['beige', 'mint', 'brick', 'navy', 'tile', 'green', 'plaster', 'pastel', 'metal'] as const;
+export const SIGN_STYLES = ['wood', 'metal', 'chalk', 'neon', 'awning', 'red', 'crayon'] as const;
 export const STYLE_UNLOCK = {
-  floor: [1, 3, 6, 10, 15],
-  wall: [1, 4, 8, 12],
-  sign: [1, 5, 10, 20],
+  floor: [1, 3, 6, 10, 15, 18, 22, 26, 30],
+  wall: [1, 4, 8, 12, 14, 16, 18, 20, 22],
+  sign: [1, 5, 10, 20, 22, 25, 28],
 };
 /** One-time cost of each renovation style; the first of each is the default. */
 export const STYLE_PRICE = {
-  floor: [0, 1500, 3000, 5000, 8000],
-  wall: [0, 2000, 4000, 7000],
-  sign: [0, 2500, 6000, 12000],
+  floor: [0, 1500, 3000, 5000, 8000, 6000, 9000, 6000, 7000],
+  wall: [0, 2000, 4000, 7000, 6000, 6000, 9000, 6000, 7000],
+  sign: [0, 2500, 6000, 12000, 8000, 10000, 8000],
 };
 export const CAT_ACCS = ['bell', 'bandana', 'bow', 'scarf', 'crown'] as const;
 export type CatAcc = (typeof CAT_ACCS)[number];

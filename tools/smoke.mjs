@@ -215,6 +215,41 @@ for (const vp of VIEWPORTS) {
     check('chain');
   }, page);
 
+  await step(vp.name, 'cat cafe', async () => {
+    const st = await page.evaluate(async () => {
+      const c = await import('/src/game/chain.ts');
+      const g = window.game;
+      const s = g.state;
+      s.money = 1e7;
+      for (let k = s.stores.length; k < c.CHALLENGES.length; k++) c.openBranch(s);
+      for (const x of s.stores) x.done = true;
+      g.checkChain();
+      const i = s.stores.findIndex((x) => x.challenge === 'cafe');
+      if (i < 0) return { ok: false };
+      g.switchStore(i);
+      g.ui.openBuild(null);
+      return { ok: true, toys: document.querySelectorAll('.build .btn.small').length };
+    });
+    if (!st.ok) throw new Error('cafe did not open');
+    if (st.toys < 20) throw new Error(`cafe shop shows ${st.toys} buttons`);
+    const cats = await page.evaluate(async () => {
+      window.game.ui.closeBuild();
+      [...document.querySelectorAll('.bar .btn')].find((b) => b.textContent === 'Store').click();
+      await new Promise((r) => setTimeout(r, 150));
+      const n = document.querySelectorAll('.modal .cafe-cat').length;
+      window.game.ui.closeModal();
+      return n;
+    });
+    if (cats < 7) throw new Error(`store panel lists ${cats} cafe cats`);
+    await page.evaluate(() => {
+      window.game.startDay();
+      for (let i = 0; i < 400; i++) { window.game.sim.tickReal(0.1); window.game.sim.update(0.5); }
+      window.game.enterNight(false);
+    });
+    await wait(200);
+    check('cafe');
+  }, page);
+
   await step(vp.name, 'street', async () => {
     await page.evaluate(() => {
       window.game.state.money = 1e6;

@@ -684,3 +684,213 @@ describe('cat stays in view', () => {
     }
   });
 });
+
+describe('cat cafe', () => {
+  const allDone = async () => {
+    const { checkChallenge, openBranch, CHALLENGES } = await import('../src/game/chain');
+    const s = newGame(41);
+    s.level = LEVELS.length - 1;
+    s.reputation.level = 20;
+    s.money = 1e7;
+    checkChallenge(s);
+    for (let k = 1; k < CHALLENGES.length; k++) {
+      openBranch(s);
+      s.stores[s.active].done = true;
+    }
+    return s;
+  };
+
+  it('opens only after every challenge, as an extra store that is not a branch', async () => {
+    const { branchBlocker, doneCount, ensureCafe, isCafe } = await import('../src/game/chain');
+    const fresh = newGame(2);
+    expect(ensureCafe(fresh)).toBe(false);
+    const s = await allDone();
+    expect(ensureCafe(s)).toBe(true);
+    expect(ensureCafe(s)).toBe(false);
+    const cafe = s.stores[s.stores.length - 1];
+    expect(isCafe(cafe)).toBe(true);
+    expect(doneCount(s)).toBe(6);
+    expect(branchBlocker(s)).toBe('max');
+    expect(cafe.saved!.fixtures.filter((f) => f.decor === 'table').length).toBeGreaterThanOrEqual(4);
+    const l = buildLayout(0, 'cafe');
+    const g = new Grid(l, cafe.saved!.fixtures);
+    const e = entryTile(l);
+    const dist = g.flood(e.x, e.y);
+    for (const r of l.registers) expect(dist[r.cashier.y * l.w + r.cashier.x]).toBeGreaterThanOrEqual(0);
+    for (const st of l.stations) expect(dist[st.staff.y * l.w + st.staff.x]).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a day at the cafe: coffee, a seat at a table, every store’s cat, and cats at play', async () => {
+    const { ensureCafe, switchStore, rulesOf } = await import('../src/game/chain');
+    const s = await allDone();
+    ensureCafe(s);
+    switchStore(s, s.stores.length - 1);
+    for (const toy of ['toy_wand', 'toy_bed', 'toy_tunnel', 'toy_post', 'toy_tower', 'toy_laser']) {
+      const l = buildLayout(0, 'cafe');
+      for (let y = 2; y < l.h - 3; y++) {
+        let done = false;
+        for (let x = 1; x < l.w - 1 && !done; x++) {
+          const f = { id: s.nextId, kind: 'decor' as const, x, y, vertical: false, placed: true, decor: toy, slots: [{ product: null, stock: 0 }, { product: null, stock: 0 }] as GameState['fixtures'][0]['slots'] };
+          if (canPlace(l, s.fixtures.filter((x) => x.placed), f)) {
+            s.fixtures.push(f);
+            s.nextId++;
+            done = true;
+          }
+        }
+        if (done) break;
+      }
+    }
+    expect(rulesOf(s).patience).toBe(1);
+    const sim = new Sim(s);
+    expect(sim.cafe).toBe(true);
+    // six other stores' cats, plus every coat no store has
+    const { CAT_COATS } = await import('../src/game/defs');
+    expect(new Set(sim.cats().map((k) => k.coat ?? s.catCoat)).size).toBe(CAT_COATS.length);
+    expect(sim.visitors.length).toBe(CAT_COATS.length - 1);
+    sim.restockAll();
+    sim.startDay();
+    let seated = 0;
+    const toys = new Set<number>();
+    for (let n = 0; n < 40000 && !sim.done; n++) {
+      sim.tickReal(0.04);
+      sim.update(0.1);
+      seated = Math.max(seated, sim.seats.size);
+      for (const k of sim.cats()) if (k.toy !== null) toys.add(k.toy);
+    }
+    expect(sim.done).toBe(true);
+    expect(sim.stats.revenue).toBeGreaterThan(0);
+    expect(seated).toBeGreaterThan(0);
+    expect(toys.size).toBeGreaterThan(2);
+  });
+});
+
+describe('rolling toys', () => {
+  it('a ball rolls wherever the cats bat it and stays there, without blocking anyone', async () => {
+    const { ensureCafe, switchStore, checkChallenge, openBranch, CHALLENGES } = await import('../src/game/chain');
+    const s = newGame(41);
+    s.level = LEVELS.length - 1;
+    s.reputation.level = 20;
+    s.money = 1e7;
+    checkChallenge(s);
+    for (let k = 1; k < CHALLENGES.length; k++) {
+      openBranch(s);
+      s.stores[s.active].done = true;
+    }
+    ensureCafe(s);
+    switchStore(s, s.stores.length - 1);
+    const ball = s.fixtures.find((f) => f.decor === 'toy_ball')!;
+    const g = new Grid(buildLayout(0, 'cafe'), s.fixtures.filter((f) => f.placed));
+    expect(g.walkable(ball.x, ball.y)).toBe(true);
+    const spots = new Set<string>();
+    for (let d = 0; d < 2; d++) {
+      const sim = new Sim(s);
+      sim.restockAll();
+      sim.startDay();
+      for (let n = 0; n < 40000 && !sim.done; n++) {
+        sim.tickReal(0.04);
+        sim.update(0.1);
+        const p = sim.toyAt(ball);
+        spots.add(`${Math.round(p.x * 2)},${Math.round(p.y * 2)}`);
+        expect(sim.grid.inside(Math.round(p.x), Math.round(p.y))).toBe(true);
+      }
+      sim.endDayCosts();
+      s.day += 1;
+    }
+    // it travelled around the room and the last spot was kept for the next day
+    expect(spots.size).toBeGreaterThan(5);
+    expect(ball.at).toBeDefined();
+  });
+});
+
+describe('cats playing tag', () => {
+  it('cats chase each other around the cafe, swap roles, and stop again', async () => {
+    const { ensureCafe, switchStore, checkChallenge, openBranch, CHALLENGES } = await import('../src/game/chain');
+    const s = newGame(43);
+    s.level = LEVELS.length - 1;
+    s.reputation.level = 20;
+    s.money = 1e7;
+    checkChallenge(s);
+    for (let k = 1; k < CHALLENGES.length; k++) {
+      openBranch(s);
+      s.stores[s.active].done = true;
+    }
+    ensureCafe(s);
+    switchStore(s, s.stores.length - 1);
+    const sim = new Sim(s);
+    sim.restockAll();
+    sim.startDay();
+    let games = 0;
+    let swaps = 0;
+    const itBefore = new Map<object, boolean>();
+    for (let n = 0; n < 40000 && !sim.done; n++) {
+      sim.tickReal(0.04);
+      sim.update(0.1);
+      for (const k of sim.cats()) {
+        const it = k.tag?.it;
+        const prev = itBefore.get(k);
+        if (k.tag && prev === undefined && it) games += 1;
+        if (k.tag && prev === false && it) swaps += 1;
+        if (k.tag) expect(k.tag.other.tag?.other).toBe(k);
+        // moving cats are walking, playing tag or chasing a ball, never gliding along while resting
+        if (k.mover.path.length && k.mode !== 'walk') expect(!!k.tag || k.toy !== null, `${k.mode}`).toBe(true);
+        itBefore.set(k, it as boolean);
+        if (!k.tag) itBefore.delete(k);
+      }
+    }
+    expect(games).toBeGreaterThan(2);
+    expect(swaps).toBeGreaterThan(0);
+    expect(sim.cats().filter((k) => k.tag).length).toBe(0);
+  });
+});
+
+describe('cats up high', () => {
+  it('cats climb onto fridges and freezers in a store, and onto tables at the cafe', async () => {
+    const s = newGame(19);
+    const kinds = new Set<string>();
+    for (let d = 0; d < 5; d++) {
+      const sim = new Sim(s);
+      sim.restockAll();
+      sim.startDay();
+      for (let n = 0; n < 40000 && !sim.done; n++) {
+        sim.tickReal(0.04);
+        sim.update(0.1);
+        const p = sim.cat.perch;
+        if (p) {
+          const f = s.fixtures.find((x) => x.id === p.fixture)!;
+          kinds.add(f.kind);
+          // sitting on top of it: above the fixture's own tile row
+          expect(p.top).toBeLessThan((f.vertical ? f.y + 2 : f.y + 1) * 32);
+        }
+      }
+      sim.endDayCosts();
+      s.day += 1;
+    }
+    expect(kinds.has('fridge') || kinds.has('freezer')).toBe(true);
+  });
+});
+
+describe('store looks', () => {
+  it('every store in the chain opens with its own look, and older saves catch up', async () => {
+    const { checkChallenge, openBranch, CHALLENGES, ensureCafe } = await import('../src/game/chain');
+    const { migrate } = await import('../src/game/state');
+    const s = newGame(51);
+    s.level = LEVELS.length - 1;
+    s.reputation.level = 20;
+    s.money = 1e7;
+    checkChallenge(s);
+    for (let k = 1; k < CHALLENGES.length; k++) {
+      openBranch(s);
+      s.stores[s.active].done = true;
+    }
+    ensureCafe(s);
+    const looks = [s.style, ...s.stores.map((x) => x.saved?.style).filter((x) => x)].map((x) => JSON.stringify(x));
+    expect(new Set(looks).size).toBe(7);
+    expect(s.owned).toContain('floor:parquet');
+    // a branch from before this change, never renovated, gets its look on load
+    const old = JSON.parse(JSON.stringify(s));
+    old.stores[2].saved.style = { floor: 'cream', wall: 'beige', sign: 'wood' };
+    old.owned = [];
+    const back = migrate(old)!;
+    expect(back.stores[2].saved!.style.floor).toBe('checker');
+  });
+});

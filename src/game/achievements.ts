@@ -3,7 +3,7 @@ import { LEVELS } from './defs';
 import type { GameState, MiniKind } from './state';
 
 export type AchCategory =
-  | 'expand' | 'revenue' | 'savings' | 'days' | 'customers' | 'friends' | 'unlocks' | 'hires' | 'reputation' | 'catLevel' | 'gifts' | 'introduced' | 'goals' | 'branches' | 'challenges' | 'treasures' | 'tiers' | 'street'
+  | 'expand' | 'revenue' | 'savings' | 'days' | 'customers' | 'friends' | 'unlocks' | 'hires' | 'reputation' | 'catLevel' | 'gifts' | 'introduced' | 'goals' | 'branches' | 'challenges' | 'treasures' | 'tiers' | 'street' | 'cafeToys'
   | 'ch_rush' | 'ch_fresh' | 'ch_oldtown' | 'ch_school' | 'ch_suburb'
   | 'checkout' | 'change' | 'oden' | 'odenItems' | 'deli' | 'deliPounds'
   | 'bakery' | 'trays' | 'coffee' | 'coffeeSteps' | 'bagging' | 'bagItems';
@@ -36,6 +36,14 @@ function bestReputation(s: GameState): number {
 
 const challengeDone = (id: ChallengeId) => (s: GameState) => (s.stores.some((x) => x.challenge === id && completions(x) > 0) ? 1 : 0);
 
+/** Different toys in the cat cafe. */
+function cafeToys(s: GameState): number {
+  const i = s.stores.findIndex((x) => x.challenge === 'cafe');
+  if (i < 0) return 0;
+  const fixtures = i === s.active ? s.fixtures : s.stores[i].saved?.fixtures ?? [];
+  return new Set(fixtures.filter((f) => f.decor?.startsWith('toy_')).map((f) => f.decor)).size;
+}
+
 /** Building levels on every street in the chain. */
 function streetLevels(s: GameState): number {
   return [s.street, ...s.stores.map((x) => x.saved?.street ?? [])].flat().reduce((a, l) => a + (l?.level ?? 0), 0);
@@ -64,6 +72,7 @@ const CATEGORIES: CategoryDef[] = [
   { cat: 'treasures', tiers: [1, 6, 12], format: 'count', value: (s) => Object.keys(s.catTreasures).length },
   { cat: 'tiers', tiers: [1, 5, 20], format: 'count', value: tiersDone },
   { cat: 'street', tiers: [1, 9, 27, 81], format: 'count', value: streetLevels },
+  { cat: 'cafeToys', tiers: [1, 10, 20], format: 'count', value: cafeToys },
   ...CHALLENGES.filter((c) => c.id !== 'main').map((c): CategoryDef => ({ cat: `ch_${c.id}` as AchCategory, tiers: [1], format: 'count', value: challengeDone(c.id) })),
   { cat: 'checkout', tiers: [1, 10, 50, 100], format: 'count', value: manual('checkout') },
   { cat: 'change', tiers: [1000, 10000, 30000, 50000], format: 'cents', value: amount('checkout') },
@@ -116,6 +125,7 @@ const STATION_OF: Partial<Record<AchCategory, string>> = {
 /** Whether the category's mini-game exists yet in this store. */
 export function categoryOpen(s: GameState, cat: AchCategory): boolean {
   if (cat.startsWith('ch_')) return s.stores.some((x) => `ch_${x.challenge}` === cat);
+  if (cat === 'cafeToys') return s.stores.some((x) => x.challenge === 'cafe');
   const st = STATION_OF[cat];
   if (!st) return true;
   const lv = LEVELS[bestLevel(s)];

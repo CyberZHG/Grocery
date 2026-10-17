@@ -69,6 +69,17 @@ export function drawChar(ctx: CanvasRenderingContext2D, row: number, dir: 'down'
   blit(ctx, assets.chars, col * CHAR_W, row * CHAR_H, CHAR_W, CHAR_H, x, y, dir === 'left');
 }
 
+/** Interaction frames after column 22, in the order tools/gen_chars.py draws them; s_ frames are side views facing right. */
+export const CHAR_POSES = [
+  'wave1', 'wave2', 'cheer1', 'cheer2', 'talk1', 'talk2', 'laugh1', 'laugh2', 'crouch', 'photo', 'stretch', 'hop', 'drink', 'give',
+  's_talk1', 's_talk2', 's_laugh1', 's_laugh2', 's_point', 's_crouch', 's_photo', 's_wave1', 's_wave2', 's_give',
+] as const;
+export type CharPose = (typeof CHAR_POSES)[number];
+
+export function drawCharPose(ctx: CanvasRenderingContext2D, row: number, pose: CharPose, flip: boolean, x: number, y: number): void {
+  blit(ctx, assets.chars, (22 + CHAR_POSES.indexOf(pose)) * CHAR_W, row * CHAR_H, CHAR_W, CHAR_H, x, y, flip);
+}
+
 /** Seated on a bench, facing the viewer (column 21). */
 export function drawCharSitting(ctx: CanvasRenderingContext2D, row: number, x: number, y: number): void {
   blit(ctx, assets.chars, 21 * CHAR_W, row * CHAR_H, CHAR_W, CHAR_H, x, y, false);

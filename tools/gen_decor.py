@@ -16,10 +16,64 @@ def W(c, k):
 
 # ---------- renovation: floors ----------
 
-FLOOR_STYLES = ['cream', 'wood', 'blue', 'terrazzo', 'mint']
+FLOOR_STYLES = ['cream', 'wood', 'blue', 'terrazzo', 'mint', 'checker', 'parquet', 'lino', 'concrete']
+
+
+def _floor_new(style, v):
+    """Floors added for the branches' own looks."""
+    cv = Canvas(T, T)
+    rnd = random.Random(v * 7 + len(style) * 13)
+    if style == 'checker':
+        # market tiles: soft sage and cream squares
+        a, b = hexc('c4d6b4'), hexc('efe9d8')
+        for y in range(0, T, 16):
+            for x in range(0, T, 16):
+                c = a if ((x + y) // 16 + v) % 2 == 0 else b
+                cv.rect(x, y, x + 15, y + 15, c)
+                cv.hline(x, x + 15, y, W(c, 1))
+                cv.vline(x + 15, y, y + 15, W(c, -1))
+        return cv
+    if style == 'parquet':
+        # basket-weave parquet in warm honey oak: pairs of short planks turning each 8px, quiet seams
+        base = hexc('caa476') if v == 0 else hexc('c69f72')
+        cv.rect(0, 0, T - 1, T - 1, base)
+        for j in range(4):
+            for i in range(4):
+                x0, y0 = i * 8, j * 8
+                tone_ = base if (i + j) % 2 else mix(base, W(base, -1), 0.5)
+                cv.rect(x0, y0, x0 + 7, y0 + 7, tone_)
+                # a faint line between the two planks and an even fainter seam round the block
+                mid = mix(tone_, W(tone_, -1), 0.6)
+                if (i + j + v) % 2:
+                    cv.hline(x0, x0 + 7, y0 + 3, mid)
+                else:
+                    cv.vline(x0 + 3, y0, y0 + 7, mid)
+                cv.hline(x0, x0 + 7, y0 + 7, W(base, -1))
+                cv.vline(x0 + 7, y0, y0 + 7, W(base, -1))
+        return cv
+    if style == 'lino':
+        # school lino: pale with coloured flecks
+        base = hexc('f0e6c0') if v == 0 else hexc('e8dcb4')
+        cv.rect(0, 0, T - 1, T - 1, base)
+        cols = [hexc('e07a7a'), hexc('5a9ad0'), hexc('6ab06a'), hexc('f0b040')]
+        for _ in range(16):
+            cv.px(rnd.randint(1, 30), rnd.randint(1, 30), rnd.choice(cols))
+        cv.hline(0, T - 1, T - 1, W(base, -2))
+        cv.vline(T - 1, 0, T - 1, W(base, -2))
+        return cv
+    # concrete: smooth grey slab with seams and a few marks
+    base = hexc('a8a8ac') if v == 0 else hexc('a0a0a6')
+    cv.rect(0, 0, T - 1, T - 1, base)
+    for _ in range(20):
+        cv.px(rnd.randint(1, 30), rnd.randint(1, 30), W(base, rnd.choice((-1, 1))))
+    cv.hline(0, T - 1, T - 1, W(base, -3))
+    cv.vline(T - 1, 0, T - 1, W(base, -3))
+    return cv
 
 
 def floor_style(style, v):
+    if style in ('checker', 'parquet', 'lino', 'concrete'):
+        return _floor_new(style, v)
     cv = Canvas(T, T)
     if style == 'cream':
         base = hexc('ece4d4') if v == 0 else hexc('e2d8c6')
@@ -62,7 +116,7 @@ def floor_style(style, v):
 
 # ---------- renovation: walls ----------
 
-WALL_STYLES = ['beige', 'mint', 'brick', 'navy']
+WALL_STYLES = ['beige', 'mint', 'brick', 'navy', 'tile', 'green', 'plaster', 'pastel', 'metal']
 SEASONS = ['spring', 'summer', 'autumn', 'winter']
 
 
@@ -100,12 +154,42 @@ def _poster(cv, season):
 
 def wall_style(style, kind=0, season=None):
     cv = Canvas(T, 64)
-    base = {'beige': hexc('d8c8a8'), 'mint': hexc('c8e4d4'), 'brick': hexc('b86a50'), 'navy': hexc('4a5a7a')}[style]
-    trim = hexc('6a5a58') if style != 'navy' else hexc('2a3248')
+    base = {'beige': hexc('d8c8a8'), 'mint': hexc('c8e4d4'), 'brick': hexc('b86a50'), 'navy': hexc('4a5a7a'),
+            'tile': hexc('eef0f2'), 'green': hexc('8aa880'), 'plaster': hexc('ece2cc'), 'pastel': hexc('f4e2a8'), 'metal': hexc('9aa2ac')}[style]
+    trim = hexc('6a5a58') if style not in ('navy', 'tile', 'metal') else hexc('2a3248') if style == 'navy' else hexc('4a5058')
     cv.rect(0, 0, 31, 63, base)
     cv.rect(0, 0, 31, 7, trim)
     cv.hline(0, 31, 7, W(trim, -2))
-    if style == 'brick':
+    if style == 'tile':
+        # white subway tiles with dark grout, like a station passage
+        for i, y in enumerate(range(8, 54, 4)):
+            cv.hline(0, 31, y, hexc('9aa0a8'))
+            for x in range((i % 2) * 4, 32, 8):
+                cv.vline(x, y + 1, y + 3, hexc('9aa0a8'))
+    elif style == 'green':
+        # painted plank boards of a greengrocer
+        for x in range(0, 32, 6):
+            cv.vline(x, 8, 53, W(base, -2))
+            cv.vline(x + 1, 8, 53, W(base, 1))
+    elif style == 'plaster':
+        # old-town plaster between dark timber beams
+        beam = hexc('5a3a28')
+        cv.rect(0, 8, 2, 53, beam)
+        cv.rect(29, 8, 31, 53, beam)
+        cv.rect(0, 30, 31, 32, beam)
+        rnd = random.Random(kind * 3 + 1)
+        for _ in range(14):
+            cv.px(rnd.randint(4, 27), rnd.randint(10, 52), W(base, -1))
+    elif style == 'pastel':
+        # school stripes in soft yellow and sky blue
+        for y in range(8, 54, 8):
+            cv.rect(0, y, 31, y + 3, hexc('bcdcf0'))
+    elif style == 'metal':
+        # corrugated steel siding
+        for x in range(0, 32, 4):
+            cv.vline(x, 8, 53, W(base, 2))
+            cv.vline(x + 2, 8, 53, W(base, -2))
+    elif style == 'brick':
         for i, y in enumerate(range(9, 54, 5)):
             cv.hline(0, 31, y, W(base, -2))
             for x in range((i % 2) * 8, 32, 16):
@@ -116,7 +200,7 @@ def wall_style(style, kind=0, season=None):
     else:
         for y in range(12, 54, 6):
             cv.hline(0, 31, y, W(base, -1) if y % 12 == 0 else W(base, 0))
-    skirt = hexc('7a6a5a') if style != 'navy' else hexc('2a3248')
+    skirt = {'navy': hexc('2a3248'), 'tile': hexc('4a5058'), 'metal': hexc('4a5058'), 'green': hexc('5a6a4e')}.get(style, hexc('7a6a5a'))
     cv.rect(0, 54, 31, 63, skirt)
     cv.hline(0, 31, 54, W(skirt, 2))
     if kind == 1:
@@ -141,7 +225,7 @@ def wall_style(style, kind=0, season=None):
 
 # ---------- renovation: signs ----------
 
-SIGN_STYLES = ['wood', 'metal', 'chalk', 'neon']
+SIGN_STYLES = ['wood', 'metal', 'chalk', 'neon', 'awning', 'red', 'crayon']
 
 
 def sign_style(style):
@@ -149,6 +233,7 @@ def sign_style(style):
     frame, face = {
         'wood': (hexc('5a3a28'), hexc('2a2430')), 'metal': (hexc('a8acb8'), hexc('3a3e48')),
         'chalk': (hexc('8a6a4a'), hexc('2e4a3a')), 'neon': (hexc('e05a9a'), hexc('1a1424')),
+        'awning': (hexc('3a7a4a'), hexc('2a4a30')), 'red': (hexc('c8a040'), hexc('8a2a24')), 'crayon': (hexc('e07a7a'), hexc('2a3a5a')),
     }[style]
     cv.rrect(0, 0, 63, 19, frame, 2)
     cv.rrect(2, 2, 61, 17, face, 1)
@@ -158,6 +243,15 @@ def sign_style(style):
     if style == 'metal':
         for (x, y) in ((3, 3), (60, 3), (3, 16), (60, 16)):
             cv.px(x, y, W(frame, 2))
+    if style == 'awning':
+        # green and white stripes along the top edge
+        for x in range(0, 64, 6):
+            cv.rect(x, 0, x + 2, 1, WHITE)
+    if style == 'crayon':
+        # a frame in four crayon colours
+        for i, c in enumerate(('e07a7a', 'f0c040', '6ab06a', '5a9ad0')):
+            cv.rect(i * 16, 0, i * 16 + 15, 1, hexc(c))
+            cv.rect(i * 16, 18, i * 16 + 15, 19, hexc(c))
     cv.outline(0.5)
     return cv
 
@@ -447,10 +541,11 @@ CAT_COATS = {
     'shorthair': ('c8ccd4', '50545f', 'eceef2', 'swirl'),
     'siamese': ('efe4d0', '5a4034', 'f8f0e4', 'points'),
 }
-CAT_POSES = ['sit', 'walk1', 'walk2', 'sleep', 'groom', 'stretch', 'loaf']
+CAT_POSES = ['sit', 'walk1', 'walk2', 'sleep', 'groom', 'stretch', 'loaf',
+             'beg', 'bat1', 'bat2', 'pounce', 'leap', 'run1', 'run2', 'scratch1', 'scratch2', 'roll1', 'roll2', 'hiss', 'rub', 'sniff', 'peek']
 
 # Hand-placed 24x18 templates, facing right. Tags: B body, D underside, L chest/belly, H head, E ear, e inner ear,
-# T tail, P near paw, Q far paw, O eye, C closed eye, N nose, M muzzle.
+# T tail, P near paw, Q far paw, O eye, C closed eye, N nose, M muzzle, K open mouth.
 _SIDE = [
     '........................',
     '........................',
@@ -581,6 +676,292 @@ _TEMPLATES = {
 }
 
 
+_TEMPLATES.update({
+    # sitting up on its haunches, front paws held up at the chest
+    'beg': [
+        '........................',
+        '..............E...E.....',
+        '.............EeE.EeE....',
+        '.............HHHHHHH....',
+        '............HHHHHHHHH...',
+        '............HHHHHOHHH...',
+        '............HHHHHHMMN...',
+        '.............HHHMMMMM...',
+        '..............BLLLPP....',
+        '.............BBLLLPP....',
+        '............BBBLLL......',
+        '............BBBLLL......',
+        '...........BBBBLLL......',
+        '...........BBBBBLL......',
+        '..TT.......BBBBBBL......',
+        '...TTTTTTTTDDBBBB.......',
+        '...........DQQPPP.......',
+    ],
+    # up on the hind legs, one paw stretched high
+    'bat1': [
+        '.....................PP.',
+        '..............E...E.PP..',
+        '.............EeE.EeEP...',
+        '.............HHHHHHHP...',
+        '............HHHHHHHHP...',
+        '............HHHHHOHHH...',
+        '............HHHHHHMMN...',
+        '.............HHHMMMM....',
+        '..............BLLLLQ....',
+        '.............BBLLLLQ....',
+        '............BBBLLL......',
+        '...........BBBBLLL......',
+        '...........BBBBBLL......',
+        '..TT.......BBBBBBL......',
+        '...TT......BBBBBB.......',
+        '....TTTTTTTDDBBBB.......',
+        '...........DQQPPP.......',
+    ],
+    # the same, swiping forward at chest height
+    'bat2': [
+        '........................',
+        '..............E...E.....',
+        '.............EeE.EeE....',
+        '.............HHHHHHH....',
+        '............HHHHHHHHH...',
+        '............HHHHHOHHH...',
+        '............HHHHHHMMN...',
+        '.............HHHMMMM....',
+        '..............BLLLLPPPP.',
+        '.............BBLLLL..PP.',
+        '............BBBLLLQ.....',
+        '...........BBBBLLLQ.....',
+        '...........BBBBBLL......',
+        '..TT.......BBBBBBL......',
+        '...TT......BBBBBB.......',
+        '....TTTTTTTDDBBBB.......',
+        '...........DQQPPP.......',
+    ],
+    # rear up, chest down, tail twitching: about to spring
+    'pounce': [
+        '........................',
+        '........................',
+        '....T...................',
+        '....T...................',
+        '....TT..................',
+        '.....TBB................',
+        '.....BBBBBB.............',
+        '.....BBBBBBBBB..........',
+        '.....DBBBBBBBBBB..E...E.',
+        '.....DDBBBBBBBBBBEeE.EeE',
+        '.....QQ.DDDDBBBBHHHHHHH.',
+        '.....PP.....DDBHHHHHHHHH',
+        '.....PP........HHHHHOHHH',
+        '...............HHHHHMMMN',
+        '..............QQHHHMMMM.',
+        '.............QQPPPPP....',
+    ],
+    # stretched out in mid-air
+    'leap': [
+        '........................',
+        '........................',
+        '........................',
+        '..................E..E..',
+        '.................EeEEeE.',
+        '.................HHHHHH.',
+        '................HHHHHHHH',
+        'TT......BBBBBBBBHHHHOHHH',
+        '.TTTBBBBBBBBBBBBBHHHMMMN',
+        '...BBBBBBBBBBBBBBLLMMMM.',
+        '...DDDDDDDDDDDDDDLL.PPPP',
+        'QQQ..............QQ..PP.',
+        'PP......................',
+    ],
+    # galloping: legs out, then gathered under
+    'run1': [
+        '',
+        '',
+        '',
+        '',
+        '................E...E...',
+        '...............EeE.EeE..',
+        '...............HHHHHHH..',
+        '.TT...........HHHHHHHHH.',
+        '..TT..BBBBBBBBHHHHHOHHH.',
+        '...TTBBBBBBBBBBHHHHHMMMN',
+        '.....BBBBBBBBBBBBLLMMMM.',
+        '.....DDDDDDDDDDDDLL.....',
+        '...QQ............QQ.PP..',
+        '..PP...............PP...',
+        '.PP.....................',
+    ],
+    'run2': [
+        '',
+        '',
+        '',
+        '',
+        '................E...E...',
+        '...............EeE.EeE..',
+        '...............HHHHHHH..',
+        '..............HHHHHHHHH.',
+        '.TT....BBBBBBBHHHHHOHHH.',
+        '..TTTBBBBBBBBBBHHHHHMMMN',
+        '....BBBBBBBBBBBBBLMMMM..',
+        '.....DDDDDDDDDDDLL......',
+        '........QQPP.QQPP.......',
+        '.........PP...PP........',
+    ],
+    # standing tall against a post, paws working up and down
+    'scratch1': [
+        '.....................PP.',
+        '................E..E.PP.',
+        '...............EeEEeEQQ.',
+        '...............HHHHHHQQ.',
+        '..............HHHHHHHQ..',
+        '..............HHHHHOHQ..',
+        '..............HHHHHMMN..',
+        '...............HHHMMM...',
+        '...............BBLLL....',
+        '..............BBBLLL....',
+        '..............BBBBLL....',
+        '.............BBBBBLL....',
+        '.............BBBBBB.....',
+        '.............BBBBBB.....',
+        '..TTT........BBBBBB.....',
+        '....TTTTTTTTTDDBBBD.....',
+        '.............DQQPPP.....',
+    ],
+    'scratch2': [
+        '.....................QQ.',
+        '................E..E.QQ.',
+        '...............EeEEeEPP.',
+        '...............HHHHHHPP.',
+        '..............HHHHHHHP..',
+        '..............HHHHHCHP..',
+        '..............HHHHHMMN..',
+        '...............HHHMMM...',
+        '...............BBLLL....',
+        '..............BBBLLL....',
+        '..............BBBBLL....',
+        '.............BBBBBLL....',
+        '.............BBBBBB.....',
+        '.............BBBBBB.....',
+        '..TTT........BBBBBB.....',
+        '....TTTTTTTTTDDBBBD.....',
+        '.............DQQPPP.....',
+    ],
+    # flat on its back, paws in the air
+    'roll1': [
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '...P....Q...............',
+        '...PP..QQ...P....Q......',
+        '....PP.QQ..PP...QQ......',
+        '....LLLLLLLLLLLLLLL.E..E',
+        '...DLLLLLLLLLLLLLLLBEeEe',
+        '..TBBBBBBBBBBBBBBBBHHHHH',
+        '.TTBBBBBBBBBBBBBBBHHCHHH',
+        'TT..............HHHMMMNH',
+    ],
+    'roll2': [
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '.....P.Q................',
+        '....PP.QQ.....P..Q......',
+        '...PP...QQ...PP..QQ.....',
+        '....LLLLLLLLLLLLLLL.E..E',
+        '...DLLLLLLLLLLLLLLLBEeEe',
+        '..TBBBBBBBBBBBBBBBBHHHHH',
+        'TTTBBBBBBBBBBBBBBBHHCHHH',
+        '................HHHMMMNH',
+    ],
+    # back arched high, tail up, mouth open
+    'hiss': [
+        '',
+        '.......BBBBBB...........',
+        '.....BBBBBBBBBB.........',
+        '...TBBBBBBBBBBBB........',
+        '..TTBBBBBBBBBBBBB..E..E.',
+        '..TTDBBBBBBBBBBBBBEeEEeE',
+        '.TT.DDBBBBBBBBBBBHHHHHHH',
+        '.TT..QDDDDDDDDBBHHHHHOHH',
+        '.T...Q.......DDHHHHHMKKN',
+        '.....Q........LHHHMMKK..',
+        '.....P........LL.PP.....',
+        '.....P........QQ.PP.....',
+        '....PP.......QQ..PP.....',
+        '....PP.......PP..PP.....',
+    ],
+    # tail straight up, eyes shut, leaning in
+    'rub': [
+        '..T.....................',
+        '..TT....................',
+        '...T............E...E...',
+        '...T...........EeE.EeE..',
+        '...T...........HHHHHHH..',
+        '...TT.........HHHHHHHHH.',
+        '....T.........HHHHHCHHH.',
+        '....T.........HHHHHHMMN.',
+        '....T...BBBBBBBHHHHMMMM.',
+        '....TBBBBBBBBBBBHHHHHH..',
+        '...BBBBBBBBBBBBBBLLL....',
+        '...BBBBBBBBBBBBBBLLL....',
+        '...BBBBBBBBBBBBBBLL.....',
+        '....DDDDDDDDDDDDDD......',
+        '.....QQPP.....QQPP......',
+        '.....QQPP.....QQPP......',
+        '.....QQPP.....QQPP......',
+    ],
+    # head down at something on the floor
+    'sniff': [
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '....TT..................',
+        '...TT...BBBBBBBB........',
+        '...T..BBBBBBBBBBBB......',
+        '......BBBBBBBBBBBBBE..E.',
+        '......BBBBBBBBBBBBEeEEeE',
+        '.......DDDDDDDDDBBHHHHHH',
+        '.......QQPP...QQHHHHHOHH',
+        '.......QQPP...QQHHHHHMMN',
+        '.......QQPP...QQPPHHMMM.',
+        '.......QQPP...QQPP......',
+    ],
+    # only the head and paws showing over an edge
+    'peek': [
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '........E.....E.........',
+        '.......EeE...EeE........',
+        '.......EHHHHHHHE........',
+        '......HHHHHHHHHHH.......',
+        '......HHOHHHHHOHH.......',
+        '......HHHHMNMHHHH.......',
+        '......PPHHMMMHHPP.......',
+        '......PP.........PP.....',
+    ],
+})
+
+
 def _cat_template(pose):
     rows = _TEMPLATES.get(pose) or (_SIDE + _LEGS[pose])
     return [r.ljust(24, '.') for r in rows] + ['.' * 24] * (18 - len(rows))
@@ -591,7 +972,8 @@ def cat_sprite(coat, pose):
     base, stripe, belly = hexc(base), hexc(stripe), hexc(belly)
     rows = _cat_template(pose)
     cells = {(x, y): ch for y, r in enumerate(rows) for x, ch in enumerate(r) if ch != '.'}
-    body = [(x, y) for (x, y), ch in cells.items() if ch in 'BD']
+    # a peeking cat shows only its head, so fall back to that
+    body = [(x, y) for (x, y), ch in cells.items() if ch in 'BD'] or [(x, y) for (x, y), ch in cells.items() if ch in 'HM']
     cx = sum(x for x, _ in body) / len(body)
     cy = sum(y for _, y in body) / len(body)
     heads = [(x, y) for (x, y), ch in cells.items() if ch in 'HM']
@@ -616,6 +998,8 @@ def cat_sprite(coat, pose):
             c = tone(base, -3) if coat not in ('black', 'tuxedo') else tone(base, 3)
         elif ch == 'Q':
             c = tone(base, -1)
+        elif ch == 'K':
+            c = hexc('8a3a4a')
         if ch in furred:
             if pattern == 'tabby':
                 if ch in 'BD' and x % 3 == 0 and y < cy + 2:

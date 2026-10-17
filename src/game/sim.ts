@@ -3,7 +3,7 @@ import { Mover, type Dir } from './agent';
 import {
   BREAD_COST_RATIO, BREAD_PRICE, BREADS, COFFEE_COST_RATIO, favBread, DAY_END, DAY_START, DRINKS, FIXTURES, LAST_ENTRY,
   LEVELS, MEAT_COST_RATIO, MEAT_PRICE_LB, MEATS, NPC_ROW0, NPCS, ODEN_COST_RATIO, ODEN_ITEMS, ODEN_PRICE,
-  OWNER_ROW, PRODUCT_BY_ID, STAFF_ROW0, TRAIT_BY_ID, CATEGORIES, CAT_TREASURES, UMBRELLA_COLORS, UMBRELLA_PRICE, GIFT_KINDS, GIFT_LEVELS, unlockedSkills, type Bread, type Category, type BreadQuality, type DrinkDef, type Meat, type NpcDef,
+  OWNER_ROW, PRODUCT_BY_ID, STAFF_ROW0, TRAIT_BY_ID, CATEGORIES, CAT_COATS, isRolling, TOY_PLAY, type CafeToy, CAT_TREASURES, UMBRELLA_COLORS, UMBRELLA_PRICE, GIFT_KINDS, GIFT_LEVELS, unlockedSkills, type Bread, type Category, type BreadQuality, type DrinkDef, type Meat, type NpcDef,
   type OdenItem, type Skill, type StationKind,
 } from './defs';
 import { demandMult, holidayOf, stationMult, trafficMult, weatherOf } from './calendar';
@@ -12,8 +12,8 @@ import {
 } from './growth';
 import { collectionCount, collectionMult, isUnlocked, priceMult, productExpToNext, UNLOCK_ORDER, unlockedCount } from './progress';
 import { streetFx, type StreetFx } from './street';
-import { chainPriceMult, isFresh, peaksOf, perksOf, rulesOf, storeLayout, type Perks, type Rules } from './chain';
-import { entryTile, fixtureCells, Grid, serveTiles, spawnTile, type Layout, type P, type StationSpot } from './layout';
+import { chainPriceMult, inCafe, isFresh, peaksOf, perksOf, rulesOf, storeLayout, type Perks, type Rules } from './chain';
+import { accessTiles, entryTile, fixtureCells, Grid, serveTiles, spawnTile, type Layout, type P, type StationSpot } from './layout';
 import {
   addExp, affinityValue, budgetMult, changeAffinity, makeCashPayment, npcExpToNext, roundCash, serviceReward, skillExpToNext, skillSpeed, waitPenalty,
   type CashPayment, type Leveled, type ServiceResult,
@@ -48,7 +48,7 @@ export interface Bubble {
 
 /** A short body animation that goes with an interaction; drawn by the renderer. */
 export type ActKind = 'talk' | 'wave' | 'laugh' | 'point' | 'reach' | 'cheer' | 'stretch' | 'hop' | 'photo' | 'crouch'
-  | 'wiggle' | 'arch' | 'beg' | 'box' | 'play';
+  | 'wiggle' | 'arch' | 'beg' | 'box' | 'play' | 'eat' | 'swipe' | 'read';
 
 export interface Act {
   kind: ActKind;
@@ -95,6 +95,8 @@ export class Customer {
   greet = 0;
   /** Bench this customer is sitting on. */
   seat: number | null = null;
+  /** cafe toy this customer is waving about */
+  using: number | null = null;
   act: Act | null = null;
   /** running (playing tag) until this minute */
   runUntil = -Infinity;
@@ -206,7 +208,7 @@ export class Worker {
   }
 }
 
-type CatGoal = 'tower' | 'fish' | 'friend' | 'leave' | 'rub' | 'follow' | 'box';
+type CatGoal = 'tower' | 'fish' | 'friend' | 'leave' | 'rub' | 'follow' | 'box' | 'toy' | 'perch';
 
 export class CatAgent {
   mover: Mover;
@@ -215,9 +217,18 @@ export class CatAgent {
   bubble: Bubble | null = null;
   /** where the cat is headed and why */
   goal: { kind: CatGoal; fixture?: number; who?: Mover; steps?: number } | null = null;
-  /** top of the cat tower it is lying on */
-  perch: P | null = null;
+  /** up on something: which fixture, the tile, the pixel top of the cat sprite, and its draw depth */
+  perch: { fixture: number; x: number; y: number; top: number; depth: number } | null = null;
   act: Act | null = null;
+  /** cafe toy it is playing with */
+  toy: number | null = null;
+  /** last time it batted a rolling toy */
+  batAt = -Infinity;
+  /** a game of tag with another cat: who it is, whether this one is chasing, and when they stop */
+  tag: { other: CatAgent; it: boolean; until: number } | null = null;
+  /** coat and accessory for cats from other stores; the store's own cat uses the saved look */
+  coat?: string;
+  acc?: string | null;
 
   constructor(p: P) {
     this.mover = new Mover(p);
@@ -240,12 +251,20 @@ export interface GuestCat {
   met?: boolean;
 }
 
+/** Sprite heights of fixtures a cat can climb, horizontal and vertical. */
+const PERCH_HEIGHT: Partial<Record<string, [number, number]>> = { fridge: [72, 104], freezer: [48, 80] };
+const T = 32;
+
 /** How likely each kind of shopper is to stop at a decoration. */
 const DECOR_VISIT: Record<string, Record<'adult' | 'kid' | 'elder', number>> = {
   aquarium: { adult: 0.25, kid: 0.5, elder: 0.3 },
   gumball: { adult: 0.05, kid: 0.6, elder: 0.03 },
   magazine: { adult: 0.2, kid: 0.05, elder: 0.25 },
   bench: { adult: 0.05, kid: 0.05, elder: 0.4 },
+  toy_wand: { adult: 0.15, kid: 0.35, elder: 0.1 },
+  toy_fishing: { adult: 0.15, kid: 0.3, elder: 0.1 },
+  toy_ribbon: { adult: 0.12, kid: 0.3, elder: 0.12 },
+  toy_laser: { adult: 0.2, kid: 0.3, elder: 0.05 },
 };
 
 export type OvenState = { phase: 'idle' } | { phase: 'loading'; bread: Bread } | { phase: 'baking'; bread: Bread; t: number } | { phase: 'ready'; bread: Bread; t: number };
@@ -316,6 +335,11 @@ export class Sim {
   /** bench fixture id → whoever is sitting on it */
   seats = new Map<number, Customer | Worker>();
   guest: GuestCat | null = null;
+  readonly cafe: boolean;
+  /** rolling toys in motion: velocity in tiles per game minute */
+  private roll = new Map<number, { vx: number; vy: number }>();
+  /** in the cat cafe: every other store's cat */
+  visitors: CatAgent[] = [];
   readonly weather: string;
   /** camera flashes from customers photographing a cat */
   flashes: { x: number; y: number; at: number }[] = [];
@@ -339,8 +363,30 @@ export class Sim {
       day: state.day, revenue: 0, goodsCost: 0, wages: 0, rent: 0, restock: 0, customers: 0, manual: 0, levelUps: 0, avgAffinity: 0,
       angry: 0, cash: 0, cleaned: 0, fresh: 0,
     };
+    this.cafe = inCafe(state);
     this.buildLines();
     this.cat = new CatAgent(this.catSpot());
+    if (this.cafe) {
+      for (const slot of state.stores) {
+        if (!slot.saved) continue;
+        const k = new CatAgent(this.catSpot());
+        k.coat = slot.saved.catCoat;
+        k.acc = slot.saved.catAcc;
+        k.mode = 'sit';
+        k.timer = this.rng.range(2, 20);
+        this.visitors.push(k);
+      }
+      // coats no store has get to live here: the cafe is where they turn up
+      const seen = new Set(this.cats().map((k) => k.coat ?? state.catCoat));
+      for (const coat of CAT_COATS.filter((c) => !seen.has(c))) {
+        const k = new CatAgent(this.catSpot());
+        k.coat = coat;
+        k.acc = null;
+        k.mode = 'sleep';
+        k.timer = this.rng.range(5, 30);
+        this.visitors.push(k);
+      }
+    }
   }
 
   /** Random open floor tile in the store interior, off the queues and away from where anyone is headed. */
@@ -644,9 +690,87 @@ export class Sim {
     }
   }
 
+  // ---------- rolling toys ----------
+
+  /** Toys rolling right now. */
+  rollingToys(): Set<number> {
+    return new Set(this.roll.keys());
+  }
+
+  toyAt(f: FixtureState): P {
+    return f.at ?? { x: f.x, y: f.y };
+  }
+
+  /** Inside the store, on open floor, clear of the door rows. */
+  private floorOk(x: number, y: number): boolean {
+    const tx = Math.round(x);
+    const ty = Math.round(y);
+    return ty >= 1 && ty <= this.layout.h - 3 && this.grid.walkable(tx, ty);
+  }
+
+  private kick(f: FixtureState, dx: number, dy: number, speed: number): void {
+    const n = Math.hypot(dx, dy) || 1;
+    this.roll.set(f.id, { vx: (dx / n) * speed, vy: (dy / n) * speed });
+  }
+
+  /** Rolling toys keep going, bounce off shelves and walls, and slow to a stop wherever they end up. */
+  private updateToys(dt: number): void {
+    for (const [id, v] of this.roll) {
+      const f = this.fixture(id);
+      if (!f?.placed) {
+        this.roll.delete(id);
+        continue;
+      }
+      const p = this.toyAt(f);
+      let x = p.x + v.vx * dt;
+      let y = p.y + v.vy * dt;
+      if (!this.floorOk(x, p.y)) {
+        v.vx = -v.vx * 0.7;
+        x = p.x;
+      }
+      if (!this.floorOk(x, y)) {
+        v.vy = -v.vy * 0.7;
+        y = p.y;
+      }
+      f.at = { x, y };
+      const k = Math.exp(-dt * 0.9);
+      v.vx *= k;
+      v.vy *= k;
+      if (Math.hypot(v.vx, v.vy) < 0.15) this.roll.delete(id);
+    }
+    // shoppers walking past nudge a ball along with their foot
+    for (const f of this.placed()) {
+      if (!isRolling(f.decor) || this.roll.has(f.id)) continue;
+      const p = this.toyAt(f);
+      const c = this.customers.find((x) => x.mover.moving && Math.abs(x.mover.x - p.x) + Math.abs(x.mover.y - p.y) < 0.5);
+      if (c) this.kick(f, p.x - c.mover.x + (c.mover.dir === 'right' ? 0.5 : c.mover.dir === 'left' ? -0.5 : 0), p.y - c.mover.y + (c.mover.dir === 'down' ? 0.5 : c.mover.dir === 'up' ? -0.5 : 0), 1.2);
+    }
+  }
+
+  /** A cat after a ball: run to wherever it is, bat it away, chase again. */
+  private chase(c: CatAgent, f: FixtureState): void {
+    const p = this.toyAt(f);
+    const d = Math.abs(c.mover.x - p.x) + Math.abs(c.mover.y - p.y);
+    if (d < 1.1) {
+      if (this.clock - c.batAt > 0.8 && !this.roll.has(f.id)) {
+        c.batAt = this.clock;
+        this.faceToward(c.mover, { x: Math.round(p.x), y: Math.round(p.y) });
+        this.doAct(c, 'swipe', 0.4);
+        this.kick(f, p.x - c.mover.x + this.rng.range(-0.8, 0.8), p.y - c.mover.y + this.rng.range(-0.8, 0.8), this.rng.range(1.8, 3.2));
+      }
+      return;
+    }
+    const goal = { x: Math.round(p.x), y: Math.round(p.y) };
+    const dest = c.mover.dest;
+    if (Math.abs(dest.x - goal.x) + Math.abs(dest.y - goal.y) > 1) {
+      const to = this.grid.walkable(goal.x, goal.y) ? goal : this.beside(c.mover, goal);
+      if (to) this.walk(c.mover, to);
+    }
+  }
+
   /** The store's own cat plus a visiting one, if any. */
   cats(): CatAgent[] {
-    return this.guest?.agent ? [this.cat, this.guest.agent] : [this.cat];
+    return [this.cat, ...this.visitors, ...(this.guest?.agent ? [this.guest.agent] : [])];
   }
 
   private updateCat(dt: number): void {
@@ -656,6 +780,7 @@ export class Sim {
     if (this.cat.perch) st.mood = Math.min(100, st.mood + 0.01 * dt);
     if (gainCat(this.state, dt * 0.02)) this.emit({ type: 'growth', what: 'cat', level: st.level });
     this.stepCat(this.cat, dt);
+    for (const k of this.visitors) this.stepCat(k, dt);
     const g = this.guest;
     if (!g || g.gone) return;
     if (!g.agent) {
@@ -668,6 +793,8 @@ export class Sim {
     }
     const a = g.agent;
     if ((this.clock >= g.leaveAt || this.closing) && a.goal?.kind !== 'leave') {
+      if (a.tag) a.tag.other.tag = null;
+      a.tag = null;
       a.mode = 'walk';
       a.perch = null;
       a.goal = { kind: 'leave' };
@@ -677,7 +804,17 @@ export class Sim {
   }
 
   private stepCat(c: CatAgent, dt: number): void {
-    this.stepMover(c.mover, dt, 0.5);
+    if (c.tag) {
+      this.playTag(c);
+      this.stepMover(c.mover, dt, 1.8);
+      if (c.bubble && c.bubble.until < this.clock) c.bubble = null;
+      return;
+    }
+    if (c.mode === 'walk') c.toy = null;
+    const ball = c.toy !== null ? this.fixture(c.toy) : undefined;
+    const chasing = !!ball && isRolling(ball.decor);
+    if (chasing) this.chase(c, ball!);
+    this.stepMover(c.mover, dt, chasing ? 1.6 : 0.5);
     if (c.bubble && c.bubble.until < this.clock) c.bubble = null;
     if (c.mode === 'walk') {
       if (c.mover.path.length) return;
@@ -701,8 +838,8 @@ export class Sim {
     c.goal = null;
     const timer = (a: number, b: number) => this.rng.range(a, b);
     const f = goal?.fixture !== undefined ? this.fixture(goal.fixture) : undefined;
-    if (goal?.kind === 'tower' && f?.placed && !this.cats().some((k) => k !== c && k.perch?.x === f.x && k.perch.y === f.y)) {
-      c.perch = { x: f.x, y: f.y };
+    if ((goal?.kind === 'tower' || goal?.kind === 'perch') && f?.placed && !this.cats().some((k) => k !== c && k.perch?.fixture === f.id)) {
+      c.perch = this.perchOn(f);
       c.mode = this.rng.pick(['sleep', 'loaf', 'sit'] as const);
       c.timer = timer(40, 120);
       return;
@@ -742,9 +879,19 @@ export class Sim {
         return;
       }
     }
+    if (goal?.kind === 'toy' && f?.placed) {
+      const play = TOY_PLAY[f.decor!.slice(4) as CafeToy];
+      c.toy = f.id;
+      c.mode = play === 'nap' ? 'sleep' : play === 'scratch' ? 'stretch' : play === 'perch' || play === 'hide' ? 'loaf' : play === 'kick' ? 'groom' : 'sit';
+      c.timer = timer(play === 'nap' ? 30 : 10, play === 'nap' ? 70 : 25);
+      this.faceToward(c.mover, f);
+      if (play !== 'nap') c.bubble = { icon: 'b_paw', until: this.clock + 1.5 };
+      if (c === this.cat) this.state.cat.mood = Math.min(100, this.state.cat.mood + 3);
+      return;
+    }
     if (goal?.kind === 'follow' && goal.who && (goal.steps ?? 0) > 0) {
       const cust = this.customers.find((x) => x.mover === goal.who && x.state !== 'leave' && x.mover.y < this.layout.h - 1);
-      const to = cust ? this.beside(c.mover, cust.mover) : null;
+      const to = cust ? this.beside(c.mover, cust.mover.tile) : null;
       if (cust && to) {
         if (goal.steps === 3 && !cust.bubble) {
           cust.bubble = { icon: 'b_heart', until: this.clock + 1.5 };
@@ -792,7 +939,7 @@ export class Sim {
           this.faceToward(w.mover, c.mover.tile);
           this.later(w, 'b_heart', 0.5, 1, 'crouch');
           this.prop('treat', { x: m.x, y: m.y }, { x: c.mover.x, y: c.mover.y }, 0.4, undefined, 0.6);
-          this.later(c, null, 1, 1, 'wiggle');
+          this.later(c, null, 1, 1.2, 'eat');
           this.gainSkill(w, 'petcare', 0.5);
           if (c === this.cat) this.state.cat.mood = Math.min(100, this.state.cat.mood + 3);
         }
@@ -806,6 +953,7 @@ export class Sim {
       this.spills.push({ id: this.nextSpill++, x: t.x, y: t.y, kind: 'crumbs', age: 0 });
       const from = this.stockNear(t);
       if (from) this.prop('item', from.p, { x: t.x, y: t.y }, 0.5, from.index);
+      this.doAct(c, 'swipe', 0.4);
       c.mode = 'sit';
       c.timer = timer(6, 12);
       return;
@@ -815,15 +963,125 @@ export class Sim {
     c.timer = { sit: [15, 50], sleep: [40, 120], groom: [8, 20], loaf: [30, 90], stretch: [3, 6] }[c.mode].reduce((a, b) => this.rng.range(a, b));
   }
 
-  private beside(m: Mover, other: Mover): P | null {
-    const t = other.tile;
+  /** Where a cat sits on top of a fixture: the tile, the sprite's top in pixels, and the draw depth just after the fixture. */
+  private perchOn(f: FixtureState): { fixture: number; x: number; y: number; top: number; depth: number } {
+    const bottomRow = f.vertical ? f.y + 1 : f.y;
+    const height = f.decor === 'cat_tower' ? 41 : f.decor === 'table' ? 22 : PERCH_HEIGHT[f.kind]?.[f.vertical ? 1 : 0] ?? 32;
+    const x = f.vertical || f.kind === 'decor' ? f.x : f.x + this.rng.int(0, 1);
+    // feet (sprite row 16) a couple of pixels below the top edge
+    return { fixture: f.id, x, y: f.y, top: (bottomRow + 1) * T - height + 2 - 16, depth: bottomRow + 0.58 };
+  }
+
+  private beside(m: Mover, t: P): P | null {
     const around = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: t.x + dx, y: t.y + dy })).filter((p) => this.catVisible(p.x, p.y));
     return this.freeTile(m, around) ?? null;
   }
 
-  private wanderCat(c: CatAgent): void {
+  /** Sends a cat to a toy; it starts playing when it gets there. */
+  private goPlay(c: CatAgent, f: FixtureState): boolean {
+    const p = this.toyAt(f);
+    const rolling = isRolling(f.decor);
+    // pawing toys are played with side-on, so a tile to the left or right comes first
+    const sides = [[-1, 0], [1, 0]].map(([dx]) => ({ x: f.x + dx, y: f.y })).filter((q) => this.grid.walkable(q.x, q.y) && this.catVisible(q.x, q.y));
+    const acc = rolling
+      ? [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: Math.round(p.x) + dx, y: Math.round(p.y) + dy })).filter((q) => this.floorOk(q.x, q.y))
+      : sides.length ? sides : serveTiles(this.grid, f, 0);
+    const to = acc.length ? this.freeTile(c.mover, acc) : undefined;
+    if (!to) return false;
     c.mode = 'walk';
     c.perch = null;
+    c.toy = null;
+    c.goal = { kind: 'toy', fixture: f.id };
+    this.walk(c.mover, to);
+    return true;
+  }
+
+  /** Two cats chase each other around: the chaser runs at the other, a tap swaps roles, the runner bolts somewhere random. */
+  private playTag(c: CatAgent): void {
+    const t = c.tag!;
+    const o = t.other;
+    if (this.clock > t.until || !o.tag || o.tag.other !== c || (this.guest?.agent === o && this.guest.gone)) {
+      // game over: trot to the nearest tile, then settle down as usual
+      c.tag = null;
+      c.goal = null;
+      c.mode = 'walk';
+      this.walk(c.mover, c.mover.tile);
+      return;
+    }
+    if (t.it) {
+      const d = Math.abs(c.mover.x - o.mover.x) + Math.abs(c.mover.y - o.mover.y);
+      if (d < 1.1) {
+        // tagged: a quick pounce and the other one gives chase
+        this.doAct(c, 'swipe', 0.4);
+        this.doAct(o, 'hop', 0.4);
+        c.bubble = { icon: 'b_paw', until: this.clock + 1 };
+        t.it = false;
+        o.tag!.it = true;
+        this.walk(c.mover, this.runAway(c));
+        return;
+      }
+      const goal = o.mover.tile;
+      const dest = c.mover.dest;
+      if (Math.abs(dest.x - goal.x) + Math.abs(dest.y - goal.y) > 1) {
+        const to = this.beside(c.mover, goal);
+        if (to) this.walk(c.mover, to);
+      }
+    } else if (!c.mover.path.length) {
+      this.walk(c.mover, this.runAway(c));
+    }
+  }
+
+  /** A random open spot a few tiles away. */
+  private runAway(c: CatAgent): P {
+    for (let i = 0; i < 12; i++) {
+      const p = this.catSpot();
+      if (Math.abs(p.x - c.mover.x) + Math.abs(p.y - c.mover.y) >= 3) return p;
+    }
+    return this.catSpot();
+  }
+
+  private startTag(a: CatAgent, b: CatAgent): void {
+    const until = this.clock + this.rng.range(4, 9);
+    a.tag = { other: b, it: true, until };
+    b.tag = { other: a, it: false, until };
+    for (const k of [a, b]) {
+      k.perch = null;
+      k.toy = null;
+      k.goal = null;
+      k.mode = 'sit';
+    }
+    b.bubble = { icon: 'b_exclaim', until: this.clock + 0.8 };
+    this.walk(b.mover, this.runAway(b));
+  }
+
+  private wanderCat(c: CatAgent): void {
+    // sometimes, instead of wandering, start a chase with another cat that's up and about
+    const free = this.cats().filter((k) => k !== c && !k.tag && !k.perch && k.toy === null && k.mode !== 'sleep' && k.goal?.kind !== 'leave' && k.mover.y < this.layout.h);
+    if (free.length && this.rng.chance(0.15)) {
+      this.startTag(c, this.rng.pick(free));
+      return;
+    }
+    c.mode = 'walk';
+    c.perch = null;
+    c.toy = null;
+    // now and then up onto a cafe table, a chest freezer or a fridge
+    if (this.rng.chance(0.12)) {
+      const taken = new Set(this.cats().map((k) => k.perch?.fixture ?? (k.goal?.kind === 'perch' ? k.goal.fixture : undefined)));
+      const highs = this.placed().filter((f) => (f.decor === 'table' || f.kind === 'fridge' || f.kind === 'freezer') && !taken.has(f.id));
+      const f = highs.length ? this.rng.pick(highs) : undefined;
+      const acc = f ? accessTiles(this.grid, f, f.kind === 'decor' ? 0 : this.rng.int(0, 1)).filter((p) => this.catVisible(p.x, p.y)) : [];
+      const to = acc.length ? this.freeTile(c.mover, acc) : undefined;
+      if (f && to) {
+        c.goal = { kind: 'perch', fixture: f.id };
+        this.walk(c.mover, to);
+        return;
+      }
+    }
+    if (this.cafe && this.rng.chance(0.55)) {
+      const busy = new Set(this.cats().map((k) => k.toy ?? k.goal?.fixture));
+      const toys = this.placed().filter((f) => f.decor?.startsWith('toy_') && !busy.has(f.id));
+      if (toys.length && this.goPlay(c, this.rng.pick(toys))) return;
+    }
     const decor = (kind: string) => this.placed().filter((f) => f.kind === 'decor' && f.decor === kind);
     // a tile next to the decoration; for watching fish it has to be one where the cat stays in view
     // (on the tower it is drawn on top, so where it jumps from doesn't matter)
@@ -840,7 +1098,7 @@ export class Sim {
     if (tower && (to = near(tower, false))) c.goal = { kind: 'tower', fixture: tower.id };
     else if (tank && (to = near(tank, true))) c.goal = { kind: 'fish', fixture: tank.id };
     else if (other && r >= 0.42 && r < 0.62) {
-      to = this.beside(c.mover, other.mover);
+      to = this.beside(c.mover, other.mover.tile);
       if (to) c.goal = { kind: 'friend' };
     } else if (r >= 0.62 && r < 0.8) {
       // rub against someone who is standing still
@@ -849,19 +1107,19 @@ export class Sim {
         ...this.workers.filter((w) => w.task.type === 'none' && !w.mover.path.length).map((w) => w.mover),
       ].filter((m) => Math.abs(m.x - c.mover.x) + Math.abs(m.y - c.mover.y) <= 8 && m.y < this.layout.h);
       const who = still.length ? this.rng.pick(still) : null;
-      to = who ? this.beside(c.mover, who) : null;
+      to = who ? this.beside(c.mover, who.tile) : null;
       if (who && to) c.goal = { kind: 'rub', who };
     } else if (r >= 0.8 && r < 0.88) {
       // trail after a shopper for a bit
       const walking = this.customers.filter((x) => x.state === 'shop' && x.mover.path.length && x.mover.y < this.layout.h - 1
         && Math.abs(x.mover.x - c.mover.x) + Math.abs(x.mover.y - c.mover.y) <= 6);
       const who = walking.length ? this.rng.pick(walking).mover : null;
-      to = who ? this.beside(c.mover, who) : null;
+      to = who ? this.beside(c.mover, who.tile) : null;
       if (who && to) c.goal = { kind: 'follow', who, steps: 3 };
     } else if (r >= 0.88 && r < 0.95) {
       // the carton someone is unpacking looks like a fine place to sit
       const w = this.workers.find((x) => x.task.type === 'restock' && x.task.phase === 'stocking' && !x.mover.path.length);
-      to = w ? this.beside(c.mover, w.mover) : null;
+      to = w ? this.beside(c.mover, w.mover.tile) : null;
       if (w && to) c.goal = { kind: 'box', who: w.mover };
     }
     this.walk(c.mover, to ?? this.catSpot());
@@ -943,7 +1201,7 @@ export class Sim {
     const traffic = trafficMult(this.state.seed, this.state.day) * (1 + openingBuzz(this.state)) * this.rules.traffic * this.street.traffic;
     if (!broke) this.supplierGifts(false);
     this.rollEvent();
-    this.planGuest();
+    if (!this.cafe) this.planGuest();
     const guestAppeal = this.guest ? catAppeal(this.guest.level, this.guest.mood) : 0;
     const bakery = !!this.stationSpot('bakery');
     const bk = this.state.bakery;
@@ -978,10 +1236,6 @@ export class Sim {
       store: i, coat: d.catCoat, acc: d.catAcc, name: d.catName, level: d.cat.level, mood: d.cat.mood,
       arriveAt, leaveAt: arriveAt + this.rng.range(60, 180), agent: null, gone: false,
     };
-  }
-
-  petGuest(): void {
-    if (this.guest?.agent) this.guest.agent.bubble = { icon: 'b_heart', until: this.clock + 2 };
   }
 
   private arrivalTime(): number {
@@ -1037,6 +1291,7 @@ export class Sim {
     this.customers = this.customers.filter((c) => !(c.state === 'leave' && c.mover.path.length === 0 && c.mover.y >= this.layout.h + 1));
     this.updateOven(dtMin);
     this.updateCat(dtMin);
+    this.updateToys(dtMin);
     for (const sp of this.spills) sp.age += dtMin;
     const ev = this.event;
     if (ev?.kind === 'tour' && this.clock >= ev.at && !this.closing) {
@@ -1100,7 +1355,23 @@ export class Sim {
     this.gainSkill(best, 'greet', 0.6);
   }
 
+  /** At the cafe: a coffee at the counter, then a seat at a free table, maybe a go with a toy, then pay. */
+  private cafeTargets(c: Customer): Target[] {
+    const out: Target[] = [];
+    if (this.stations.has('coffee')) out.push({ t: 'station', kind: 'coffee' });
+    const tables = this.placed().filter((f) => f.decor === 'table');
+    if (tables.length) out.push({ t: 'decor', fixture: this.rng.pick(tables).id });
+    for (const f of this.rng.shuffle(this.placed().filter((x) => x.kind === 'decor' && DECOR_VISIT[x.decor ?? '']))) {
+      if (this.rng.chance(DECOR_VISIT[f.decor!][c.npc.kind])) {
+        out.push({ t: 'decor', fixture: f.id });
+        break;
+      }
+    }
+    return out;
+  }
+
   private planTargets(c: Customer): Target[] {
+    if (this.cafe) return this.cafeTargets(c);
     const npc = c.npc;
     const aff = affinityValue(this.state.npcs[npc.id].fond.level);
     const picks: { tg: Target; price: number; w: number }[] = [];
@@ -1267,6 +1538,7 @@ export class Sim {
         c.state = 'shop';
         if (c.seat !== null) this.seats.delete(c.seat);
         c.seat = null;
+        c.using = null;
       }
       return;
     }
@@ -1326,8 +1598,15 @@ export class Sim {
     if (tg.t === 'decor') {
       const f = this.fixture(tg.fixture);
       const acc = f?.placed ? serveTiles(this.grid, f, 0) : [];
-      const taken = f?.decor === 'bench' && this.seats.has(f.id);
-      if (!f || !acc.length || taken) {
+      const seat = f?.decor === 'bench' || f?.decor === 'table';
+      if (f && seat && this.seats.has(f.id)) {
+        // that table is taken: try another free one, or skip sitting
+        const free = this.placed().find((x) => x.decor === f.decor && !this.seats.has(x.id));
+        if (free) c.targets[0] = { t: 'decor', fixture: free.id };
+        else c.targets.shift();
+        return;
+      }
+      if (!f || !acc.length) {
         c.targets.shift();
         return;
       }
@@ -1364,7 +1643,7 @@ export class Sim {
       this.floaters.push({ text: '+$1.00', x: f.x, y: f.y, t: 0, color: '#f0c040' });
     } else if (f.decor === 'magazine') {
       c.timer = 2;
-      this.doAct(c, 'photo', 2);
+      this.doAct(c, 'read', 2);
       // an ad catches the eye: one more stop on the way
       if (this.rng.chance(0.4)) {
         const left = c.budget - c.spent;
@@ -1375,12 +1654,22 @@ export class Sim {
           c.targets.unshift({ t: 'slot', fixture: pick.x.id, slot: pick.i });
         }
       }
-    } else if (f.decor === 'bench') {
+    } else if (f.decor === 'bench' || f.decor === 'table') {
       this.seats.set(f.id, c);
       c.seat = f.id;
-      c.timer = 4;
+      c.timer = f.decor === 'table' ? this.rng.range(8, 14) : 4;
       c.affinityDelta += 0.6;
       c.mover.face('down');
+    } else if (f.decor?.startsWith('toy_')) {
+      // playing with a wand or laser: the nearest free cat comes over
+      c.timer = 2.5;
+      c.using = f.id;
+      this.doAct(c, f.decor === 'toy_laser' ? 'point' : 'wave', 2.5);
+      c.bubble = { icon: 'b_laugh', until: this.clock + 2.5 };
+      c.affinityDelta += 0.5;
+      const cat = this.cats().filter((k) => k.toy === null && k.mode !== 'sleep' && k.goal?.kind !== 'leave')
+        .sort((a, b) => Math.abs(a.mover.x - f.x) + Math.abs(a.mover.y - f.y) - (Math.abs(b.mover.x - f.x) + Math.abs(b.mover.y - f.y)))[0];
+      if (cat) this.goPlay(cat, f);
     }
   }
 
