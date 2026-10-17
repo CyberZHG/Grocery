@@ -10,7 +10,7 @@ import { DeliGame } from '../mini/deli';
 import { OdenGame } from '../mini/oden';
 import { T, worldBounds, WorldRenderer, type BuildView, type Hit, type HitAction } from '../render/world';
 import type { UI } from '../ui/app';
-import { DAY_END, DAY_START, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF_LOOKS, TRAITS, unlockedSkills, type Category, type Skill } from './defs';
+import { DAY_END, DAY_START, MIDNIGHT, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF_LOOKS, TRAITS, unlockedSkills, type Category, type Skill } from './defs';
 import { BATCH, Sim, type Line } from './sim';
 import { checkAchievements } from './achievements';
 import { catName, slotName } from './names';
@@ -687,7 +687,7 @@ export class Game {
   }
 
   timeLabel(): string {
-    const m = Math.floor(this.phase === 'day' ? this.sim.clock : DAY_START);
+    const m = Math.floor(this.phase === 'day' ? Math.min(MIDNIGHT, this.sim.clock) : DAY_START);
     return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   }
 

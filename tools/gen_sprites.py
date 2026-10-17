@@ -128,7 +128,8 @@ def npcs(prods):
     return looks, en, zh
 
 
-STAFF_HAIR = ['ponytail', 'spiky', 'bob', 'parted', 'long', 'buzz', 'bun', 'short', 'ponytail', 'parted', 'bob', 'spiky']
+STAFF_HAIR = ['ponytail', 'spiky', 'bob', 'parted', 'long', 'buzz', 'bun', 'short', 'ponytail', 'parted', 'bob', 'spiky',
+              'bun', 'short', 'long', 'buzz', 'bob', 'parted', 'ponytail', 'spiky', 'long', 'short', 'bun', 'buzz']
 
 
 def staff_names(used_en, used_zh):
@@ -150,15 +151,15 @@ def staff_looks():
     staff = []
     styles = STAFF_HAIR
     shirts = ['f4f0e8', 'c8d8f0', 'f0d8d8', 'e0e8c8', 'f0e8d0', 'd8d0e8']
-    for i in range(12):
+    for i in range(len(STAFF_HAIR)):
         lk = GC.random_look(rnd, 'adult')
         lk.hair = styles[i]
         lk.hair_c = GC.HAIR_COLORS[i % len(GC.HAIR_COLORS)]
         lk.apron = hexc('3a7a4a')
         lk.jacket = None
-        lk.cap = hexc('3a7a4a') if i in (3, 9) else None
+        lk.cap = hexc('3a7a4a') if i in (3, 9, 15, 21) else None
         lk.skirt = False
-        lk.glasses = i in (1, 7)
+        lk.glasses = i in (1, 7, 13, 18, 23)
         lk.shirt = hexc(shirts[i % len(shirts)])
         lk.pants = hexc(['2a2a34', '3a4a6a', '4a4a54', '5a4a3a'][i % 4])
         staff.append(lk)

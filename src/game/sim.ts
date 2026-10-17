@@ -2,7 +2,7 @@ import { Rng } from '../core/rng';
 import { cashSet, deliOrderSizes, locale, money } from '../i18n';
 import { Mover, type Dir } from './agent';
 import {
-  BREAD_COST_RATIO, BREAD_PRICE, BREADS, COFFEE_COST_RATIO, favBread, DAY_END, DAY_START, DRINKS, LAST_ENTRY,
+  BREAD_COST_RATIO, BREAD_PRICE, BREADS, COFFEE_COST_RATIO, favBread, DAY_END, DAY_START, DRINKS, LAST_ENTRY, MIDNIGHT,
   LEVELS, MEAT_COST_RATIO, MEAT_PRICE_LB, MEATS, NPC_ROW0, NPCS, ODEN_COST_RATIO, ODEN_ITEMS, ODEN_PRICE,
   offeredIn, OWNER_ROW, PRODUCT_BY_ID, STAFF_ROW0, TRAIT_BY_ID, CATEGORIES, CAT_COATS, isRolling, TOY_PLAY, type CafeToy, CAT_TREASURES, UMBRELLA_COLORS, UMBRELLA_PRICE, GIFT_KINDS, GIFT_LEVELS, unlockedSkills, type Bread, type Category, type BreadQuality, type DrinkDef, type Meat, type NpcDef,
   type OdenItem, type Skill, type StationKind,
@@ -1488,7 +1488,7 @@ export class Sim {
     const spots = [this.layout.registers[0].cashier, { x: 2, y: 1 }, { x: 4, y: 1 }, { x: 6, y: 1 }];
     this.workers.push(new Worker(-1, OWNER_ROW, 'auto', this.state.owner, spots[0]));
     this.state.staff.forEach((s, i) => {
-      const p = { x: Math.min(this.layout.w - 1, 2 + i * 2), y: 0 };
+      const p = { x: (2 + i * 2) % Math.max(1, this.layout.w - 1), y: 0 };
       this.workers.push(new Worker(s.id, STAFF_ROW0 + s.look, s.role, s.skills, p, s.trait));
     });
   }
@@ -1558,6 +1558,7 @@ export class Sim {
       this.arrivals = [];
       for (const c of this.customers) c.hurry = true;
     }
+    if (this.closing && !this.midnight && this.clock >= MIDNIGHT) this.settleAll();
     for (const c of this.customers) this.updateCustomer(c, dtMin);
     this.customers = this.customers.filter((c) => !(c.state === 'leave' && c.mover.path.length === 0 && c.mover.y >= this.layout.h + 1));
     this.updateOven(dtMin);
@@ -2189,16 +2190,7 @@ export class Sim {
       return;
     }
     if (line.kind === 'register') {
-      const total = c.total();
-      const paid = c.cash ? roundCash(Math.round(total * 100), CASH[c.payment?.cash ?? cashSet().id]) / 100 : total;
-      if (c.cash) this.stats.cash! += 1;
-      this.state.money += paid;
-      this.stats.revenue += paid;
-      this.state.lifetime.revenue += paid;
-      this.stats.goodsCost += c.basket.reduce((a, b) => a + b.cost * b.qty, 0);
-      const st = this.state.npcs[c.npc.id];
-      st.spent += paid;
-      this.floaters.push({ text: `+${money(paid)}`, x: line.spots[0].x, y: line.spots[0].y, t: 0, color: '#8ee08a' });
+      this.pay(c, line.spots[0]);
       if (c.cash) {
         const r = serviceReward(result, 4, 20);
         c.mult *= r.mult;
@@ -2218,6 +2210,44 @@ export class Sim {
     c.affinityDelta += r.affinity;
     this.happyBubble(c, r.affinity);
     this.leave(c);
+  }
+
+  private pay(c: Customer, at: P): void {
+    const total = c.total();
+    const paid = c.cash ? roundCash(Math.round(total * 100), CASH[c.payment?.cash ?? cashSet().id]) / 100 : total;
+    if (c.cash) this.stats.cash! += 1;
+    this.state.money += paid;
+    this.stats.revenue += paid;
+    this.state.lifetime.revenue += paid;
+    this.stats.goodsCost += c.basket.reduce((a, b) => a + b.cost * b.qty, 0);
+    this.state.npcs[c.npc.id].spent += paid;
+    this.floaters.push({ text: `+${money(paid)}`, x: at.x, y: at.y, t: 0, color: '#8ee08a' });
+  }
+
+  midnight = false;
+
+  /** At midnight whoever is still inside pays where they stand and heads out. */
+  private settleAll(): void {
+    this.midnight = true;
+    for (const line of this.allLines()) {
+      if (line.worker) this.release(line.worker);
+      line.members = [];
+      line.progress = 0;
+      line.duration = 0;
+      line.offerFor = null;
+    }
+    for (const c of this.customers) {
+      if (c.state === 'leave') continue;
+      // in the bagging line they've already paid
+      const paid = c.line?.kind === 'bagging';
+      c.line = null;
+      c.order = null;
+      if (c.seat !== null) this.seats.delete(c.seat);
+      c.seat = null;
+      c.using = null;
+      if (c.basket.length && !paid) this.pay(c, c.mover.tile);
+      this.leave(c);
+    }
   }
 
   private happyBubble(c: Customer, aff: number): void {

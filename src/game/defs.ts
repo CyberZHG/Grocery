@@ -48,10 +48,10 @@ export interface NpcDef {
 
 export const NPCS: NpcDef[] = (npcsJson as Omit<NpcDef, 'index'>[]).map((n, index) => ({ ...n, index }));
 
-/** chars.png rows: 0 owner, 1..12 staff looks, then NPCs */
+/** chars.png rows: 0 owner, 1..24 staff looks, then NPCs */
 export const OWNER_ROW = 0;
 export const STAFF_ROW0 = 1;
-export const STAFF_LOOKS = 12;
+export const STAFF_LOOKS = 24;
 export const NPC_ROW0 = STAFF_ROW0 + STAFF_LOOKS;
 
 export type FixtureKind = 'shelf' | 'produce' | 'fridge' | 'freezer' | 'decor';
@@ -161,6 +161,7 @@ export const COFFEE_COST_RATIO = 0.25;
 export const DAY_START = 8 * 60;
 export const DAY_END = 20 * 60;
 export const LAST_ENTRY = 19 * 60 + 30;
+export const MIDNIGHT = 24 * 60;
 /** real seconds per game minute at 1x */
 export const SEC_PER_MIN = 0.4;
 export const NIGHT_SECONDS = 15;

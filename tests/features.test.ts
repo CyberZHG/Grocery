@@ -938,3 +938,41 @@ describe('goals at the cat cafe', () => {
     }
   });
 });
+
+describe('midnight', () => {
+  it('whoever is still inside pays where they stand and leaves', async () => {
+    const { DAY_END, MIDNIGHT } = await import('../src/game/defs');
+    const s = newGame(5);
+    const sim = new Sim(s);
+    sim.restockAll();
+    sim.startDay();
+    while (!sim.done && sim.clock < DAY_END - 30) {
+      sim.tickReal(0.04);
+      sim.update(0.1);
+    }
+    // nobody left to run the till
+    const idle = () => {
+      for (const w of sim.workers) {
+        (w as { role: string }).role = 'stocker';
+        if (w.task.type === 'line') (sim as unknown as { release(w: unknown): void }).release(w);
+      }
+    };
+    idle();
+    const carrying = () => sim.customers.filter((c) => c.state !== 'leave' && c.basket.length).length;
+    while (!sim.done && sim.clock < MIDNIGHT - 1) {
+      sim.tickReal(0.04);
+      sim.update(0.1);
+      idle();
+    }
+    expect(carrying()).toBeGreaterThan(0);
+    const before = s.money;
+    let n = 0;
+    while (!sim.done && n++ < 2000) {
+      sim.tickReal(0.04);
+      sim.update(0.1);
+    }
+    expect(sim.done).toBe(true);
+    expect(sim.clock).toBeLessThan(MIDNIGHT + 60);
+    expect(s.money).toBeGreaterThan(before);
+  });
+});
