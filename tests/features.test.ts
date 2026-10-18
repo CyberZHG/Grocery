@@ -1084,3 +1084,107 @@ describe('moving counters', () => {
     expect(odenLine.doneAt).toBeGreaterThan(0);
   });
 });
+
+describe('auto layout and stocking', () => {
+  it('opens with Branch 3', async () => {
+    const { autoUnlocked } = await import('../src/game/chain');
+    const s = newGame(5);
+    expect(autoUnlocked(s)).toBe(false);
+    for (let i = 0; i < 3; i++) s.stores.push({ ...s.stores[0], saved: null });
+    expect(autoUnlocked(s)).toBe(true);
+  });
+
+  it('lines fixtures up, evens out the kinds with purchases and storage, and blocks nothing', async () => {
+    const { autoArrange } = await import('../src/game/arrange');
+    const { storeLayout } = await import('../src/game/chain');
+    const prices: Record<string, number> = { shelf: 150, produce: 180, fridge: 450, freezer: 500 };
+    for (const v of LAYOUT_VARIANTS) {
+      for (let lv = 0; lv < LEVELS.length; lv++) {
+        for (const cash of [0, 3000, 1e6]) {
+          const s = newGame(6);
+          s.stores[0].layout = v;
+          s.level = lv;
+          const l = storeLayout(s);
+          // a store packed with plain shelves
+          for (let k = 0; k < l.w * l.h; k++) {
+            const f = { id: s.nextId, kind: 'shelf' as const, x: k % l.w, y: Math.floor(k / l.w), vertical: k % 3 === 0, placed: true, slots: [{ product: null, stock: 0 }, { product: null, stock: 0 }] as GameState['fixtures'][0]['slots'] };
+            if (!canPlace(l, s.fixtures, f)) continue;
+            s.fixtures.push(f);
+            s.nextId += 1;
+          }
+          const res = autoArrange(l, s.fixtures, cash, prices);
+          const tag = `${v} ${lv} ${cash}`;
+          const placed: Parameters<typeof canPlace>[1] = s.fixtures.filter((f) => f.kind === 'decor');
+          for (const f of s.fixtures) {
+            if (f.kind === 'decor' || res.stored.includes(f.id)) continue;
+            const p = { ...f, ...res.spots.get(f.id)! };
+            expect(res.spots.has(f.id), tag).toBe(true);
+            expect(canPlace(l, placed, p), `${tag} ${f.id}`).toBe(true);
+            placed.push(p);
+          }
+          for (const b of res.bought) {
+            expect(canPlace(l, placed, b), `${tag} bought`).toBe(true);
+            placed.push(b);
+          }
+          expect(res.bought.reduce((a, b) => a + prices[b.kind], 0), tag).toBeLessThanOrEqual(cash);
+          const n = (k: string) => res.bought.filter((b) => b.kind === k).length;
+          if (cash === 0) expect(res.bought, tag).toHaveLength(0);
+          const capped = autoArrange(l, s.fixtures, 1e6, prices, { fridge: 2, freezer: 0 });
+          const owned = (k: string) => s.fixtures.filter((f) => f.kind === k && capped.spots.has(f.id)).length;
+          expect(capped.bought.filter((b) => b.kind === 'freezer'), tag).toHaveLength(0);
+          expect(owned('fridge') + capped.bought.filter((b) => b.kind === 'fridge').length, tag).toBeLessThanOrEqual(Math.max(2, s.fixtures.filter((f) => f.kind === 'fridge').length));
+          if (cash === 1e6) {
+            const kept = (k: string) => s.fixtures.filter((f) => f.kind === k && res.spots.has(f.id)).length + n(k);
+            const counts = ['shelf', 'produce', 'fridge', 'freezer'].map(kept);
+            expect(Math.max(...counts) - Math.min(...counts), `${tag} ${counts}`).toBeLessThanOrEqual(1);
+          }
+        }
+      }
+    }
+  });
+
+  it('fills every slot with a different product by the chosen measure, keeping ones already right', async () => {
+    const { autoStock } = await import('../src/game/arrange');
+    const { FIXTURES, PRODUCTS } = await import('../src/game/defs');
+    const s = newGame(7);
+    for (const p of PRODUCTS) s.products[p.id].level = 5;
+    const slots = s.fixtures.filter((f) => f.placed && FIXTURES[f.kind].store === 'shelf').flatMap((f) => f.slots);
+    expect(autoStock(s, 'profit', () => true)).toBeGreaterThan(0);
+    const ids = slots.map((sl) => sl.product);
+    expect(new Set(ids).size).toBe(ids.length);
+    slots[0].stock = 7;
+    expect(autoStock(s, 'profit', () => true)).toBe(0);
+    expect(slots[0].stock).toBe(7);
+    s.products[ids[0]!].level = 1;
+    autoStock(s, 'low', () => true);
+    expect(slots.some((sl) => sl.product === ids[0])).toBe(true);
+    autoStock(s, 'high', () => true);
+    expect(slots.some((sl) => sl.product === ids[0])).toBe(false);
+  });
+});
+
+describe('secret achievements', () => {
+  it('stay hidden and out of the trophy count until reached', async () => {
+    const { ACHIEVEMENTS, ACH_TOTAL, checkAchievements, isRevealed, unlockedCount } = await import('../src/game/achievements');
+    const { unlockOrder } = await import('../src/game/progress');
+    const { RACKS } = await import('../src/game/growth');
+    const { CATEGORIES } = await import('../src/game/defs');
+    const s = newGame(8);
+    const secret = ACHIEVEMENTS.filter((a) => a.secret);
+    expect(secret.map((a) => a.cat)).toEqual(['maxStaff', 'maxRacks', 'maxCategory', 'maxProducts']);
+    expect(ACH_TOTAL).toBe(ACHIEVEMENTS.length - 4);
+    expect(secret.some((a) => isRevealed(s, a))).toBe(false);
+    checkAchievements(s);
+    for (const id of unlockOrder('dairy')) s.products[id].level = 999;
+    for (const k of RACKS) s.racks[k].level = 999;
+    const got = checkAchievements(s).map((a) => a.cat);
+    expect(got).toContain('maxCategory');
+    expect(got).toContain('maxRacks');
+    expect(got).not.toContain('maxProducts');
+    expect(isRevealed(s, secret.find((a) => a.cat === 'maxCategory')!)).toBe(true);
+    const before = unlockedCount(s);
+    for (const c of CATEGORIES) for (const id of unlockOrder(c)) s.products[id].level = 999;
+    expect(checkAchievements(s).map((a) => a.cat)).toContain('maxProducts');
+    expect(unlockedCount(s)).toBe(before);
+  });
+});

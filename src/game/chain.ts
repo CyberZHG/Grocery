@@ -405,3 +405,8 @@ function nearestSpot(layout: Layout, kept: FixturePlacement[], f: FixtureState):
   }
   return null;
 }
+
+/** Auto layout and stocking open once Branch 3 does. */
+export function autoUnlocked(s: GameState): boolean {
+  return branchCount(s) >= 4;
+}

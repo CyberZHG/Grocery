@@ -1,12 +1,16 @@
 import { CHALLENGES, completions, doneCount, tiersDone, type ChallengeId } from './chain';
-import { LEVELS } from './defs';
+import { CATEGORIES as PRODUCT_CATS, LEVELS } from './defs';
+import { RACKS } from './growth';
+import { MAX_PRODUCT_LEVEL, unlockOrder } from './progress';
+import { MAX_LEVEL } from './rules';
 import type { GameState, MiniKind } from './state';
 
 export type AchCategory =
   | 'expand' | 'revenue' | 'savings' | 'days' | 'customers' | 'friends' | 'unlocks' | 'hires' | 'reputation' | 'catLevel' | 'gifts' | 'introduced' | 'goals' | 'branches' | 'challenges' | 'treasures' | 'tiers' | 'street' | 'cafeToys'
   | 'ch_rush' | 'ch_fresh' | 'ch_oldtown' | 'ch_school' | 'ch_suburb'
   | 'checkout' | 'change' | 'oden' | 'odenItems' | 'deli' | 'deliPounds'
-  | 'bakery' | 'trays' | 'coffee' | 'coffeeSteps' | 'bagging' | 'bagItems';
+  | 'bakery' | 'trays' | 'coffee' | 'coffeeSteps' | 'bagging' | 'bagItems'
+  | 'maxStaff' | 'maxRacks' | 'maxCategory' | 'maxProducts';
 
 export type AchFormat = 'count' | 'money' | 'cents' | 'pounds';
 
@@ -16,6 +20,8 @@ export interface AchievementDef {
   tier: number;
   target: number;
   format: AchFormat;
+  /** shown only once reached, and left out of the trophy count */
+  secret: boolean;
 }
 
 interface CategoryDef {
@@ -23,6 +29,7 @@ interface CategoryDef {
   tiers: number[];
   format: AchFormat;
   value: (s: GameState) => number;
+  secret?: boolean;
 }
 
 /** Size and reputation count the best store in the chain. */
@@ -48,6 +55,11 @@ function cafeToys(s: GameState): number {
 function streetLevels(s: GameState): number {
   return [s.street, ...s.stores.map((x) => x.saved?.street ?? [])].flat().reduce((a, l) => a + (l?.level ?? 0), 0);
 }
+
+const allStores = <T>(s: GameState, get: (d: GameState | NonNullable<GameState['stores'][0]['saved']>) => T): T[] =>
+  [get(s), ...s.stores.flatMap((x) => (x.saved ? [get(x.saved)] : []))];
+
+const maxed = (ids: string[], s: GameState) => ids.every((id) => (s.products[id]?.level ?? 1) >= MAX_PRODUCT_LEVEL);
 
 const manual = (k: MiniKind) => (s: GameState) => s.lifetime.manual[k];
 const amount = (k: MiniKind) => (s: GameState) => s.lifetime.amount[k];
@@ -86,13 +98,20 @@ const CATEGORIES: CategoryDef[] = [
   { cat: 'coffeeSteps', tiers: [20, 100, 300], format: 'count', value: amount('coffee') },
   { cat: 'bagging', tiers: [1, 10, 50, 100], format: 'count', value: manual('bagging') },
   { cat: 'bagItems', tiers: [30, 150, 500], format: 'count', value: amount('bagging') },
+  { cat: 'maxStaff', tiers: [1], format: 'count', secret: true, value: (s) => Number(allStores(s, (d) => d.staff).flat().some((st) => Object.values(st.skills).every((k) => k.level >= MAX_LEVEL))) },
+  { cat: 'maxRacks', tiers: [1], format: 'count', secret: true, value: (s) => Number(allStores(s, (d) => d.racks).some((r) => RACKS.every((k) => r[k].level >= MAX_LEVEL))) },
+  { cat: 'maxCategory', tiers: [1], format: 'count', secret: true, value: (s) => Number(PRODUCT_CATS.some((c) => maxed(unlockOrder(c), s))) },
+  { cat: 'maxProducts', tiers: [1], format: 'count', secret: true, value: (s) => Number(PRODUCT_CATS.every((c) => maxed(unlockOrder(c), s))) },
 ];
 
 const VALUE = new Map(CATEGORIES.map((c) => [c.cat, c.value]));
 
 export const ACHIEVEMENTS: AchievementDef[] = CATEGORIES.flatMap((c) =>
-  c.tiers.map((target, i) => ({ id: `${c.cat}_${i + 1}`, cat: c.cat, tier: i + 1, target, format: c.format })),
+  c.tiers.map((target, i) => ({ id: `${c.cat}_${i + 1}`, cat: c.cat, tier: i + 1, target, format: c.format, secret: !!c.secret })),
 );
+
+/** Achievements that count toward the trophy total; secret ones are extra. */
+export const ACH_TOTAL = ACHIEVEMENTS.filter((a) => !a.secret).length;
 
 export const ACH_CATEGORIES = CATEGORIES.map((c) => c.cat);
 
@@ -101,7 +120,7 @@ export function achValue(s: GameState, a: AchievementDef): number {
 }
 
 export function unlockedCount(s: GameState): number {
-  return ACHIEVEMENTS.filter((a) => s.achievements[a.id]).length;
+  return ACHIEVEMENTS.filter((a) => !a.secret && s.achievements[a.id]).length;
 }
 
 /** Marks newly reached achievements and returns them. */
@@ -135,6 +154,7 @@ export function categoryOpen(s: GameState, cat: AchCategory): boolean {
 /** Achievements reveal one tier at a time, and only after their mini-game is unlocked. */
 export function isRevealed(s: GameState, a: AchievementDef): boolean {
   if (s.achievements[a.id]) return true;
+  if (a.secret) return false;
   if (!categoryOpen(s, a.cat)) return false;
   return a.tier === 1 || !!s.achievements[`${a.cat}_${a.tier - 1}`];
 }

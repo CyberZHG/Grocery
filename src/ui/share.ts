@@ -1,6 +1,6 @@
 import { drawSprite, drawText } from '../core/assets';
 import { money, t } from '../i18n';
-import { ACHIEVEMENTS, unlockedCount } from '../game/achievements';
+import { ACH_TOTAL, unlockedCount } from '../game/achievements';
 import type { Game } from '../game/game';
 import { LEVELS } from '../game/defs';
 import { worldBounds, WorldRenderer } from '../render/world';
@@ -57,7 +57,7 @@ export async function makeShareImage(game: Game): Promise<HTMLCanvasElement> {
   ctx.fillStyle = '#f8e08a';
   ctx.font = `600 34px ${font}`;
   ctx.textBaseline = 'top';
-  ctx.fillText(t('share.achievements', { n, total: ACHIEVEMENTS.length }), rx + 76, top + 2);
+  ctx.fillText(t('share.achievements', { n, total: ACH_TOTAL }), rx + 76, top + 2);
   ctx.fillStyle = '#e8eef0';
   ctx.font = `28px ${font}`;
   ctx.fillText(`${t('hud.day', { n: s.day })} · ${money(s.money)}`, rx + 76, top + 48);
@@ -73,7 +73,7 @@ export async function openShare(game: Game, ui: UI): Promise<void> {
   const url = canvas.toDataURL('image/png');
   const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/png'));
   const file = blob ? new File([blob], `grocery-day${game.state.day}.png`, { type: 'image/png' }) : null;
-  const text = t('share.text', { n: unlockedCount(game.state), total: ACHIEVEMENTS.length, day: game.state.day, url: SITE_URL });
+  const text = t('share.text', { n: unlockedCount(game.state), total: ACH_TOTAL, day: game.state.day, url: SITE_URL });
   const canShare = !!file && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] });
   const download = () => {
     const a = h('a', { href: url, download: file?.name ?? 'grocery.png' });

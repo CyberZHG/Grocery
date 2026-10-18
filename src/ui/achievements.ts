@@ -1,6 +1,6 @@
 import { rect } from '../core/assets';
 import { money, t, weight, type Key } from '../i18n';
-import { ACH_CATEGORIES, ACHIEVEMENTS, achValue, categoryOpen, isRevealed, ROMAN, unlockedCount, type AchievementDef } from '../game/achievements';
+import { ACH_CATEGORIES, ACH_TOTAL, ACHIEVEMENTS, achValue, categoryOpen, isRevealed, ROMAN, unlockedCount, type AchievementDef } from '../game/achievements';
 import type { GameState } from '../game/state';
 import { h } from './dom';
 
@@ -37,10 +37,11 @@ export function achDesc(a: AchievementDef): string {
 
 export function achievementsPanel(s: GameState): HTMLElement {
   const out = h('div', { class: 'stack' }, [
-    h('div', { class: 'ach-summary' }, [spriteIcon('trophy', 2), h('strong', {}, [t('ach.count', { n: unlockedCount(s), total: ACHIEVEMENTS.length })])]),
+    h('div', { class: 'ach-summary' }, [spriteIcon('trophy', 2), h('strong', {}, [t('ach.count', { n: unlockedCount(s), total: ACH_TOTAL })])]),
   ]);
   for (const cat of ACH_CATEGORIES) {
-    const list = ACHIEVEMENTS.filter((a) => a.cat === cat);
+    const list = ACHIEVEMENTS.filter((a) => a.cat === cat && (!a.secret || s.achievements[a.id]));
+    if (!list.length) continue;
     const grid = h('div', { class: 'ach-grid' });
     for (const a of list) {
       if (!isRevealed(s, a)) {
