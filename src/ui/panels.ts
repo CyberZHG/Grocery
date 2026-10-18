@@ -6,6 +6,7 @@ import { spriteIcon } from './achievements';
 
 import type { Game } from '../game/game';
 import { fitFixtures, inCafe, storeLayout } from '../game/chain';
+import { CAFE_LEVEL } from '../game/layout';
 import { affinityExpToNext, npcExpToNext, skillExpToNext, skillSpeed, type Leveled } from '../game/rules';
 import { raiseOf, saveGame, wageOf, type DayStats, type Role, type StaffState } from '../game/state';
 import { charIcon, productIcon, type UI } from './app';
@@ -28,6 +29,16 @@ function skillRows(skills: Record<Skill, Leveled>, level: number): HTMLElement {
 }
 
 const ROLES: Role[] = ['auto', 'cashier', 'stocker', 'cleaner', 'service'];
+
+/** The general roles, then one per counter this store has. */
+function rolesFor(g: Game): Role[] {
+  const def = inCafe(g.state) ? CAFE_LEVEL : LEVELS[g.state.level];
+  return [...ROLES, ...def.stations, ...(def.bagging ? (['bagging'] as const) : [])];
+}
+
+function roleLabel(r: Role): string {
+  return ROLES.includes(r) ? t(`role.${r as 'auto'}`) : t(`station.${r as 'bagging'}`);
+}
 
 export function staffPanel(g: Game, ui: UI): HTMLElement {
   const st = g.state;
@@ -57,7 +68,7 @@ export function staffPanel(g: Game, ui: UI): HTMLElement {
         if (w) w.role = s.role;
         saveGame(st);
       },
-    }, ROLES.map((r) => h('option', { value: r, selected: s.role === r }, [t(`role.${r}`)])));
+    }, [...new Set([...rolesFor(g), s.role])].map((r) => h('option', { value: r, selected: s.role === r }, [roleLabel(r)])));
     grid.append(card(STAFF_ROW0 + s.look, staffName(s.name), [
       h('span', { class: 'muted' }, [
         t('common.perDay', { v: money(wageOf(s)) }),

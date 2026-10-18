@@ -1306,6 +1306,34 @@ describe('roles and stowed counters', () => {
     expect(seen.has('tidy') || seen.has('clean')).toBe(true);
   });
 
+  it('a baker keeps the oven going and does nothing else; a counter role only serves its own counter', () => {
+    const s = newGame(15);
+    s.level = 3;
+    s.staff.push({ id: 98, name: 5, look: 5, wage: 50, role: 'bakery', skills: freshSkills({ bakery: 5 }), hiredDay: 1, trait: null, baseLevels: 0 });
+    s.staff.push({ id: 99, name: 6, look: 6, wage: 50, role: 'deli', skills: freshSkills({ deli: 5 }), hiredDay: 1, trait: null, baseLevels: 0 });
+    const sim = new Sim(s);
+    sim.restockAll();
+    sim.startDay();
+    let bakes = 0;
+    let prev = 'idle';
+    const baker = new Set<string>();
+    const deli = new Set<string>();
+    for (let n = 0; !sim.done && n < 40000; n++) {
+      sim.tickReal(0.04);
+      sim.update(0.1);
+      const b = sim.workers.find((x) => x.staffId === 98)!;
+      const d = sim.workers.find((x) => x.staffId === 99)!;
+      baker.add(b.task.type);
+      deli.add(d.task.type === 'line' ? `line:${d.task.line.station}` : d.task.type);
+      if (sim.oven.phase === 'baking' && prev !== 'baking') bakes++;
+      prev = sim.oven.phase;
+    }
+    expect([...baker].every((k) => ['none', 'rest', 'oven'].includes(k))).toBe(true);
+    expect([...deli].every((k) => ['none', 'rest', 'line:deli'].includes(k))).toBe(true);
+    expect(deli.has('line:deli')).toBe(true);
+    expect(bakes).toBeGreaterThanOrEqual(1);
+  });
+
   it('tills can be put away down to one, and with only card counters out everyone pays by card', async () => {
     const { storeLayout } = await import('../src/game/chain');
     const s = newGame(13);

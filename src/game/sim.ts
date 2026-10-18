@@ -297,8 +297,8 @@ export const BAKE_MIN = 18;
 /** Manual window in real seconds at 1x; shorter when fast-forwarding. */
 export const OFFER_SECONDS = 4;
 export const OVEN_OFFER_SECONDS = 6;
-export const BURN_AFTER = 10;
-export const BATCH = 8;
+export const BURN_AFTER = 30;
+export const BATCH = 16;
 
 export type SimEvent =
   | { type: 'npcLevel'; npc: string; level: number }
@@ -1772,7 +1772,7 @@ export class Sim {
   private counterSpots(w: Worker): P[] {
     const out: P[] = [];
     if (this.canDo(w, 'register')) out.push(...this.registers.filter((l) => !l.worker).map((l) => l.staffSpot));
-    if (this.canDo(w, 'station')) out.push(...[...this.stations.values()].filter((l) => !l.worker).map((l) => l.staffSpot));
+    out.push(...[...this.stations.values()].filter((l) => !l.worker && this.canDo(w, 'station', l.station)).map((l) => l.staffSpot));
     if (this.bagging && !this.bagging.worker && this.canDo(w, 'bagging')) out.push(this.bagging.staffSpot);
     const bakery = this.stationSpot('bakery');
     if (bakery && this.canDo(w, 'oven')) out.push(bakery.staff);
@@ -2484,7 +2484,7 @@ export class Sim {
     if (this.clock > DAY_END - BAKE_MIN - 10) return false;
     const bk = this.state.bakery;
     const total = BREADS.reduce((a, b) => a + bk[b].good + bk[b].golden, 0);
-    return total < 6;
+    return total < BATCH / 2;
   }
 
   private startBake(): void {
@@ -2525,7 +2525,7 @@ export class Sim {
     return s;
   }
 
-  private canDo(w: Worker, kind: JobKind): boolean {
+  private canDo(w: Worker, kind: JobKind, station?: StationKind): boolean {
     switch (w.role) {
       case 'auto':
         return true;
@@ -2537,6 +2537,12 @@ export class Sim {
         return kind === 'clean' || kind === 'tidy';
       case 'service':
         return kind === 'station' || kind === 'bagging' || kind === 'oven';
+      case 'bakery':
+        return kind === 'oven';
+      case 'bagging':
+        return kind === 'bagging';
+      default:
+        return kind === 'station' && station === w.role;
     }
   }
 
@@ -2549,14 +2555,14 @@ export class Sim {
     const idle = this.workers.filter((w) => w.task.type === 'none' || w.task.type === 'rest' || (urgent && this.preemptable(w)));
     if (!idle.length) return;
     const claimed = this.claimed();
-    type Job = { score: number; kind: JobKind; pos: P; apply: (w: Worker) => void };
+    type Job = { score: number; kind: JobKind; station?: StationKind; pos: P; apply: (w: Worker) => void };
     const jobs: Job[] = [];
     for (const line of this.allLines()) {
       if (line.worker || line.members.length === 0) continue;
       const kind = line.kind === 'register' ? 'register' : line.kind === 'bagging' ? 'bagging' : 'station';
       const base = kind === 'register' ? 10 : kind === 'station' ? 8 : 7;
       jobs.push({
-        score: base + line.members.length, kind, pos: line.staffSpot,
+        score: base + line.members.length, kind, station: line.station, pos: line.staffSpot,
         apply: (w) => {
           line.worker = w;
           w.task = { type: 'line', line };
@@ -2581,7 +2587,7 @@ export class Sim {
       if (!busy) {
         const unload = this.oven.phase === 'ready';
         jobs.push({
-          score: unload ? 9 : 5, kind: 'oven', pos: sp.staff,
+          score: unload ? 9.5 : 7.5, kind: 'oven', pos: sp.staff,
           apply: (w) => {
             w.task = { type: 'oven', phase: unload ? 'unload' : 'load', timer: 0 };
             this.walk(w.mover, sp.staff);
@@ -2643,9 +2649,10 @@ export class Sim {
     for (const job of jobs) {
       let best: Worker | null = null;
       let bd = Infinity;
-      const lineJob = job.kind === 'register' || job.kind === 'station' || job.kind === 'bagging';
+      // the oven, like a waiting line, can pull someone off a restock run
+      const lineJob = job.kind === 'register' || job.kind === 'station' || job.kind === 'bagging' || job.kind === 'oven';
       for (const w of idle) {
-        if (!this.canDo(w, job.kind)) continue;
+        if (!this.canDo(w, job.kind, job.station)) continue;
         if (w.task.type !== 'none' && w.task.type !== 'rest' && !(lineJob && this.preemptable(w))) continue;
         // a break is only cut short for real work, not filler
         if (w.task.type === 'rest' && job.score < 2) continue;
