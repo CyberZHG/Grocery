@@ -14,7 +14,7 @@ import {
 } from './growth';
 import { collectionCount, collectionMult, isUnlocked, priceMult, productExpToNext, unlockOrder, unlockedCount } from './progress';
 import { streetFx, type StreetFx } from './street';
-import { chainPriceMult, inCafe, isFresh, peaksOf, perksOf, rulesOf, storeLayout, type Perks, type Rules } from './chain';
+import { chainPriceMult, inCafe, markExp, type ExpMark, isFresh, peaksOf, perksOf, rulesOf, storeLayout, type Perks, type Rules } from './chain';
 import { accessTiles, entryTile, fixtureCells, Grid, serveTiles, spawnTile, type Layout, type P, type StationSpot } from './layout';
 import {
   addExp, affinityValue, budgetMult, CASH, changeAffinity, makeCashPayment, npcExpToNext, roundCash, serviceReward, skillExpToNext, skillSpeed, waitPenalty,
@@ -370,6 +370,8 @@ export class Sim {
   seats = new Map<number, Customer | Worker>();
   guest: GuestCat | null = null;
   readonly cafe: boolean;
+  /** the store's experience when the day started, so the other stores can share in what it gains */
+  expMark: ExpMark | null = null;
   /** rolling toys in motion: velocity in tiles per game minute */
   private roll = new Map<number, { vx: number; vy: number }>();
   /** in the cat cafe: every other store's cat */
@@ -1482,6 +1484,7 @@ export class Sim {
   // ---------- day lifecycle ----------
 
   startDay(): void {
+    this.expMark = markExp(this.state);
     const broke = this.state.money <= 0;
     if (broke) this.supplierGifts(true);
     this.restockAll();

@@ -1,4 +1,6 @@
-import { CAT_COATS, FIXTURES, LEVELS, STORE_STYLE, type Category } from './defs';
+import { CAT_COATS, FIXTURES, LEVELS, SKILLS, STORE_STYLE, type Category, type Skill } from './defs';
+import { CAT_SKILLS, catExpToNext, catSkillExpToNext, EQUIPMENT, equipExpToNext, rackExpToNext, RACKS, repExpToNext, type CatSkill, type EquipKind, type RackKind } from './growth';
+import { addExp, skillExpToNext, type Leveled } from './rules';
 import { buildLayout, canPlace, planOf, type FixturePlacement, type Layout, type LayoutVariant } from './layout';
 import { newGame, stash, STORE_KEYS, totalLevels, type DayStats, type FixtureState, type GameState, type StaffState, type StoreData, type StoreSlot } from './state';
 
@@ -411,4 +413,51 @@ function nearestSpot(layout: Layout, kept: FixturePlacement[], f: FixtureState):
 /** Auto layout and stocking open once Branch 3 does. */
 export function autoUnlocked(s: GameState): boolean {
   return branchCount(s) >= 4;
+}
+
+/** Share of the running store's daily experience that every other store picks up. */
+export const AWAY_EXP = 0.1;
+
+/** Experience totals of the running store, taken when a day starts. Staff skills are the average per person. */
+export interface ExpMark {
+  rep: number;
+  equip: Record<EquipKind, number>;
+  racks: Record<RackKind, number>;
+  cat: number;
+  catSkills: Record<CatSkill, number>;
+  staff: Record<Skill, number>;
+}
+
+function totalExp(l: Leveled, toNext: (lv: number) => number): number {
+  let t = l.exp;
+  for (let i = 1; i < l.level; i++) t += toNext(i);
+  return t;
+}
+
+export function markExp(s: GameState): ExpMark {
+  const per = <K extends string>(keys: readonly K[], f: (k: K) => number) => Object.fromEntries(keys.map((k) => [k, f(k)])) as Record<K, number>;
+  return {
+    rep: totalExp(s.reputation, repExpToNext),
+    equip: per(EQUIPMENT, (k) => totalExp(s.equipment[k], equipExpToNext)),
+    racks: per(RACKS, (k) => totalExp(s.racks[k], rackExpToNext)),
+    cat: totalExp(s.cat, catExpToNext),
+    catSkills: per(CAT_SKILLS, (k) => totalExp(s.cat.skills[k], catSkillExpToNext)),
+    staff: per(SKILLS, (k) => (s.staff.length ? s.staff.reduce((a, st) => a + totalExp(st.skills[k], skillExpToNext), 0) / s.staff.length : 0)),
+  };
+}
+
+/** Every other store gains a little of what the running store gained today. */
+export function shareExp(s: GameState, before: ExpMark): void {
+  const now = markExp(s);
+  const gain = (a: number, b: number) => Math.max(0, a - b) * AWAY_EXP;
+  s.stores.forEach((slot, i) => {
+    const d = slot.saved;
+    if (i === s.active || !d) return;
+    addExp(d.reputation, gain(now.rep, before.rep), repExpToNext);
+    for (const k of EQUIPMENT) addExp(d.equipment[k], gain(now.equip[k], before.equip[k]), equipExpToNext);
+    for (const k of RACKS) addExp(d.racks[k], gain(now.racks[k], before.racks[k]), rackExpToNext);
+    addExp(d.cat, gain(now.cat, before.cat), catExpToNext);
+    for (const k of CAT_SKILLS) addExp(d.cat.skills[k], gain(now.catSkills[k], before.catSkills[k]), catSkillExpToNext);
+    for (const st of d.staff) for (const k of SKILLS) addExp(st.skills[k], gain(now.staff[k], before.staff[k]), skillExpToNext);
+  });
 }

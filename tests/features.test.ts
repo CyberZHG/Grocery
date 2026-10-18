@@ -1243,3 +1243,35 @@ describe('cat skills', () => {
     for (const x of m.stores) if (x.saved) expect(x.saved.cat.skills.nap.level).toBe(1);
   });
 });
+
+describe('stores you are away from', () => {
+  it('pick up a tenth of what the running store gains each day', async () => {
+    const { openBranch, markExp, shareExp, AWAY_EXP } = await import('../src/game/chain');
+    const s = newGame(13);
+    s.money = 1e6;
+    const hire = (id: number) => ({ id, name: id, look: 0, wage: 40, role: 'auto' as const, skills: freshSkills(), hiredDay: 1, trait: null, baseLevels: 0 });
+    s.staff = [hire(900)];
+    openBranch(s);
+    s.staff = [hire(901), hire(902)];
+    const before = markExp(s);
+    const main = s.stores[0].saved!;
+    const away = JSON.parse(JSON.stringify(main));
+    const sim = new Sim(s);
+    sim.restockAll();
+    sim.startDay();
+    for (let n = 0; n < 40000 && !sim.done; n++) {
+      sim.tickReal(0.04);
+      sim.update(0.1);
+    }
+    sim.endDayCosts();
+    shareExp(s, sim.expMark!);
+    const now = markExp(s);
+    expect(now.rep).toBeGreaterThan(before.rep);
+    const t = (l: { level: number; exp: number }, f: (lv: number) => number) => { let x = l.exp; for (let i = 1; i < l.level; i++) x += f(i); return x; };
+    const { repExpToNext } = await import('../src/game/growth');
+    const got = t(main.reputation, repExpToNext) - t(away.reputation, repExpToNext);
+    expect(got).toBeCloseTo((now.rep - before.rep) * AWAY_EXP, 5);
+    const staffGain = main.staff.some((st, i) => st.skills.restock.exp !== away.staff[i].skills.restock.exp || st.skills.restock.level !== away.staff[i].skills.restock.level);
+    expect(staffGain).toBe(true);
+  });
+});

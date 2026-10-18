@@ -2,7 +2,7 @@
 // reputation and size curves. Run with `npm run economy`; not part of `npm test`.
 import { it } from 'vitest';
 import { FIXTURES, LEVELS, PRODUCTS, type FixtureKind } from '../src/game/defs';
-import { activeSlot, branchBlocker, chainIncome, checkChallenge, completions, openBranch, progressOf, recordDay, spoil, startNextTier, storeLayout, tiersDone } from '../src/game/chain';
+import { activeSlot, branchBlocker, chainIncome, checkChallenge, completions, openBranch, progressOf, recordDay, shareExp, spoil, startNextTier, storeLayout, tiersDone } from '../src/game/chain';
 import { BUILDINGS, levelCost, MAX_BUILDING_LEVEL } from '../src/game/street';
 import { totalLevels } from '../src/game/state';
 import { canPlace } from '../src/game/layout';
@@ -20,6 +20,7 @@ function runDay(s: GameState): Sim {
     sim.update(0.2);
   }
   sim.endDayCosts();
+  if (sim.expMark) shareExp(s, sim.expMark);
   sim.stats.spoiled = spoil(s);
   sim.stats.chain = chainIncome(s);
   s.money += sim.stats.chain;

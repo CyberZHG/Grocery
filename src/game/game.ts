@@ -15,7 +15,7 @@ import { DAY_END, DAY_START, MIDNIGHT, NIGHT_SECONDS, SEC_PER_MIN, SKILLS, STAFF
 import { BATCH, Sim, type Line } from './sim';
 import { checkAchievements } from './achievements';
 import { catName, slotName } from './names';
-import { chainIncome, checkChallenge, ensureCafe, fitFixtures, inCafe, openBranch as openChainBranch, recordDay, spoil, STORE_BONUS, storeLayout, switchStore as switchChainStore } from './chain';
+import { chainIncome, checkChallenge, shareExp, ensureCafe, fitFixtures, inCafe, openBranch as openChainBranch, recordDay, spoil, STORE_BONUS, storeLayout, switchStore as switchChainStore } from './chain';
 import { sfx } from '../core/audio';
 import { fitGoals, progressGoals, refreshGoals, type GoalKind, type GoalScope } from './goals';
 import { COLLECTION_BONUS } from './progress';
@@ -23,7 +23,7 @@ import { capacityOf, gainReputation } from './growth';
 import { eventText, goalText } from '../ui/goals';
 import type { AwaySummary } from '../ui/app';
 import { achName } from '../ui/achievements';
-import { freshSkills, loadGame, totalLevels, unlockedBreads, newGame, saveGame, type DayStats, type GameState, type MiniKind, type StaffState } from './state';
+import { freshSkills, loadGame, totalLevels, unlockedBreads, newGame, saveGame, type GameState, type MiniKind, type StaffState } from './state';
 
 export type Phase = 'day' | 'night';
 
@@ -144,7 +144,7 @@ export class Game {
 
   private endDay(): void {
     this.sim.endDayCosts();
-    this.closeBooks(this.sim.stats);
+    this.closeBooks(this.sim);
     const found = this.sim.stats.treasure;
     if (found) this.ui.toast(t('toast.treasure', { name: catName(this.state), item: t(`treasure.${found}` as Key) }));
     this.state.history.push(this.sim.stats);
@@ -582,7 +582,7 @@ export class Game {
         steps += 1;
       }
       sim.endDayCosts();
-      this.closeBooks(sim.stats);
+      this.closeBooks(sim);
       checkChallenge(s);
       s.history.push(sim.stats);
       if (s.history.length > 30) s.history.shift();
@@ -643,8 +643,10 @@ export class Game {
     this.makeSim();
   }
 
-  /** Spoilage, the other stores' income and challenge progress, folded into a finished day. */
-  private closeBooks(st: DayStats): void {
+  /** Spoilage, the other stores' income, their share of today's experience and challenge progress, folded into a finished day. */
+  private closeBooks(sim: Sim): void {
+    const st = sim.stats;
+    if (sim.expMark) shareExp(this.state, sim.expMark);
     st.spoiled = spoil(this.state);
     st.chain = chainIncome(this.state);
     this.state.money += st.chain;
