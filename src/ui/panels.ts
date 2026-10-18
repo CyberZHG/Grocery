@@ -1,3 +1,4 @@
+import { getPrefs, setPrefs } from '../core/prefs';
 import { money, npcName, productName, staffName, t, type Key } from '../i18n';
 import { favBread, GIFT_KINDS, GIFT_LEVELS, LEVELS, NPC_ROW0, NPCS, OWNER_ROW, PRODUCT_BY_ID, SKILLS, STAFF_ROW0, TRAIT_BY_ID, unlockedSkills, type Skill } from '../game/defs';
 import { rosterSize } from '../game/growth';
@@ -105,7 +106,7 @@ function traitTag(id: string | null): HTMLElement | null {
 
 export function regularsPanel(g: Game): HTMLElement {
   const roster = NPCS.slice(0, rosterSize(g.state));
-  let sort: 'affinity' | 'level' = 'affinity';
+  let sort: 'affinity' | 'level' = getPrefs().npcSort === 'level' ? 'level' : 'affinity';
   const list = h('div', { class: 'cards' });
   const render = () => {
     list.replaceChildren();
@@ -140,9 +141,9 @@ export function regularsPanel(g: Game): HTMLElement {
     }
   };
   render();
-  const sel = h('select', { class: 'select', onchange: (e: Event) => { sort = (e.target as HTMLSelectElement).value as typeof sort; render(); } }, [
-    h('option', { value: 'affinity' }, [t('npc.sortAffinity')]),
-    h('option', { value: 'level' }, [t('npc.shopper')]),
+  const sel = h('select', { class: 'select', onchange: (e: Event) => { sort = (e.target as HTMLSelectElement).value as typeof sort; setPrefs({ npcSort: sort }); render(); } }, [
+    h('option', { value: 'affinity', selected: sort === 'affinity' }, [t('npc.sortAffinity')]),
+    h('option', { value: 'level', selected: sort === 'level' }, [t('npc.shopper')]),
   ]);
   const total = roster.reduce((a, n) => a + (g.state.gifts[n.id] ?? 0), 0);
   return h('div', { class: 'stack' }, [

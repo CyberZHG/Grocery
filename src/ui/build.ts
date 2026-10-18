@@ -1,3 +1,4 @@
+import { getPrefs, setPrefs } from '../core/prefs';
 import { locale, money, productName, t, type Key } from '../i18n';
 import { CAFE_TOYS, CATEGORIES, DECOR_KINDS, DECOR_PRICE, DECOR_REGION, DECOR_UNLOCK, FIXTURES, TABLE_PRICE, TOY_PRICE, type CafeToy, NPCS, offeredIn, PRODUCT_BY_ID, PRODUCTS, type Category, type DecorKind, type FixtureKind, type ProductDef } from '../game/defs';
 import { rosterSize } from '../game/growth';
@@ -547,7 +548,8 @@ export function openPicker(game: Game, ui: UI, f: FixtureState, slot: number, on
   const inStore = new Set(game.state.fixtures.filter((x) => x.placed).flatMap((x) => x.slots.map((s) => s.product)));
   let cat: Category | 'all' = 'all';
   let query = '';
-  let sort: SortKey = 'default';
+  const SORTS: SortKey[] = ['default', 'profit', 'margin', 'level'];
+  let sort: SortKey = SORTS.find((k) => k === getPrefs().productSort) ?? 'default';
   const grid = h('div', { class: 'picker-grid' });
   const lang = locale();
   const offered = (p: ProductDef) => p.store === store && offeredIn(p, lang);
@@ -627,11 +629,11 @@ export function openPicker(game: Game, ui: UI, f: FixtureState, slot: number, on
     }
   };
   const search = h('input', { class: 'search', placeholder: t('picker.search'), oninput: (e: Event) => { query = (e.target as HTMLInputElement).value; renderGrid(); } });
-  const sortSel = h('select', { class: 'select', onchange: (e: Event) => { sort = (e.target as HTMLSelectElement).value as SortKey; renderGrid(); } }, [
-    h('option', { value: 'default' }, [t('picker.sortDefault')]),
-    h('option', { value: 'profit' }, [t('picker.sortProfit')]),
-    h('option', { value: 'margin' }, [t('picker.sortMargin')]),
-    h('option', { value: 'level' }, [t('picker.sortLevel')]),
+  const sortSel = h('select', { class: 'select', onchange: (e: Event) => { sort = (e.target as HTMLSelectElement).value as SortKey; setPrefs({ productSort: sort }); renderGrid(); } }, [
+    h('option', { value: 'default', selected: sort === 'default' }, [t('picker.sortDefault')]),
+    h('option', { value: 'profit', selected: sort === 'profit' }, [t('picker.sortProfit')]),
+    h('option', { value: 'margin', selected: sort === 'margin' }, [t('picker.sortMargin')]),
+    h('option', { value: 'level', selected: sort === 'level' }, [t('picker.sortLevel')]),
   ]);
   renderChips();
   renderGrid();
