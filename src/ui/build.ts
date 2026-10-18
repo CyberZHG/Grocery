@@ -103,7 +103,7 @@ export class BuildMode {
     if (!c) return false;
     const dirs = queueDirs(c.kind, this.game.sim.layout.mirrored);
     for (const q of [c.pos.q, ...dirs.filter((d) => d !== c.pos.q)]) {
-      const plan = this.counterPlan(id, { x, y: c.kind === 'station' ? 1 : y, q });
+      const plan = this.counterPlan(id, { x, y, q });
       if (plan) {
         this.applyPlan(plan);
         return true;
@@ -191,7 +191,7 @@ export class BuildMode {
     }
     if (this.counter !== null && !(hit && (hit.action.type === 'slot' || hit.action.type === 'fixture'))) {
       const cur = this.counterInfo(this.counter);
-      if (cur && !(c.x === cur.pos.x && (cur.kind === 'station' || c.y === cur.pos.y)) && !this.moveCounter(this.counter, c.x, c.y)) this.ui.toast(t('build.invalid'));
+      if (cur && !(c.x === cur.pos.x && c.y === cur.pos.y) && !this.moveCounter(this.counter, c.x, c.y)) this.ui.toast(t('build.invalid'));
       return;
     }
     if (hit && (hit.action.type === 'slot' || hit.action.type === 'fixture')) {
@@ -243,7 +243,7 @@ export class BuildMode {
       const c = this.counterInfo(cd.id);
       if (!c || !this.game.build) return;
       const cell = this.game.cell(wx, wy);
-      cd.pos = { x: cell.x - cd.dx, y: c.kind === 'station' ? 1 : cell.y - cd.dy, q: c.pos.q };
+      cd.pos = { x: cell.x - cd.dx, y: cell.y - cd.dy, q: c.pos.q };
       const ok = !!this.counterPlan(cd.id, cd.pos);
       this.game.build.counterGhost = { info: counterShape(c, cd.pos, this.game.sim.layout.mirrored), ok };
       return;

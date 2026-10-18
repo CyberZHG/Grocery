@@ -1040,4 +1040,47 @@ describe('moving counters', () => {
     expect(sim.stats.revenue).toBeGreaterThan(0);
     expect(sim.clock).toBeLessThan(23 * 60);
   });
+
+  it('service counters work out on the floor, the oven standing behind the baker', async () => {
+    const { storeLayout } = await import('../src/game/chain');
+    const { checkPlan, planOf } = await import('../src/game/layout');
+    const s = newGame(9);
+    s.level = 3;
+    const plan = planOf(storeLayout(s));
+    const fx = s.fixtures.filter((f) => f.placed);
+    const place = (id: string) => {
+      for (let y = 6; y <= 9; y++) for (let x = 0; x < 26; x++) {
+        const pos = { x, y, q: 'down' as const };
+        const next = { ...plan, counters: { ...plan.counters, [id]: pos } };
+        if (checkPlan(s.level, 'base', next, fx)) {
+          plan.counters[id] = pos;
+          return pos;
+        }
+      }
+      return null;
+    };
+    const bakery = place('st_bakery');
+    const oden = place('st_oden');
+    expect(bakery && oden).toBeTruthy();
+    s.plan = plan;
+    const sim = new Sim(s);
+    const st = sim.layout.stations.find((x) => x.kind === 'bakery')!;
+    expect(st.staff).toEqual({ x: bakery!.x, y: bakery!.y - 1 });
+    // the oven stands two rows up and blocks the way
+    expect(sim.grid.walkable(bakery!.x, bakery!.y - 2)).toBe(false);
+    sim.restockAll();
+    sim.startDay();
+    let baked = false;
+    const odenLine = sim.stations.get('oden')!;
+    let n = 0;
+    while (!sim.done && n++ < 40000) {
+      sim.tickReal(0.04);
+      sim.update(0.1);
+      if (sim.oven.phase === 'baking') baked = true;
+    }
+    expect(baked).toBe(true);
+    expect(sim.stats.revenue).toBeGreaterThan(0);
+    expect(sim.clock).toBeLessThan(23 * 60);
+    expect(odenLine.doneAt).toBeGreaterThan(0);
+  });
 });

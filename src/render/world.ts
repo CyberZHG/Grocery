@@ -144,15 +144,7 @@ export class WorldRenderer {
       }
     }
     if (sim) this.drawWallDecor(ctx, sim);
-    if (bakery) {
-      drawSprite(ctx, sim ? this.equipSprite(sim, 'oven') : 'oven', bakery.x * T, 16 - 72);
-      // the lower door drops open while someone loads or unloads a tray
-      const baker = sim?.workers.find((w) => w.task.type === 'oven' && !w.mover.path.length && w.task.timer > 0);
-      if (baker && baker.task.type === 'oven') {
-        const u = Math.min(1, baker.task.timer * baker.speed('bakery') / 2);
-        drawSprite(ctx, `oven_door_${u < 0.12 || u > 0.88 ? 1 : 2}`, bakery.x * T, 16 - 72 + 36);
-      }
-    }
+    if (bakery && bakery.y <= 1) this.drawOven(ctx, sim, bakery);
     for (let y = -2; y <= l.h; y++) {
       drawSprite(ctx, 'wallL', -T, y * T);
       drawSprite(ctx, 'wallR', l.w * T, y * T);
@@ -784,7 +776,10 @@ export class WorldRenderer {
     }
     l.registers.forEach((r, i) => list.push({ y: r.y + 0.5, draw: () => this.drawRegister(ctx, sim, i) }));
     for (const s of l.stations) {
-      if (s.kind === 'bakery') list.push({ y: s.y + 0.5, draw: () => this.drawBreadCase(ctx, sim, s.x, s.y) });
+      if (s.kind === 'bakery') {
+        list.push({ y: s.y + 0.5, draw: () => this.drawBreadCase(ctx, sim, s.x, s.y) });
+        if (s.y > 1) list.push({ y: s.y - 1.5, draw: () => this.drawOven(ctx, sim, s) });
+      }
       else list.push({ y: s.y + 0.5, draw: () => drawSprite(ctx, this.equipSprite(sim, s.kind as EquipKind), s.x * T, (s.y + 1) * T - 56) });
     }
     if (l.bagging) {
@@ -910,11 +905,11 @@ export class WorldRenderer {
         }
       } else if (s.kind === 'bakery' && sim.oven.phase === 'baking') {
         ctx.fillStyle = `rgba(255, 150, 60, ${0.18 + 0.1 * Math.sin(t * 4)})`;
-        for (let i = 0; i < 2; i++) ctx.fillRect(px + 8, 16 - 72 + 8 + i * 30 + 4, 48, 18);
+        for (let i = 0; i < 2; i++) ctx.fillRect(px + 8, this.ovenTop(s) + 12 + i * 30, 48, 18);
       } else if (s.kind === 'bakery' && sim.oven.phase === 'ready') {
-        this.puffs(ctx, px + 14, -58, 4, 12, 1.2);
+        this.puffs(ctx, px + 14, this.ovenTop(s) - 2, 4, 12, 1.2);
         ctx.fillStyle = `rgba(255, 200, 90, ${0.2 + 0.15 * Math.sin(t * 9)})`;
-        for (let i = 0; i < 2; i++) ctx.fillRect(px + 8, 16 - 72 + 8 + i * 30 + 4, 48, 18);
+        for (let i = 0; i < 2; i++) ctx.fillRect(px + 8, this.ovenTop(s) + 12 + i * 30, 48, 18);
       }
       if (s.kind !== 'bakery') this.drawServingFx(ctx, sim, s.kind, px, top);
     }
@@ -1383,6 +1378,22 @@ export class WorldRenderer {
   private slotClip(f: FixtureState, i: number, top: number): [number, number, number, number] | null {
     if (f.kind !== 'freezer') return null;
     return f.vertical ? [3, top + 3 + i * 30, 26, 29] : [3 + i * 29, top + 3, 28, 24];
+  }
+
+  /** Top of the oven: on the back wall above a bakery against it, otherwise standing on the floor behind the baker. */
+  private ovenTop(s: { y: number }): number {
+    return s.y <= 1 ? 16 - 72 : (s.y - 1) * T - 72;
+  }
+
+  private drawOven(ctx: CanvasRenderingContext2D, sim: Sim | undefined, bakery: { x: number; y: number }): void {
+    const top = this.ovenTop(bakery);
+    drawSprite(ctx, sim ? this.equipSprite(sim, 'oven') : 'oven', bakery.x * T, top);
+    // the lower door drops open while someone loads or unloads a tray
+    const baker = sim?.workers.find((w) => w.task.type === 'oven' && !w.mover.path.length && w.task.timer > 0);
+    if (baker && baker.task.type === 'oven') {
+      const u = Math.min(1, baker.task.timer * baker.speed('bakery') / 2);
+      drawSprite(ctx, `oven_door_${u < 0.12 || u > 0.88 ? 1 : 2}`, bakery.x * T, top + 36);
+    }
   }
 
   private drawBreadCase(ctx: CanvasRenderingContext2D, sim: Sim, x: number, y: number): void {

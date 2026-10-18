@@ -129,18 +129,23 @@ function run(from: P, q: QueueDir, n: number): P[] {
   return [...Array(n).keys()].map((k) => ({ x: from.x + STEP[q].x * k, y: from.y + STEP[q].y * k }));
 }
 
-/** The tiles a counter takes up. Stations stand against the back wall with the staff behind them; tills are served from the side. */
+/**
+ * The tiles a counter takes up. Stations are served from behind: the staff stand on the tile above (the wall row when
+ * the counter is against the back wall) and the line forms below. Away from the wall, the bakery's oven stands on the
+ * floor behind the baker. Tills are served from the side.
+ */
 export function counterShape(sp: Pick<Spec, 'id' | 'kind' | 'station'>, pos: CounterPos, m: boolean): CounterInfo {
-  const { x } = pos;
+  const { x, y } = pos;
   if (sp.kind === 'station') {
     const col = m ? x + 1 : x;
-    const queue = run({ x: col, y: 2 }, pos.q, 3);
+    const queue = run({ x: col, y: y + 1 }, pos.q, 3);
     const side = m ? x : x + 1;
-    const extra = [{ x: x - 1, y: 1 }, { x: x + 2, y: 1 }, ...(pos.q === 'down' ? [2, 3, 4].map((y) => ({ x: side, y })) : [{ x: side, y: 2 }])]
+    const extra = [{ x: x - 1, y }, { x: x + 2, y }, ...(pos.q === 'down' ? [1, 2, 3].map((k) => ({ x: side, y: y + k })) : [{ x: side, y: y + 1 }])]
       .filter((e) => !queue.some((p) => p.x === e.x && p.y === e.y));
-    return { ...sp, pos: { x, y: 1, q: pos.q }, solid: [{ x, y: 1 }, { x: x + 1, y: 1 }], staff: { x: col, y: 0 }, queue, extra };
+    const solid = [{ x, y }, { x: x + 1, y }];
+    if (sp.station === 'bakery' && y > 1) solid.push({ x, y: y - 2 }, { x: x + 1, y: y - 2 });
+    return { ...sp, pos: { ...pos }, solid, staff: { x: col, y: y - 1 }, queue, extra };
   }
-  const { y } = pos;
   const staff = m ? { x: x + 2, y } : { x: x - 1, y };
   const front = m ? { x: x - 1, y } : { x: x + 2, y };
   const queue = run(front, pos.q, sp.kind === 'bagging' ? 3 : 4);
@@ -176,7 +181,7 @@ function assemble(fr: Frame, counters: CounterInfo[], pillars: P[]): Layout {
       solid[p.y * w + p.x] = 1;
       res(p);
     }
-    if (c.kind !== 'station') res(c.staff);
+    res(c.staff);
     for (const p of [...c.queue, ...c.extra]) res(p);
   }
   for (const p of pillars) {
@@ -187,7 +192,7 @@ function assemble(fr: Frame, counters: CounterInfo[], pillars: P[]): Layout {
   // regular registers first, card counters after, as their indexes have always been
   tills.sort((a, b) => Number(a.kind === 'card') - Number(b.kind === 'card'));
   const registers: RegisterSpot[] = tills.map((c, index) => ({ index, x: c.pos.x, y: c.pos.y, cashier: c.staff, queue: c.queue, card: c.kind === 'card' }));
-  const stations: StationSpot[] = counters.filter((c) => c.kind === 'station').map((c) => ({ kind: c.station!, x: c.pos.x, y: 1, staff: c.staff, queue: c.queue }));
+  const stations: StationSpot[] = counters.filter((c) => c.kind === 'station').map((c) => ({ kind: c.station!, x: c.pos.x, y: c.pos.y, staff: c.staff, queue: c.queue }));
   const bag = counters.find((c) => c.kind === 'bagging');
   const bagging = bag ? { x: bag.pos.x, y: bag.pos.y, staff: bag.staff, queue: bag.queue } : null;
   return { ...fr, reserved, solid, registers, stations, bagging, pillars: pillars.map((p) => ({ ...p })), counters };
@@ -201,9 +206,10 @@ function fits(c: CounterInfo, others: CounterInfo[], blocked: Set<string>, fr: F
   const hard = [...c.solid, c.staff, ...c.queue];
   const inX = (p: P) => p.x >= 0 && p.x < w;
   if (c.kind === 'station') {
-    if (!hard.every(inX) || c.queue.some((p) => p.y < 2 || p.y > h - 3)) return false;
+    if (!hard.every((p) => inX(p) && p.y >= 0) || c.pos.y < 1 || c.queue.some((p) => p.y > h - 3)) return false;
+    // the stock door and the tile in front of it stay clear
     const door = fr.stockDoor;
-    if ([...c.solid, ...c.extra].some((p) => p.x === door.x) || c.staff.x === door.x) return false;
+    if ([...hard, ...c.extra].some((p) => p.x === door.x && p.y <= 1)) return false;
   } else if (![...hard, ...c.extra].every((p) => inX(p) && p.y >= 1 && p.y <= h - 3)) return false;
   const mine = [...hard, ...c.extra.filter((p) => inX(p))];
   if (mine.some((p) => blocked.has(key(p)))) return false;
@@ -254,7 +260,7 @@ export function buildLayout(level: number, variant: LayoutVariant = 'base', plan
 
 function findSpot(fr: Frame, s: Spec, placed: CounterInfo[], pillars: P[], fixtures: FixturePlacement[]): CounterInfo {
   const cands: { c: CounterInfo; d: number }[] = [];
-  for (let y = 1; y <= (s.kind === 'station' ? 1 : fr.h - 3); y++) {
+  for (let y = 1; y <= fr.h - 3; y++) {
     for (let x = 0; x < fr.w; x++) {
       for (const q of queueDirs(s.kind, fr.mirrored)) {
         cands.push({ c: counterShape(s, { x, y, q }, fr.mirrored), d: Math.abs(x - s.def.x) + Math.abs(y - s.def.y) + (q === s.def.q ? 0 : 0.5) });

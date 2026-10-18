@@ -1488,7 +1488,10 @@ export class Sim {
     const spots = [this.layout.registers[0].cashier, { x: 2, y: 1 }, { x: 4, y: 1 }, { x: 6, y: 1 }];
     this.workers.push(new Worker(-1, OWNER_ROW, 'auto', this.state.owner, spots[0]));
     this.state.staff.forEach((s, i) => {
-      const p = { x: (2 + i * 2) % Math.max(1, this.layout.w - 1), y: 0 };
+      const x0 = (2 + i * 2) % Math.max(1, this.layout.w - 1);
+      // start in the back row, stepping past anything standing in it
+      const x = [...Array(this.layout.w).keys()].map((k) => (x0 + k) % this.layout.w).find((x) => this.grid.walkable(x, 0)) ?? this.layout.stockDoor.x;
+      const p = { x, y: 0 };
       this.workers.push(new Worker(s.id, STAFF_ROW0 + s.look, s.role, s.skills, p, s.trait));
     });
   }
