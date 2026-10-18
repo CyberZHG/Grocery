@@ -642,24 +642,58 @@ describe('endgame: street, managers and tiers', () => {
 });
 
 describe('expanding around existing fixtures', () => {
-  it('fixtures in the way of new counters move to a free spot nearby, stock and all', async () => {
-    const { fitFixtures } = await import('../src/game/chain');
+  it('a new counter goes where it fits, leaving the shelf where it was', async () => {
+    const { fitFixtures, storeLayout } = await import('../src/game/chain');
     const s = newGame(3);
     s.level = 1;
+    storeLayout(s);
     const next = buildLayout(2);
     const card = next.registers.find((r) => r.card)!;
     const q = card.queue[2];
     const f = { id: 99, kind: 'shelf' as const, x: q.x, y: q.y, vertical: true, placed: true, slots: [{ product: 'cola', stock: 9 }, { product: 'potato_chips', stock: 4 }] as GameState['fixtures'][0]['slots'] };
-    expect(canPlace(buildLayout(1), s.fixtures.filter((x) => x.placed), f)).toBe(true);
+    expect(canPlace(storeLayout(s), s.fixtures.filter((x) => x.placed), f)).toBe(true);
     s.fixtures.push(f);
     s.level = 2;
-    const fit = fitFixtures(s);
-    expect(fit).toEqual({ shifted: 1, stored: 0 });
-    expect(f.placed).toBe(true);
-    expect(f.slots[0].stock).toBe(9);
-    expect(Object.keys(s.inventory)).toHaveLength(0);
-    const others = s.fixtures.filter((x) => x !== f && x.placed);
-    expect(canPlace(next, others, f)).toBe(true);
+    expect(fitFixtures(s)).toEqual({ shifted: 0, stored: 0 });
+    expect([f.x, f.y]).toEqual([q.x, q.y]);
+    expect(storeLayout(s).registers.filter((r) => r.card)).toHaveLength(1);
+  });
+
+  it('growing a packed store keeps every shelf and counter where it was', async () => {
+    const { fitFixtures, storeLayout } = await import('../src/game/chain');
+    for (const v of LAYOUT_VARIANTS) {
+      const s = newGame(4);
+      s.stores[0].layout = v;
+      s.fixtures = [];
+      let l = storeLayout(s);
+      // fill the smallest floor with as many shelves as it takes
+      for (let y = 1; y < l.h; y++) {
+        for (let x = 0; x < l.w; x++) {
+          const f = { id: s.nextId, kind: 'shelf' as const, x, y, vertical: false, placed: true, slots: [{ product: null, stock: 0 }, { product: null, stock: 0 }] as GameState['fixtures'][0]['slots'] };
+          if (canPlace(l, s.fixtures, f)) {
+            s.fixtures.push(f);
+            s.nextId += 1;
+          }
+        }
+      }
+      const before = JSON.stringify(s.fixtures.map((f) => [f.x, f.y, f.vertical]));
+      for (let lv = 1; lv < LEVELS.length; lv++) {
+        const old = l.counters.map((c) => [c.id, c.pos]);
+        storeLayout(s);
+        s.level = lv;
+        expect(fitFixtures(s), `${v} ${lv}`).toEqual({ shifted: 0, stored: 0 });
+        l = storeLayout(s);
+        expect(l.counters.length, `${v} ${lv}`).toBe(LEVELS[lv].registers + LEVELS[lv].cards + LEVELS[lv].stations.length + (LEVELS[lv].bagging ? 1 : 0));
+        for (const [id, pos] of old) expect(l.counters.find((c) => c.id === id)!.pos, `${v} ${lv} ${id}`).toEqual(pos);
+        const g = new Grid(l, s.fixtures);
+        const dist = g.flood(entryTile(l).x, entryTile(l).y);
+        for (const c of l.counters) {
+          expect(dist[c.staff.y * l.w + c.staff.x], `${v} ${lv} ${c.id} staff`).toBeGreaterThanOrEqual(0);
+          for (const p of c.queue) expect(dist[p.y * l.w + p.x], `${v} ${lv} ${c.id} queue`).toBeGreaterThanOrEqual(0);
+        }
+      }
+      expect(JSON.stringify(s.fixtures.map((f) => [f.x, f.y, f.vertical])), v).toBe(before);
+    }
   });
 });
 
@@ -974,5 +1008,36 @@ describe('midnight', () => {
     expect(sim.done).toBe(true);
     expect(sim.clock).toBeLessThan(MIDNIGHT + 60);
     expect(s.money).toBeGreaterThan(before);
+  });
+});
+
+describe('moving counters', () => {
+  it('customers still queue and pay with counters moved and lines turned', async () => {
+    const { storeLayout } = await import('../src/game/chain');
+    const { checkPlan, planOf } = await import('../src/game/layout');
+    const s = newGame(8);
+    s.level = 2;
+    const plan = planOf(storeLayout(s));
+    const fx = s.fixtures.filter((f) => f.placed);
+    const move = (id: string, pos: { x: number; y: number; q: 'up' | 'down' | 'left' | 'right' }) => {
+      const next = { ...plan, counters: { ...plan.counters, [id]: pos } };
+      if (checkPlan(s.level, 'base', next, fx)) plan.counters[id] = pos;
+      return plan.counters[id] === pos;
+    };
+    const first = (id: string, q: 'up' | 'down' | 'left' | 'right', ys: number[]) => {
+      for (const y of ys) for (let x = 0; x < 22; x++) if (x !== plan.counters[id].x && move(id, { x, y, q })) return { x, y };
+      return null;
+    };
+    const reg = first('reg0', 'right', [5, 6, 7, 8]);
+    expect(reg).not.toBeNull();
+    expect(first('st_deli', 'left', [1])).not.toBeNull();
+    // a counter can't stand on a shelf
+    const f = fx[0];
+    expect(move('reg1', { x: f.x, y: f.y, q: 'up' })).toBe(false);
+    s.plan = plan;
+    const sim = runDay(s);
+    expect(sim.layout.registers[0].x).toBe(reg!.x);
+    expect(sim.stats.revenue).toBeGreaterThan(0);
+    expect(sim.clock).toBeLessThan(23 * 60);
   });
 });

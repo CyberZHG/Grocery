@@ -29,7 +29,7 @@ export const en = {
   'common.nightOnly': 'Available at night',
 
   'build.title': 'Build',
-  'build.hint': 'Tap a fixture to select it, then drag it or tap the floor to move it.',
+  'build.hint': 'Tap a fixture or counter to select it, then drag it or tap the floor to move it.',
   'build.placeHint': 'Tap the floor to place the new fixture.',
   'build.buy': 'Buy',
   'build.storage': 'In storage',
@@ -406,6 +406,9 @@ export const en = {
   'build.paste': 'Paste products',
   'build.decor': 'Decor',
   'build.undo': 'Undo',
+  'build.counterHint': 'Drag it, or tap an empty spot to move it. The arrows show where the line forms.',
+  'build.turnQueue': 'Turn the line',
+  'counter.card': 'Card counter',
   'event.tour': 'A tour bus is coming today.',
   'event.blogger': 'A food blogger is visiting today. Reputation gains are doubled.',
   'event.late': 'The {cat} delivery is late. Those shelves cannot be restocked until noon.',

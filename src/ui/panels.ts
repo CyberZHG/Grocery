@@ -4,7 +4,7 @@ import { rosterSize } from '../game/growth';
 import { spriteIcon } from './achievements';
 
 import type { Game } from '../game/game';
-import { fitFixtures, inCafe } from '../game/chain';
+import { fitFixtures, inCafe, storeLayout } from '../game/chain';
 import { affinityExpToNext, npcExpToNext, skillExpToNext, skillSpeed, type Leveled } from '../game/rules';
 import { raiseOf, saveGame, wageOf, type DayStats, type Role, type StaffState } from '../game/state';
 import { charIcon, productIcon, type UI } from './app';
@@ -183,6 +183,8 @@ export function expandPanel(g: Game, ui: UI): HTMLElement {
     class: 'btn primary', disabled: !can,
     onclick: () => {
       st.money -= next.cost;
+      // pin down where everything stands now, so the bigger floor is built around it
+      storeLayout(st);
       st.level += 1;
       const fit = fitFixtures(st);
       g.checkChain();

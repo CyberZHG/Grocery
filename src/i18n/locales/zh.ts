@@ -31,7 +31,7 @@ export const zh: Record<Key, string> = {
   'common.nightOnly': '仅夜晚可用',
 
   'build.title': '布置',
-  'build.hint': '点击设施以选中，再拖动它或点击地面来移动。',
+  'build.hint': '点击货架或柜台以选中，再拖动它或点击地面来移动。',
   'build.placeHint': '点击地面放置新设施。',
   'build.buy': '购买',
   'build.storage': '仓库中',
@@ -408,6 +408,9 @@ export const zh: Record<Key, string> = {
   'build.paste': '粘贴商品',
   'build.decor': '装饰',
   'build.undo': '撤销',
+  'build.counterHint': '拖动它，或点击空地来移动。箭头是排队的位置。',
+  'build.turnQueue': '调整队伍方向',
+  'counter.card': '扫码柜台',
   'event.tour': '今天有旅游团大巴要来。',
   'event.blogger': '今天有美食博主来访，口碑增长翻倍。',
   'event.late': '{cat}的货送晚了，中午前无法补这类货。',

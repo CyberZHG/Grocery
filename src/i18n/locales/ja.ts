@@ -31,7 +31,7 @@ export const ja: Record<Key, string> = {
   'common.nightOnly': '夜のみ利用できます',
 
   'build.title': '配置',
-  'build.hint': '設備をタップして選択し、ドラッグするか床をタップして移動します。',
+  'build.hint': '設備やカウンターをタップして選択し、ドラッグするか床をタップして移動します。',
   'build.placeHint': '床をタップして新しい設備を置きます。',
   'build.buy': '購入',
   'build.storage': '倉庫',
@@ -408,6 +408,9 @@ export const ja: Record<Key, string> = {
   'build.paste': '商品を貼り付け',
   'build.decor': '飾り',
   'build.undo': '元に戻す',
+  'build.counterHint': 'ドラッグするか、空いている床をタップして移動します。矢印は列ができる場所です。',
+  'build.turnQueue': '列の向きを変える',
+  'counter.card': 'カード専用レジ',
   'event.tour': '今日は観光バスが来ます。',
   'event.blogger': '今日はグルメブロガーが来店します。評判の上がり方が2倍です。',
   'event.late': '{cat}の配送が遅れています。お昼まで補充できません。',

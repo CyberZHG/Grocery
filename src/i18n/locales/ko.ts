@@ -31,7 +31,7 @@ export const ko: Record<Key, string> = {
   'common.nightOnly': '밤에만 가능',
 
   'build.title': '배치',
-  'build.hint': '설비를 눌러 선택한 뒤, 끌거나 바닥을 눌러 옮기세요.',
+  'build.hint': '설비나 카운터를 눌러 선택한 뒤, 끌거나 바닥을 눌러 옮기세요.',
   'build.placeHint': '바닥을 눌러 새 설비를 놓으세요.',
   'build.buy': '구매',
   'build.storage': '창고',
@@ -408,6 +408,9 @@ export const ko: Record<Key, string> = {
   'build.paste': '상품 붙여넣기',
   'build.decor': '장식',
   'build.undo': '되돌리기',
+  'build.counterHint': '끌거나 빈 바닥을 눌러 옮기세요. 화살표는 줄이 서는 자리입니다.',
+  'build.turnQueue': '줄 방향 바꾸기',
+  'counter.card': '카드 전용 계산대',
   'event.tour': '오늘은 관광버스가 옵니다.',
   'event.blogger': '오늘은 푸드 블로거가 방문합니다. 평판 상승이 두 배입니다.',
   'event.late': '{cat} 배송이 늦어 점심까지 채울 수 없습니다.',

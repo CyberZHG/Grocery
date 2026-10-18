@@ -2,10 +2,10 @@ import { locale, money, productName, t, type Key } from '../i18n';
 import { CAFE_TOYS, CATEGORIES, DECOR_KINDS, DECOR_PRICE, DECOR_REGION, DECOR_UNLOCK, FIXTURES, TABLE_PRICE, TOY_PRICE, type CafeToy, NPCS, offeredIn, PRODUCT_BY_ID, PRODUCTS, type Category, type DecorKind, type FixtureKind, type ProductDef } from '../game/defs';
 import { rosterSize } from '../game/growth';
 import { categoryLevels, collectionMult, isUnlocked, levelsNeeded, MAX_PRODUCT_LEVEL, priceMult, productExpToNext, unlockIndex } from '../game/progress';
-import { inCafe } from '../game/chain';
+import { activeSlot, inCafe } from '../game/chain';
 import type { Game } from '../game/game';
-import { canPlace, type FixturePlacement } from '../game/layout';
-import { saveGame, stash, type FixtureState } from '../game/state';
+import { canPlace, checkPlan, counterShape, planOf, queueDirs, type CounterInfo, type CounterPos, type FixturePlacement } from '../game/layout';
+import { saveGame, stash, type FixtureState, type GameState } from '../game/state';
 import type { Hit } from '../render/world';
 import type { UI } from './app';
 import { productIcon } from './app';
@@ -17,6 +17,13 @@ function decorPrice(decor: string): number {
   if (decor === 'table') return TABLE_PRICE;
   if (decor.startsWith('toy_')) return TOY_PRICE[decor.slice(4) as CafeToy];
   return DECOR_PRICE[decor as DecorKind] ?? FIXTURES.decor.price;
+}
+
+function counterLabel(c: CounterInfo): string {
+  if (c.kind === 'register') return t('equip.register');
+  if (c.kind === 'card') return t('counter.card');
+  if (c.kind === 'bagging') return t('station.bagging');
+  return t(`station.${c.station}` as Key);
 }
 
 function fixtureLabel(f: FixtureState): string {
@@ -34,6 +41,9 @@ export class BuildMode {
   private undoStack: string[] = [];
   private clip: { store: string; products: (string | null)[] } | null = null;
   private drag: { id: number; dx: number; dy: number; x: number; y: number } | null = null;
+  /** counter picked for moving, and one being dragged */
+  private counter: string | null = null;
+  private cdrag: { id: string; dx: number; dy: number; pos: CounterPos } | null = null;
   private el: HTMLElement;
 
   constructor(private game: Game, private ui: UI, private host: HTMLElement, private onDone: () => void) {
@@ -44,7 +54,7 @@ export class BuildMode {
     game.onBuildTap = (x, y, hit) => this.tap(x, y, hit);
     game.onBuildHover = (x, y) => this.hover(x, y);
     game.onBuildDrag = {
-      start: (_x, _y, hit, touch) => this.dragStart(hit, touch),
+      start: (x, y, hit, touch) => this.dragStart(hit, touch, x, y),
       move: (x, y) => this.dragMove(x, y),
       end: (_x, _y, commit) => this.dragEnd(commit),
     };
@@ -63,7 +73,65 @@ export class BuildMode {
 
   select(id: number | null): void {
     this.selected = id;
+    this.counter = null;
     this.placing = null;
+    this.sync();
+  }
+
+  private selectCounter(id: string | null): void {
+    this.counter = id;
+    this.selected = null;
+    this.placing = null;
+    this.sync();
+  }
+
+  private counterInfo(id: string | null): CounterInfo | undefined {
+    return this.game.sim.layout.counters.find((c) => c.id === id);
+  }
+
+  /** The plan with one counter somewhere else, if everything still fits and can be reached. */
+  private counterPlan(id: string, pos: CounterPos) {
+    const plan = planOf(this.game.sim.layout);
+    plan.counters[id] = pos;
+    const ok = checkPlan(this.state.level, activeSlot(this.state).layout, plan, this.state.fixtures.filter((f) => f.placed));
+    return ok ? plan : null;
+  }
+
+  /** Puts a counter at a new spot, keeping its line's direction if it can, otherwise the first one that works. */
+  private moveCounter(id: string, x: number, y: number): boolean {
+    const c = this.counterInfo(id);
+    if (!c) return false;
+    const dirs = queueDirs(c.kind, this.game.sim.layout.mirrored);
+    for (const q of [c.pos.q, ...dirs.filter((d) => d !== c.pos.q)]) {
+      const plan = this.counterPlan(id, { x, y: c.kind === 'station' ? 1 : y, q });
+      if (plan) {
+        this.applyPlan(plan);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Swings the line round to the next direction that has room. */
+  private turnQueue(id: string): void {
+    const c = this.counterInfo(id);
+    if (!c) return;
+    const dirs = queueDirs(c.kind, this.game.sim.layout.mirrored);
+    const i = dirs.indexOf(c.pos.q);
+    for (let k = 1; k < dirs.length; k++) {
+      const plan = this.counterPlan(id, { ...c.pos, q: dirs[(i + k) % dirs.length] });
+      if (plan) {
+        this.applyPlan(plan);
+        return;
+      }
+    }
+    this.ui.toast(t('build.invalid'));
+  }
+
+  private applyPlan(plan: NonNullable<GameState['plan']>): void {
+    this.snapshot();
+    this.state.plan = plan;
+    this.game.rebuild();
     this.sync();
   }
 
@@ -74,6 +142,7 @@ export class BuildMode {
   private sync(): void {
     if (this.game.build) {
       this.game.build.selected = this.selected;
+      this.game.build.counter = this.counter;
       if (!this.placing) this.game.build.ghost = null;
     }
     this.render();
@@ -116,6 +185,15 @@ export class BuildMode {
       }
       return;
     }
+    if (hit?.action.type === 'counter') {
+      if (hit.action.id !== this.counter) this.selectCounter(hit.action.id);
+      return;
+    }
+    if (this.counter !== null && !(hit && (hit.action.type === 'slot' || hit.action.type === 'fixture'))) {
+      const cur = this.counterInfo(this.counter);
+      if (cur && !(c.x === cur.pos.x && (cur.kind === 'station' || c.y === cur.pos.y)) && !this.moveCounter(this.counter, c.x, c.y)) this.ui.toast(t('build.invalid'));
+      return;
+    }
     if (hit && (hit.action.type === 'slot' || hit.action.type === 'fixture')) {
       const id = hit.action.fixture;
       if (id !== this.selected) {
@@ -142,7 +220,14 @@ export class BuildMode {
   }
 
   /** Mouse drags any fixture; on touch only the selected one, so a swipe elsewhere still pans. */
-  private dragStart(hit: Hit | null, touch: boolean): boolean {
+  private dragStart(hit: Hit | null, touch: boolean, wx = 0, wy = 0): boolean {
+    if (!this.placing && hit?.action.type === 'counter') {
+      const c = this.counterInfo(hit.action.id);
+      if (!c || (touch && c.id !== this.counter)) return false;
+      const cell = this.game.cell(wx, wy);
+      this.cdrag = { id: c.id, dx: cell.x - c.pos.x, dy: cell.y - c.pos.y, pos: { ...c.pos } };
+      return true;
+    }
     if (this.placing || !hit || (hit.action.type !== 'slot' && hit.action.type !== 'fixture')) return false;
     const id = hit.action.fixture;
     const f = this.state.fixtures.find((x) => x.id === id);
@@ -153,6 +238,16 @@ export class BuildMode {
   }
 
   private dragMove(wx: number, wy: number): void {
+    const cd = this.cdrag;
+    if (cd) {
+      const c = this.counterInfo(cd.id);
+      if (!c || !this.game.build) return;
+      const cell = this.game.cell(wx, wy);
+      cd.pos = { x: cell.x - cd.dx, y: c.kind === 'station' ? 1 : cell.y - cd.dy, q: c.pos.q };
+      const ok = !!this.counterPlan(cd.id, cd.pos);
+      this.game.build.counterGhost = { info: counterShape(c, cd.pos, this.game.sim.layout.mirrored), ok };
+      return;
+    }
     const d = this.drag;
     const f = d && this.state.fixtures.find((x) => x.id === d.id);
     if (!d || !f || !this.game.build) return;
@@ -164,6 +259,18 @@ export class BuildMode {
   }
 
   private dragEnd(commit: boolean): void {
+    const cd = this.cdrag;
+    if (cd) {
+      this.cdrag = null;
+      if (this.game.build) this.game.build.counterGhost = null;
+      const c = this.counterInfo(cd.id);
+      if (!commit || !c) return;
+      this.counter = cd.id;
+      this.selected = null;
+      if ((cd.pos.x !== c.pos.x || cd.pos.y !== c.pos.y) && !this.moveCounter(cd.id, cd.pos.x, cd.pos.y)) this.ui.toast(t('build.invalid'));
+      this.sync();
+      return;
+    }
     const d = this.drag;
     this.drag = null;
     if (this.game.build) {
@@ -194,7 +301,7 @@ export class BuildMode {
       this.cancelPlacing();
       return true;
     }
-    if (this.selected !== null) {
+    if (this.selected !== null || this.counter !== null) {
       this.select(null);
       return true;
     }
@@ -203,7 +310,7 @@ export class BuildMode {
 
   /** Snapshot of fixtures and money taken before every edit, so mistakes can be undone. */
   snapshot(): void {
-    this.undoStack.push(JSON.stringify({ fixtures: this.state.fixtures, money: this.state.money, nextId: this.state.nextId, inventory: this.state.inventory }));
+    this.undoStack.push(JSON.stringify({ fixtures: this.state.fixtures, money: this.state.money, nextId: this.state.nextId, inventory: this.state.inventory, plan: this.state.plan }));
     if (this.undoStack.length > 40) this.undoStack.shift();
   }
 
@@ -221,8 +328,9 @@ export class BuildMode {
   private undo(): void {
     const raw = this.undoStack.pop();
     if (!raw) return;
-    const s = JSON.parse(raw) as { fixtures: FixtureState[]; money: number; nextId: number; inventory: Record<string, number> };
+    const s = JSON.parse(raw) as { fixtures: FixtureState[]; money: number; nextId: number; inventory: Record<string, number>; plan: GameState['plan'] };
     this.state.fixtures = s.fixtures;
+    this.state.plan = s.plan;
     this.state.inventory = s.inventory;
     this.state.money = s.money;
     this.state.nextId = s.nextId;
@@ -339,6 +447,15 @@ export class BuildMode {
         h('span', { class: 'tag' }, [fixtureLabel(f)]),
         h('button', { class: 'btn small', onclick: () => this.rotate(f) }, [t('build.rotate')]),
         h('button', { class: 'btn small ghost', onclick: () => this.cancelPlacing() }, [t('common.cancel')]),
+      ]));
+      return;
+    }
+    const counter = this.counterInfo(this.counter);
+    if (counter) {
+      this.el.append(h('div', { class: 'row wrap' }, [
+        h('span', { class: 'tag' }, [counterLabel(counter)]),
+        h('span', { class: 'muted' }, [t('build.counterHint')]),
+        h('button', { class: 'btn small', onclick: () => this.turnQueue(counter.id) }, [t('build.turnQueue')]),
       ]));
       return;
     }

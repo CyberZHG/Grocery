@@ -5,7 +5,7 @@ import { freshGrowth, type CatState, type EquipKind, type RackKind } from './gro
 import { collectionCount, freshProducts, unlockOrder, type ProductProgress } from './progress';
 import type { Leveled } from './rules';
 import type { ChallengeId } from './chain';
-import type { LayoutVariant } from './layout';
+import type { LayoutVariant, StorePlan } from './layout';
 import { emptyStreet, type Lot } from './street';
 
 export interface SlotState {
@@ -142,6 +142,8 @@ export interface GameState {
   suppliers: Record<Category, Leveled>;
   /** capacity level of each kind of fixture, shared by every fixture of that kind in the store */
   racks: Record<RackKind, Leveled>;
+  /** where this store's counters and pillars stand; filled in the first time the layout is built */
+  plan: StorePlan | null;
   equipment: Record<EquipKind, Leveled>;
   cat: CatState;
   catCoat: CatCoat;
@@ -180,7 +182,7 @@ export interface GameState {
 /** Fields that belong to one store; switching stores swaps them in and out. */
 export const STORE_KEYS = [
   'level', 'fixtures', 'staff', 'candidates', 'former', 'bakery', 'history', 'reputation', 'equipment', 'style', 'storeName', 'openedDay', 'inventory', 'nightRestock',
-  'cat', 'catCoat', 'catName', 'catAcc', 'street', 'racks',
+  'cat', 'catCoat', 'catName', 'catAcc', 'street', 'racks', 'plan',
 ] as const;
 export type StoreData = Pick<GameState, (typeof STORE_KEYS)[number]>;
 
@@ -258,6 +260,7 @@ export function newGame(seed = Date.now() % 1e9): GameState {
     active: 0,
     breadsSeen: 4,
     noticed: [],
+    plan: null,
     openedDay: 1,
     collections: [],
     inventory: {},
@@ -312,6 +315,7 @@ export function migrate(data: unknown): GameState | null {
     s.suppliers = { ...g.suppliers, ...(s.suppliers ?? {}) };
     s.equipment = { ...g.equipment, ...(s.equipment ?? {}) };
     s.racks = { ...g.racks, ...(s.racks ?? {}) };
+    s.plan ??= null;
     s.cat = { ...g.cat, ...(s.cat ?? {}) };
     s.bakery = { ...Object.fromEntries(BREADS.map((b) => [b, { good: 0, golden: 0 }])), ...(s.bakery ?? {}) } as GameState['bakery'];
     s.catCoat ??= CAT_COATS[Math.abs(s.seed) % CAT_COATS.length];
@@ -345,6 +349,7 @@ export function migrate(data: unknown): GameState | null {
     for (const slot of s.stores) if (slot.saved) slot.saved.street ??= emptyStreet();
     // stores you aren't running keep their own bakery shelf; give them the breads added since
     for (const slot of s.stores) if (slot.saved) slot.saved.racks = { ...freshGrowth().racks, ...(slot.saved.racks ?? {}) };
+    for (const slot of s.stores) if (slot.saved) slot.saved.plan ??= null;
     for (const slot of s.stores) if (slot.saved) slot.saved.bakery = { ...Object.fromEntries(BREADS.map((b) => [b, { good: 0, golden: 0 }])), ...(slot.saved.bakery ?? {}) } as GameState['bakery'];
     s.collections ??= CATEGORIES.filter((c) => collectionCount(c, s.products) === unlockOrder(c).length);
     s.savedAt ??= Date.now();

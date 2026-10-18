@@ -2,7 +2,7 @@ import { drawChar, drawCharPose, drawCharSitting, drawProductSmall, type CharPos
 import { storeName } from '../game/names';
 import { sfx } from '../core/audio';
 import { BREADS, NPC_ROW0, PRODUCT_BY_ID, TOY_FRAME_COUNT, TOY_PLAY, type CafeToy, type FixtureKind, type ToyPlay } from '../game/defs';
-import { fixtureCells, type Layout } from '../game/layout';
+import { fixtureCells, type CounterInfo, type Layout } from '../game/layout';
 import { chalkDrawings, sunPatches } from '../game/ambience';
 import { dateOf, decorHoliday, streetCart, weatherOf } from '../game/calendar';
 import { capacityOf, equipTier, stars, type EquipKind } from '../game/growth';
@@ -17,6 +17,7 @@ export type HitAction =
   | { type: 'oven' }
   | { type: 'slot'; fixture: number; slot: number }
   | { type: 'fixture'; fixture: number }
+  | { type: 'counter'; id: string }
   | { type: 'cell'; x: number; y: number }
   | { type: 'customer'; customer: Customer }
   | { type: 'cat'; guest?: CatAgent }
@@ -45,6 +46,10 @@ export interface BuildView {
   /** Fixture being dragged; drawn only as the ghost. */
   hidden?: number | null;
   ghost: { kind: FixtureKind; x: number; y: number; vertical: boolean; ok: boolean; decor?: string; slots?: FixtureState['slots'] } | null;
+  /** counter picked for moving */
+  counter?: string | null;
+  /** where a counter being dragged would go */
+  counterGhost?: { info: CounterInfo; ok: boolean } | null;
 }
 
 interface Drawable {
@@ -847,6 +852,7 @@ export class WorldRenderer {
     this.drawLight(ctx, sim);
     this.drawWeather(ctx, sim);
     if (build?.ghost) this.drawGhost(ctx, build.ghost);
+    if (build) this.drawCounterMarks(ctx, l, build);
     if (!build) this.drawPrompts(ctx, sim);
     for (const c of sim.customers) if (c.bubble && c.state !== 'queue') this.bubble(ctx, c.bubble.icon, c.mover.x, c.mover.y, false);
     for (const f of sim.floaters) {
@@ -1394,6 +1400,46 @@ export class WorldRenderer {
       ctx.scale(0.5, 0.5);
       drawSprite(ctx, `bread_${b}_${q}`, 0, 0);
       ctx.restore();
+    });
+  }
+
+  /** In build mode: the selected counter, the one being dragged, and a tap target over each counter. */
+  private drawCounterMarks(ctx: CanvasRenderingContext2D, l: Layout, build: BuildView): void {
+    const sel = l.counters.find((c) => c.id === build.counter);
+    if (sel && !build.counterGhost) {
+      for (const p of sel.solid) drawSprite(ctx, 'select', p.x * T, p.y * T);
+      this.drawQueue(ctx, sel, 'rgba(240, 200, 70, 0.5)');
+    }
+    const g = build.counterGhost;
+    if (g) {
+      ctx.fillStyle = g.ok ? 'rgba(80, 200, 110, 0.45)' : 'rgba(220, 70, 70, 0.5)';
+      for (const p of [...g.info.solid, g.info.staff]) ctx.fillRect(p.x * T, p.y * T, T, T);
+      this.drawQueue(ctx, g.info, g.ok ? 'rgba(80, 200, 110, 0.3)' : 'rgba(220, 70, 70, 0.3)');
+    }
+    for (const c of l.counters) {
+      const x = Math.min(...c.solid.map((p) => p.x)) * T;
+      this.hits.push({ x, y: (c.pos.y + 1) * T - 56, w: 2 * T, h: 56, action: { type: 'counter', id: c.id } });
+    }
+  }
+
+  /** Queue tiles, with a small arrow pointing toward the counter. */
+  private drawQueue(ctx: CanvasRenderingContext2D, c: CounterInfo, color: string): void {
+    ctx.fillStyle = color;
+    for (const p of c.queue) ctx.fillRect(p.x * T + 2, p.y * T + 2, T - 4, T - 4);
+    ctx.fillStyle = 'rgba(60, 40, 20, 0.6)';
+    c.queue.forEach((p, i) => {
+      const to = i > 0 ? c.queue[i - 1] : c.kind === 'station' ? { x: p.x, y: p.y - 1 } : { x: p.x + (c.solid[0].x > p.x ? 1 : -1), y: p.y };
+      const dx = Math.sign(to.x - p.x);
+      const dy = Math.sign(to.y - p.y);
+      const cx = p.x * T + 16;
+      const cy = p.y * T + 16;
+      for (let k = 0; k < 4; k++) {
+        const ox = dx * (k - 1) * 2;
+        const oy = dy * (k - 1) * 2;
+        const half = 4 - k;
+        if (dx) ctx.fillRect(cx + ox, cy - half, 2, half * 2);
+        else ctx.fillRect(cx - half, cy + oy, half * 2, 2);
+      }
     });
   }
 

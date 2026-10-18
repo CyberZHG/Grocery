@@ -45,6 +45,32 @@ export interface Layout {
   mirrored: boolean;
   /** Solid columns standing in the sales floor. */
   pillars: P[];
+  counters: CounterInfo[];
+}
+
+export type QueueDir = 'up' | 'down' | 'left' | 'right';
+/** Where a counter stands (its left tile) and which way its line runs. */
+export interface CounterPos {
+  x: number;
+  y: number;
+  q: QueueDir;
+}
+/** A store's own arrangement of counters and pillars, kept so expanding never moves what's already there. */
+export interface StorePlan {
+  counters: Record<string, CounterPos>;
+  pillars: P[];
+}
+export type CounterKind = 'register' | 'card' | 'station' | 'bagging';
+export interface CounterInfo {
+  id: string;
+  kind: CounterKind;
+  station?: StationKind;
+  pos: CounterPos;
+  solid: P[];
+  staff: P;
+  queue: P[];
+  /** kept clear around the counter, but other counters' clearance may overlap it */
+  extra: P[];
 }
 
 /** Each store in the chain gets its own floor plan. */
@@ -67,13 +93,219 @@ export function fixtureCells(f: FixturePlacement): P[] {
 /** The cat cafe never grows: one register, a coffee counter and a bread oven. */
 export const CAFE_LEVEL: LevelDef = { w: 18, h: 12, registers: 1, cards: 0, stations: ['coffee', 'bakery'], bagging: false, cost: 0, roster: 80, rent: 60 };
 
-export function buildLayout(level: number, variant: LayoutVariant = 'base'): Layout {
+function defaultLayout(level: number, variant: LayoutVariant): Omit<Layout, 'counters'> {
   if (variant === 'cafe') return baseLayout(CAFE_LEVEL, -1, false, false);
   const l = baseLayout(LEVELS[level], level, variant.startsWith('pillars'), variant.startsWith('side'));
   return variant === 'mirror' || variant.endsWith('_mirror') ? mirror(l) : l;
 }
 
-function mirror(l: Layout): Layout {
+interface Spec {
+  id: string;
+  kind: CounterKind;
+  station?: StationKind;
+  def: CounterPos;
+}
+
+function specsOf(d: Omit<Layout, 'counters'>): Spec[] {
+  const out: Spec[] = [];
+  let reg = 0;
+  let card = 0;
+  for (const r of d.registers) {
+    out.push(r.card ? { id: `card${card++}`, kind: 'card', def: { x: r.x, y: r.y, q: 'up' } } : { id: `reg${reg++}`, kind: 'register', def: { x: r.x, y: r.y, q: 'up' } });
+  }
+  if (d.bagging) out.push({ id: 'bag', kind: 'bagging', def: { x: d.bagging.x, y: d.bagging.y, q: 'up' } });
+  for (const s of d.stations) out.push({ id: `st_${s.kind}`, kind: 'station', station: s.kind, def: { x: s.x, y: s.y, q: 'down' } });
+  return out;
+}
+
+const STEP: Record<QueueDir, P> = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+
+/** Directions a counter's line can run: away from the counter, never back through it. */
+export function queueDirs(kind: CounterKind, mirrored: boolean): QueueDir[] {
+  return kind === 'station' ? ['down', 'left', 'right'] : ['up', 'down', mirrored ? 'left' : 'right'];
+}
+
+function run(from: P, q: QueueDir, n: number): P[] {
+  return [...Array(n).keys()].map((k) => ({ x: from.x + STEP[q].x * k, y: from.y + STEP[q].y * k }));
+}
+
+/** The tiles a counter takes up. Stations stand against the back wall with the staff behind them; tills are served from the side. */
+export function counterShape(sp: Pick<Spec, 'id' | 'kind' | 'station'>, pos: CounterPos, m: boolean): CounterInfo {
+  const { x } = pos;
+  if (sp.kind === 'station') {
+    const col = m ? x + 1 : x;
+    const queue = run({ x: col, y: 2 }, pos.q, 3);
+    const side = m ? x : x + 1;
+    const extra = [{ x: x - 1, y: 1 }, { x: x + 2, y: 1 }, ...(pos.q === 'down' ? [2, 3, 4].map((y) => ({ x: side, y })) : [{ x: side, y: 2 }])]
+      .filter((e) => !queue.some((p) => p.x === e.x && p.y === e.y));
+    return { ...sp, pos: { x, y: 1, q: pos.q }, solid: [{ x, y: 1 }, { x: x + 1, y: 1 }], staff: { x: col, y: 0 }, queue, extra };
+  }
+  const { y } = pos;
+  const staff = m ? { x: x + 2, y } : { x: x - 1, y };
+  const front = m ? { x: x - 1, y } : { x: x + 2, y };
+  const queue = run(front, pos.q, sp.kind === 'bagging' ? 3 : 4);
+  const extra = sp.kind === 'bagging' ? [] : [{ x: staff.x, y: y - 1 }];
+  return { ...sp, pos: { ...pos }, solid: [{ x, y }, { x: x + 1, y }], staff, queue, extra };
+}
+
+type Frame = Omit<Layout, 'counters' | 'registers' | 'stations' | 'bagging' | 'pillars'>;
+
+function frameOf(d: Omit<Layout, 'counters'>): Frame {
+  const { w, h, rows } = d;
+  const reserved = new Uint8Array(w * rows);
+  const solid = new Uint8Array(w * rows);
+  for (let x = 0; x < w; x++) {
+    for (const y of [0, h - 2, h - 1]) reserved[y * w + x] = 1;
+    if (x !== d.entrance && x !== d.entrance + 1) {
+      solid[h * w + x] = 1;
+      reserved[h * w + x] = 1;
+    }
+  }
+  return { level: d.level, w, h, rows, entrance: d.entrance, stockDoor: d.stockDoor, mirrored: d.mirrored, reserved, solid };
+}
+
+function assemble(fr: Frame, counters: CounterInfo[], pillars: P[]): Layout {
+  const { w, rows } = fr;
+  const reserved = fr.reserved.slice();
+  const solid = fr.solid.slice();
+  const res = (p: P) => {
+    if (p.x >= 0 && p.x < w && p.y >= 0 && p.y < rows) reserved[p.y * w + p.x] = 1;
+  };
+  for (const c of counters) {
+    for (const p of c.solid) {
+      solid[p.y * w + p.x] = 1;
+      res(p);
+    }
+    if (c.kind !== 'station') res(c.staff);
+    for (const p of [...c.queue, ...c.extra]) res(p);
+  }
+  for (const p of pillars) {
+    solid[p.y * w + p.x] = 1;
+    res(p);
+  }
+  const tills = counters.filter((c) => c.kind === 'register' || c.kind === 'card');
+  // regular registers first, card counters after, as their indexes have always been
+  tills.sort((a, b) => Number(a.kind === 'card') - Number(b.kind === 'card'));
+  const registers: RegisterSpot[] = tills.map((c, index) => ({ index, x: c.pos.x, y: c.pos.y, cashier: c.staff, queue: c.queue, card: c.kind === 'card' }));
+  const stations: StationSpot[] = counters.filter((c) => c.kind === 'station').map((c) => ({ kind: c.station!, x: c.pos.x, y: 1, staff: c.staff, queue: c.queue }));
+  const bag = counters.find((c) => c.kind === 'bagging');
+  const bagging = bag ? { x: bag.pos.x, y: bag.pos.y, staff: bag.staff, queue: bag.queue } : null;
+  return { ...fr, reserved, solid, registers, stations, bagging, pillars: pillars.map((p) => ({ ...p })), counters };
+}
+
+const key = (p: P) => `${p.x},${p.y}`;
+
+/** A counter fits when it stays on the floor, off the door rows, and clear of other counters and anything blocked. */
+function fits(c: CounterInfo, others: CounterInfo[], blocked: Set<string>, fr: Frame): boolean {
+  const { w, h } = fr;
+  const hard = [...c.solid, c.staff, ...c.queue];
+  const inX = (p: P) => p.x >= 0 && p.x < w;
+  if (c.kind === 'station') {
+    if (!hard.every(inX) || c.queue.some((p) => p.y < 2 || p.y > h - 3)) return false;
+    const door = fr.stockDoor;
+    if ([...c.solid, ...c.extra].some((p) => p.x === door.x) || c.staff.x === door.x) return false;
+  } else if (![...hard, ...c.extra].every((p) => inX(p) && p.y >= 1 && p.y <= h - 3)) return false;
+  const mine = [...hard, ...c.extra.filter((p) => inX(p))];
+  if (mine.some((p) => blocked.has(key(p)))) return false;
+  for (const o of others) {
+    const oh = new Set([...o.solid, o.staff, ...o.queue].map(key));
+    const oe = new Set(o.extra.map(key));
+    if (hard.some((p) => oh.has(key(p)) || oe.has(key(p)))) return false;
+    if (c.extra.some((p) => oh.has(key(p)))) return false;
+  }
+  return true;
+}
+
+function blockedBy(fixtures: FixturePlacement[], pillars: P[]): Set<string> {
+  return new Set([...fixtures.flatMap(fixtureCells), ...pillars].map(key));
+}
+
+/**
+ * The floor plan for a store. Without a plan it's the default arrangement for the size; with one, counters and pillars
+ * stay where the plan puts them, and anything the plan doesn't have yet (after expanding) goes where it fits around
+ * the fixtures already on the floor, nearest its default spot.
+ */
+export function buildLayout(level: number, variant: LayoutVariant = 'base', plan?: StorePlan | null, fixtures: FixturePlacement[] = []): Layout {
+  const d = defaultLayout(level, variant);
+  const fr = frameOf(d);
+  const m = d.mirrored;
+  const specs = specsOf(d);
+  if (!plan) return assemble(fr, specs.map((s) => counterShape(s, s.def, m)), d.pillars);
+  const inside = (p: P) => p.x >= 0 && p.x < fr.w && p.y >= 1 && p.y <= fr.h - 3;
+  const pillars = plan.pillars.filter(inside);
+  const placed: CounterInfo[] = [];
+  for (const s of specs) {
+    const pos = plan.counters[s.id];
+    if (!pos) continue;
+    const c = counterShape(s, pos, m);
+    if (fits(c, placed, blockedBy([], pillars), fr)) placed.push(c);
+  }
+  for (const s of specs) {
+    if (placed.some((c) => c.id === s.id)) continue;
+    placed.push(findSpot(fr, s, placed, pillars, fixtures));
+  }
+  // a bigger floor may call for another pillar
+  for (const want of d.pillars.slice(pillars.length)) {
+    const spot = nearestFree(fr, want, placed, pillars, fixtures);
+    if (spot) pillars.push(spot);
+  }
+  return assemble(fr, placed, pillars);
+}
+
+function findSpot(fr: Frame, s: Spec, placed: CounterInfo[], pillars: P[], fixtures: FixturePlacement[]): CounterInfo {
+  const cands: { c: CounterInfo; d: number }[] = [];
+  for (let y = 1; y <= (s.kind === 'station' ? 1 : fr.h - 3); y++) {
+    for (let x = 0; x < fr.w; x++) {
+      for (const q of queueDirs(s.kind, fr.mirrored)) {
+        cands.push({ c: counterShape(s, { x, y, q }, fr.mirrored), d: Math.abs(x - s.def.x) + Math.abs(y - s.def.y) + (q === s.def.q ? 0 : 0.5) });
+      }
+    }
+  }
+  cands.sort((a, b) => a.d - b.d);
+  const clear = blockedBy(fixtures, pillars);
+  for (const { c } of cands) {
+    if (fits(c, placed, clear, fr) && connected(assemble(fr, [...placed, c], pillars), fixtures)) return c;
+  }
+  // no room around the fixtures: take a spot anyway and let the fixtures make way
+  const bare = blockedBy([], pillars);
+  return cands.find(({ c }) => fits(c, placed, bare, fr))?.c ?? counterShape(s, s.def, fr.mirrored);
+}
+
+function nearestFree(fr: Frame, want: P, placed: CounterInfo[], pillars: P[], fixtures: FixturePlacement[]): P | null {
+  const base = assemble(fr, placed, pillars);
+  const taken = blockedBy(fixtures, []);
+  const cands: P[] = [];
+  for (let y = 1; y <= fr.h - 4; y++) for (let x = 0; x < fr.w; x++) cands.push({ x, y });
+  cands.sort((a, b) => Math.abs(a.x - want.x) + Math.abs(a.y - want.y) - (Math.abs(b.x - want.x) + Math.abs(b.y - want.y)));
+  for (const p of cands) {
+    if (base.reserved[p.y * fr.w + p.x] || taken.has(key(p))) continue;
+    if (connected(assemble(fr, placed, [...pillars, p]), fixtures)) return p;
+  }
+  return null;
+}
+
+/** The plan as it stands, with every counter in place, or null if something overlaps or can't be reached. */
+export function checkPlan(level: number, variant: LayoutVariant, plan: StorePlan, fixtures: FixturePlacement[]): Layout | null {
+  const d = defaultLayout(level, variant);
+  const fr = frameOf(d);
+  const placed: CounterInfo[] = [];
+  const clear = blockedBy(fixtures, plan.pillars);
+  for (const s of specsOf(d)) {
+    const pos = plan.counters[s.id];
+    if (!pos) return null;
+    const c = counterShape(s, pos, d.mirrored);
+    if (!fits(c, placed, clear, fr)) return null;
+    placed.push(c);
+  }
+  const l = assemble(fr, placed, plan.pillars);
+  return connected(l, fixtures) ? l : null;
+}
+
+export function planOf(l: Layout): StorePlan {
+  return { counters: Object.fromEntries(l.counters.map((c) => [c.id, { ...c.pos }])), pillars: l.pillars.map((p) => ({ ...p })) };
+}
+
+function mirror(l: Omit<Layout, 'counters'>): Omit<Layout, 'counters'> {
   const { w, rows } = l;
   const flip = (a: Uint8Array) => {
     const out = new Uint8Array(a.length);
@@ -95,7 +327,7 @@ function mirror(l: Layout): Layout {
   };
 }
 
-function baseLayout(def: LevelDef, level: number, withPillars: boolean, side: boolean): Layout {
+function baseLayout(def: LevelDef, level: number, withPillars: boolean, side: boolean): Omit<Layout, 'counters'> {
   const { w, h } = def;
   const rows = h + 2;
   const reserved = new Uint8Array(w * rows);
@@ -322,7 +554,11 @@ export function canPlace(layout: Layout, others: FixturePlacement[], f: FixtureP
     if (layout.reserved[c.y * layout.w + c.x]) return false;
     for (const o of others) for (const oc of fixtureCells(o)) if (oc.x === c.x && oc.y === c.y) return false;
   }
-  const all = [...others, f];
+  return connected(layout, [...others, f]);
+}
+
+/** Every fixture, counter and the stock door can be reached from the entrance. */
+export function connected(layout: Layout, all: FixturePlacement[]): boolean {
   const grid = new Grid(layout, all);
   const e = entryTile(layout);
   const dist = grid.flood(e.x, e.y);

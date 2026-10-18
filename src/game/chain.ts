@@ -1,5 +1,5 @@
 import { CAT_COATS, FIXTURES, LEVELS, STORE_STYLE, type Category } from './defs';
-import { buildLayout, canPlace, type FixturePlacement, type Layout, type LayoutVariant } from './layout';
+import { buildLayout, canPlace, planOf, type FixturePlacement, type Layout, type LayoutVariant } from './layout';
 import { newGame, stash, STORE_KEYS, totalLevels, type DayStats, type FixtureState, type GameState, type StaffState, type StoreData, type StoreSlot } from './state';
 
 export type ChallengeId = 'main' | 'rush' | 'fresh' | 'oldtown' | 'school' | 'suburb' | 'cafe';
@@ -81,8 +81,11 @@ export function activeSlot(s: GameState): StoreSlot {
   return s.stores[s.active];
 }
 
+/** The store's floor plan; its counters' places are saved the first time, so later expansions build around them. */
 export function storeLayout(s: GameState, level = s.level): Layout {
-  return buildLayout(level, activeSlot(s).layout);
+  const l = buildLayout(level, activeSlot(s).layout, s.plan, s.fixtures.filter((f) => f.placed));
+  if (level === s.level) s.plan = planOf(l);
+  return l;
 }
 
 export function peaksOf(s: GameState): Peak[] {
