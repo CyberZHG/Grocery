@@ -1,7 +1,7 @@
 import { locale } from '../i18n';
 import { BREAD_REGION, BREAD_UNLOCK, BREADS, CAT_COATS, CATEGORIES, NPCS, SKILLS, START_MONEY, STORE_STYLE, type Bread, type Category, type CatCoat, type FixtureKind, type Skill } from './defs';
 import type { GoalsState } from './goals';
-import { freshGrowth, type CatState, type EquipKind, type RackKind } from './growth';
+import { freshCatSkills, freshGrowth, type CatState, type EquipKind, type RackKind } from './growth';
 import { collectionCount, freshProducts, unlockOrder, type ProductProgress } from './progress';
 import type { Leveled } from './rules';
 import type { ChallengeId } from './chain';
@@ -174,6 +174,8 @@ export interface GameState {
   inventory: Record<string, number>;
   /** little things the cats have brought in, by kind */
   catTreasures: Record<string, number>;
+  /** cats living at the cafe that belong to no store, by coat: only their skills are used */
+  residents: Record<string, CatState>;
   /** buildings on the lots around this store */
   street: (Lot | null)[];
   savedAt: number;
@@ -265,6 +267,7 @@ export function newGame(seed = Date.now() % 1e9): GameState {
     collections: [],
     inventory: {},
     catTreasures: {},
+    residents: {},
     street: emptyStreet(),
     savedAt: Date.now(),
   };
@@ -317,6 +320,7 @@ export function migrate(data: unknown): GameState | null {
     s.racks = { ...g.racks, ...(s.racks ?? {}) };
     s.plan ??= null;
     s.cat = { ...g.cat, ...(s.cat ?? {}) };
+    s.cat.skills = { ...freshCatSkills(), ...(s.cat.skills ?? {}) };
     s.bakery = { ...Object.fromEntries(BREADS.map((b) => [b, { good: 0, golden: 0 }])), ...(s.bakery ?? {}) } as GameState['bakery'];
     s.catCoat ??= CAT_COATS[Math.abs(s.seed) % CAT_COATS.length];
     s.catName ??= '';
@@ -335,6 +339,8 @@ export function migrate(data: unknown): GameState | null {
     s.openedDay ??= 1;
     s.inventory ??= {};
     s.catTreasures ??= {};
+    s.residents ??= {};
+    for (const r of Object.values(s.residents)) r.skills = { ...freshCatSkills(), ...(r.skills ?? {}) };
     s.street ??= emptyStreet();
     // branches opened before every store had its own look get theirs, unless they were already renovated
     const plain = (st: { floor: string; wall: string; sign: string }) => st.floor === 'cream' && st.wall === 'beige' && st.sign === 'wood';
@@ -350,6 +356,7 @@ export function migrate(data: unknown): GameState | null {
     // stores you aren't running keep their own bakery shelf; give them the breads added since
     for (const slot of s.stores) if (slot.saved) slot.saved.racks = { ...freshGrowth().racks, ...(slot.saved.racks ?? {}) };
     for (const slot of s.stores) if (slot.saved) slot.saved.plan ??= null;
+    for (const slot of s.stores) if (slot.saved?.cat) slot.saved.cat.skills = { ...freshCatSkills(), ...(slot.saved.cat.skills ?? {}) };
     for (const slot of s.stores) if (slot.saved) slot.saved.bakery = { ...Object.fromEntries(BREADS.map((b) => [b, { good: 0, golden: 0 }])), ...(slot.saved.bakery ?? {}) } as GameState['bakery'];
     s.collections ??= CATEGORIES.filter((c) => collectionCount(c, s.products) === unlockOrder(c).length);
     s.savedAt ??= Date.now();

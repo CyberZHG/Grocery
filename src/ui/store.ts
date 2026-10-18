@@ -1,10 +1,10 @@
 import { money, t, type Key } from '../i18n';
-import { CAT_ACC_PRICE, CAT_ACCS, CAT_COATS, CAT_TREASURES, CATEGORIES, FLOOR_STYLES, LEVELS, SIGN_STYLES, STYLE_PRICE, STYLE_UNLOCK, WALL_STYLES } from '../game/defs';
+import { CAT_ACC_PRICE, CAT_ACCS, CAT_COATS, CAT_TREASURES, CATEGORIES, FLOOR_STYLES, SIGN_STYLES, STYLE_PRICE, STYLE_UNLOCK, WALL_STYLES } from '../game/defs';
 import { catName, slotName } from '../game/names';
 import { inCafe } from '../game/chain';
 import { saveGame } from '../game/state';
 import type { Game } from '../game/game';
-import { capacityOf, rackExpToNext, RACKS,
+import { CAT_SKILLS, catSkillExpToNext, capacityOf, freshGrowth, rackExpToNext, RACKS, type CatState,
   catExpToNext, EQUIPMENT, equipExpToNext, equipSpeed, PETS_PER_DAY, repExpToNext, repTraffic, stars, supplierDiscount,
   supplierExpToNext, type EquipKind,
 } from '../game/growth';
@@ -39,11 +39,12 @@ function row(label: string, l: Leveled, toNext: (lv: number) => number, effect: 
   ]);
 }
 
-function equipOpen(level: number, kind: EquipKind): boolean {
-  const lv = LEVELS[level];
+/** Equipment this store has, going by its floor plan (the cafe's included); the bakery's equipment is its oven. */
+function equipOpen(g: Game, kind: EquipKind): boolean {
+  const l = g.sim.layout;
   if (kind === 'register') return true;
-  if (kind === 'bagging') return lv.bagging;
-  return (lv.stations as string[]).includes(kind);
+  if (kind === 'bagging') return !!l.bagging;
+  return l.stations.some((st) => (st.kind === 'bakery' ? 'oven' : st.kind) === kind);
 }
 
 export function storePanel(g: Game, ui: UI): HTMLElement {
@@ -71,17 +72,20 @@ export function storePanel(g: Game, ui: UI): HTMLElement {
     catCard(g, ui),
     inCafe(s) ? cafeCats(g) : null,
     h('h3', {}, [t('store.equipment')]),
-    h('div', { class: 'card' }, EQUIPMENT.filter((k) => equipOpen(s.level, k)).map((k) =>
+    h('div', { class: 'card' }, EQUIPMENT.filter((k) => equipOpen(g, k)).map((k) =>
       row(t(`equip.${k}` as Key), s.equipment[k], equipExpToNext, t('store.equipEffect', { v: equipSpeed(s.equipment[k].level).toFixed(2) })),
     ).concat([h('p', { class: 'muted' }, [t('store.equipHint')])])),
-    h('h3', {}, [t('store.racks')]),
-    h('div', { class: 'card' }, RACKS.map((k) =>
-      row(t(`fixture.${k}` as Key), s.racks[k], rackExpToNext, t('store.rackEffect', { n: capacityOf(s, k) })),
-    ).concat([h('p', { class: 'muted' }, [t('store.rackHint')])])),
-    h('h3', {}, [t('store.suppliers')]),
-    h('div', { class: 'card' }, CATEGORIES.map((c) =>
-      row(t(`cat.${c}` as Key), s.suppliers[c], supplierExpToNext, s.suppliers[c].level > 1 ? t('store.supplierEffect', { p: (supplierDiscount(s.suppliers[c].level) * 100).toFixed(1) }) : '—'),
-    ).concat([h('p', { class: 'muted' }, [t('store.supplierHint')])])),
+    // the cafe has no shelves and buys no groceries
+    ...(inCafe(s) ? [] : [
+      h('h3', {}, [t('store.racks')]),
+      h('div', { class: 'card' }, RACKS.map((k) =>
+        row(t(`fixture.${k}` as Key), s.racks[k], rackExpToNext, t('store.rackEffect', { n: capacityOf(s, k) })),
+      ).concat([h('p', { class: 'muted' }, [t('store.rackHint')])])),
+      h('h3', {}, [t('store.suppliers')]),
+      h('div', { class: 'card' }, CATEGORIES.map((c) =>
+        row(t(`cat.${c}` as Key), s.suppliers[c], supplierExpToNext, s.suppliers[c].level > 1 ? t('store.supplierEffect', { p: (supplierDiscount(s.suppliers[c].level) * 100).toFixed(1) }) : '—'),
+      ).concat([h('p', { class: 'muted' }, [t('store.supplierHint')])])),
+    ]),
     h('h3', {}, [t('store.trend')]),
     trends(s.history.slice(-30)),
   ]);
@@ -111,6 +115,7 @@ function cafeCats(g: Game): HTMLElement {
         h('div', { class: 'meter heart' }, [h('div', { class: 'fill', style: { width: `${d.cat.mood}%` } })]),
         h('span', { class: 'grow-eff' }, ['']),
       ]),
+      ...catSkills(d.cat),
     ]));
   });
   const used = new Set([s.catCoat, ...s.stores.map((x) => x.saved?.catCoat)]);
@@ -123,9 +128,15 @@ function cafeCats(g: Game): HTMLElement {
           h('span', { class: 'muted' }, [t('cafe.resident')]),
         ]),
       ]),
+      ...catSkills(s.residents[coat] ?? freshGrowth().cat),
     ]));
   }
   return h('div', { class: 'stack' }, [h('h3', {}, [t('cafe.allCats', { n: cards.length + 1 })]), h('div', { class: 'cards' }, cards)]);
+}
+
+/** Skill levels: just a record of what the cat likes doing. */
+function catSkills(c: CatState): HTMLElement[] {
+  return CAT_SKILLS.map((k) => row(t(`catSkill.${k}` as Key), c.skills[k], catSkillExpToNext, ''));
 }
 
 function catCard(g: Game, ui: UI): HTMLElement {
@@ -159,6 +170,7 @@ function catCard(g: Game, ui: UI): HTMLElement {
       h('div', { class: 'meter heart' }, [h('div', { class: 'fill', style: { width: `${c.mood}%` } })]),
       h('span', { class: 'grow-eff' }, ['']),
     ]),
+    ...catSkills(c),
     h('p', { class: 'muted' }, [t('store.catHint')]),
     h('div', { class: 'stack' }, [
       h('span', { class: 'muted' }, [t('store.treasures', { n: Object.keys(g.state.catTreasures).length, total: CAT_TREASURES.length })]),

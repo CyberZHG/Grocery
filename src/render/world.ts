@@ -637,8 +637,18 @@ export class WorldRenderer {
     const resting = !['walk1', 'walk2', 'walk3', 'walk4', 'run1', 'run2', 'leap'].includes(pose);
     if (resting && c.mover.path.length && !c.perch && !play) pose = walk;
     // a big jump in where the cat should be (onto a toy, out of a box) is shown as a leap with an arc
-    const shown = this.catShown.get(c) ?? { x: px0, y: py0, jump: 0 };
+    const shown = this.catShown.get(c) ?? { x: px0, y: py0, jump: 0, tx: px0, ty: py0, since: this.time };
     this.catShown.set(c, shown);
+    // mid-jump, the landing spot may itself be on the move (a cat running at high speed): carry the arc along with it,
+    // so the arc only covers the jump itself and never trails behind for good
+    const mx = px0 - shown.tx;
+    const my = py0 - shown.ty;
+    if (shown.jump && Math.hypot(mx, my) < 20) {
+      shown.x += mx;
+      shown.y += my;
+    }
+    shown.tx = px0;
+    shown.ty = py0;
     const gx = px0 - shown.x;
     const gy = py0 - shown.y;
     const gap = Math.hypot(gx, gy);
@@ -646,9 +656,12 @@ export class WorldRenderer {
       shown.x = px0;
       shown.y = py0;
     } else {
-      if (!shown.jump) shown.jump = gap;
+      if (!shown.jump) {
+        shown.jump = gap;
+        shown.since = this.time;
+      }
       const step = Math.max(160, shown.jump / 0.35) * this.frameDt;
-      if (gap <= step) {
+      if (gap <= step || this.time - shown.since > 0.5) {
         shown.x = px0;
         shown.y = py0;
         shown.jump = 0;
@@ -1204,7 +1217,7 @@ export class WorldRenderer {
   /** Toys being played with this frame: by a cat, rolling, or in a customer's hand. */
   private activeToys = new Set<number>();
   /** Where each cat was last drawn, so a sudden change of spot becomes a jump instead of a teleport. */
-  private catShown = new WeakMap<CatAgent, { x: number; y: number; jump: number }>();
+  private catShown = new WeakMap<CatAgent, { x: number; y: number; jump: number; tx: number; ty: number; since: number }>();
 
   /** Open while a worker fetches stock nearby, held briefly so it doesn't flicker. */
   private stockDoorOpen(sim: Sim): boolean {
@@ -1235,7 +1248,9 @@ export class WorldRenderer {
       drawSprite(ctx, name, Math.round(fx + (T - sw) / 2), Math.round(fy + T - sh));
       ctx.globalAlpha = 1;
       if (selected) drawSprite(ctx, 'select', Math.round(fx), Math.round(fy));
-      this.hits.push({ x: fx, y: fy + T - sh, w: T, h: sh, action: { type: 'fixture', fixture: f.id } });
+      // a cafe table is picked by its chair too, which stands taller than the table
+      const top = f.decor === 'table' ? Math.min(fy - 14, fy + T - sh) : fy + T - sh;
+      this.hits.push({ x: fx, y: top, w: T, h: fy + T - top, action: { type: 'fixture', fixture: f.id } });
       return;
     }
     const [hh, hv] = FIX_H[f.kind];

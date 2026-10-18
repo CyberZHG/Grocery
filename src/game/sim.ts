@@ -10,7 +10,7 @@ import {
 import { sunPatches, sunTiles } from './ambience';
 import { dateOf, demandMult, holidayOf, stationMult, streetCart, trafficMult, weatherOf } from './calendar';
 import {
-  capacityOf, catAppeal, catLover, costOf, equipSpeed, gainRack, gainCat, gainEquipment, gainReputation, gainSupplier, giftChance, PETS_PER_DAY, repTraffic, rosterSize, type EquipKind, type RackKind,
+  capacityOf, catAppeal, catLover, costOf, freshGrowth, equipSpeed, gainRack, gainCat, gainCatSkill, gainEquipment, gainReputation, gainSupplier, giftChance, PETS_PER_DAY, repTraffic, rosterSize, type CatSkill, type CatState, type EquipKind, type RackKind,
 } from './growth';
 import { collectionCount, collectionMult, isUnlocked, priceMult, productExpToNext, unlockOrder, unlockedCount } from './progress';
 import { streetFx, type StreetFx } from './street';
@@ -252,6 +252,8 @@ export class CatAgent {
   /** coat and accessory for cats from other stores; the store's own cat uses the saved look */
   coat?: string;
   acc?: string | null;
+  /** saved state of a cat from another store, so its skills grow while it is here */
+  home?: CatState;
 
   constructor(p: P) {
     this.mover = new Mover(p);
@@ -403,6 +405,7 @@ export class Sim {
       for (const slot of state.stores) {
         if (!slot.saved) continue;
         const k = new CatAgent(this.catSpot());
+        k.home = slot.saved.cat;
         k.coat = slot.saved.catCoat;
         k.acc = slot.saved.catAcc;
         k.mode = 'sit';
@@ -413,6 +416,7 @@ export class Sim {
       const seen = new Set(this.cats().map((k) => k.coat ?? state.catCoat));
       for (const coat of CAT_COATS.filter((c) => !seen.has(c))) {
         const k = new CatAgent(this.catSpot());
+        k.home = state.residents[coat] ??= freshGrowth().cat;
         k.coat = coat;
         k.acc = null;
         k.mode = 'sleep';
@@ -970,16 +974,24 @@ export class Sim {
         c.batAt = this.clock;
         this.faceToward(c.mover, { x: Math.round(p.x), y: Math.round(p.y) });
         this.doAct(c, 'swipe', 0.4);
+        this.catSkill(c, 'chase', 1);
         this.kick(f, p.x - c.mover.x + this.rng.range(-0.8, 0.8), p.y - c.mover.y + this.rng.range(-0.8, 0.8), this.rng.range(1.8, 3.2));
       }
       return;
     }
     const goal = { x: Math.round(p.x), y: Math.round(p.y) };
     const dest = c.mover.dest;
-    if (Math.abs(dest.x - goal.x) + Math.abs(dest.y - goal.y) > 1) {
+    // standing next to a ball pressed into a wall or corner is still out of reach: step onto its tile
+    const stuck = !c.mover.path.length;
+    if (stuck || Math.abs(dest.x - goal.x) + Math.abs(dest.y - goal.y) > 1) {
       const to = this.grid.walkable(goal.x, goal.y) ? goal : this.beside(c.mover, goal);
-      if (to) this.walk(c.mover, to);
+      if (to && (to.x !== dest.x || to.y !== dest.y)) this.walk(c.mover, to);
     }
+  }
+
+  private catSkill(c: CatAgent, skill: CatSkill, amount: number): void {
+    const st = c === this.cat ? this.state.cat : c.home;
+    if (st) gainCatSkill(st, skill, amount);
   }
 
   /** The store's own cat plus a visiting one, if any. */
@@ -1000,6 +1012,7 @@ export class Sim {
     if (!g.agent) {
       if (this.clock < g.arriveAt || this.closing) return;
       g.agent = new CatAgent(spawnTile(this.layout, this.rng.chance(0.5)));
+      g.agent.home = this.state.stores[g.store]?.saved?.cat;
       g.agent.mode = 'walk';
       this.walk(g.agent.mover, entryTile(this.layout));
       this.emit({ type: 'guestCat', store: g.store });
@@ -1025,6 +1038,7 @@ export class Sim {
       return;
     }
     if (c.mode === 'walk') c.toy = null;
+    if (c.mode === 'sleep') this.catSkill(c, 'nap', dt * 0.04);
     const ball = c.toy !== null ? this.fixture(c.toy) : undefined;
     const chasing = !!ball && isRolling(ball.decor);
     if (chasing) this.chase(c, ball!);
@@ -1054,6 +1068,7 @@ export class Sim {
     const f = goal?.fixture !== undefined ? this.fixture(goal.fixture) : undefined;
     if ((goal?.kind === 'tower' || goal?.kind === 'perch') && f?.placed && !this.cats().some((k) => k !== c && k.perch?.fixture === f.id)) {
       c.perch = this.perchOn(f);
+      this.catSkill(c, 'climb', 3);
       c.mode = this.rng.pick(['sleep', 'loaf', 'sit'] as const);
       c.timer = timer(40, 120);
       return;
@@ -1100,6 +1115,7 @@ export class Sim {
           k.timer = timer(12, 25);
           k.bubble = { icon: 'b_heart', until: this.clock + 3 };
           this.doAct(k, 'play', 4);
+          this.catSkill(k, 'play', 1);
           this.faceToward(k.mover, (k === c ? other : c).mover.tile);
         }
         this.laowu(c, other);
@@ -1110,6 +1126,7 @@ export class Sim {
     if (goal?.kind === 'toy' && f?.placed) {
       const play = TOY_PLAY[f.decor!.slice(4) as CafeToy];
       c.toy = f.id;
+      if (play !== 'nap') this.catSkill(c, play === 'perch' ? 'climb' : play === 'chase' && f.decor !== 'toy_laser' ? 'chase' : 'play', play === 'perch' ? 3 : 1);
       c.mode = play === 'nap' ? 'sleep' : play === 'scratch' ? 'stretch' : play === 'perch' || play === 'hide' ? 'loaf' : play === 'kick' ? 'groom' : 'sit';
       c.timer = timer(play === 'nap' ? 30 : 10, play === 'nap' ? 70 : 25);
       this.faceToward(c.mover, f);
@@ -1151,6 +1168,7 @@ export class Sim {
         c.timer = timer(8, 15);
         c.bubble = { icon: 'b_heart', until: this.clock + 2 };
         this.doAct(c, 'wiggle', 2);
+        this.catSkill(c, 'affection', 3);
         this.faceToward(c.mover, m.tile);
         const cust = this.customers.find((x) => x.mover === m);
         const w = this.workers.find((x) => x.mover === m);
@@ -1287,6 +1305,8 @@ export class Sim {
     const until = this.clock + this.rng.range(4, 9);
     a.tag = { other: b, it: true, until };
     b.tag = { other: a, it: false, until };
+    this.catSkill(a, 'play', 1);
+    this.catSkill(b, 'play', 1);
     for (const k of [a, b]) {
       k.perch = null;
       k.toy = null;
@@ -1409,6 +1429,7 @@ export class Sim {
     if (st.pets >= PETS_PER_DAY) return false;
     st.pets += 1;
     st.mood = Math.min(100, st.mood + 10);
+    this.catSkill(this.cat, 'affection', 3);
     if (gainCat(this.state, 4)) this.emit({ type: 'growth', what: 'cat', level: st.level });
     return true;
   }
@@ -1418,6 +1439,7 @@ export class Sim {
     if (st.fedDay === this.state.day) return false;
     st.fedDay = this.state.day;
     st.mood = Math.min(100, st.mood + 25);
+    this.catSkill(this.cat, 'affection', 3);
     if (gainCat(this.state, 10)) this.emit({ type: 'growth', what: 'cat', level: st.level });
     return true;
   }
@@ -2888,12 +2910,12 @@ export class Sim {
     if (gainEquipment(this.state, kind, amount)) this.emit({ type: 'growth', what: kind, level: this.state.equipment[kind].level });
   }
 
-  /** One calm random event on some days: a tour bus, a food blogger, or a late delivery. */
+  /** One calm random event on some days: a tour bus, a food blogger, or a late delivery (not at the cafe, which stocks no groceries). */
   private rollEvent(): void {
     const r = this.rng.next();
     if (r < 0.1) this.event = { kind: 'tour', at: this.rng.range(10 * 60, 16 * 60) };
     else if (r < 0.18) this.event = { kind: 'blogger' };
-    else if (r < 0.26) this.event = { kind: 'late', cat: this.rng.pick(CATEGORIES), until: 12 * 60 };
+    else if (r < 0.26 && !inCafe(this.state)) this.event = { kind: 'late', cat: this.rng.pick(CATEGORIES), until: 12 * 60 };
     if (this.event) this.emit({ type: 'event', event: this.event });
   }
 

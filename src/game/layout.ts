@@ -90,8 +90,8 @@ export function fixtureCells(f: FixturePlacement): P[] {
   return f.vertical ? [{ x: f.x, y: f.y }, { x: f.x, y: f.y + 1 }] : [{ x: f.x, y: f.y }, { x: f.x + 1, y: f.y }];
 }
 
-/** The cat cafe never grows: one register, a coffee counter and a bread oven. */
-export const CAFE_LEVEL: LevelDef = { w: 18, h: 12, registers: 1, cards: 0, stations: ['coffee', 'bakery'], bagging: false, cost: 0, roster: 80, rent: 60 };
+/** The cat cafe never grows: as big as the largest store, with one register, a coffee counter and a bread oven. */
+export const CAFE_LEVEL: LevelDef = { w: LEVELS[LEVELS.length - 1].w, h: LEVELS[LEVELS.length - 1].h, registers: 1, cards: 0, stations: ['coffee', 'bakery'], bagging: false, cost: 0, roster: 80, rent: 60 };
 
 function defaultLayout(level: number, variant: LayoutVariant): Omit<Layout, 'counters'> {
   if (variant === 'cafe') return baseLayout(CAFE_LEVEL, -1, false, false);

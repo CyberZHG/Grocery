@@ -325,7 +325,7 @@ export function openBranch(s: GameState): void {
   fitFixtures(s);
 }
 
-/** Opens the cat cafe once every store's challenge is done; true if it just opened. Tables and two toys come with it. */
+/** Opens the cat cafe once every store's challenge is done; true if it just opened. Twelve tables, a few plants and lamps, and two toys come with it. */
 export function ensureCafe(s: GameState): boolean {
   if (s.stores.some(isCafe) || !CHALLENGES.every((c) => s.stores.some((x) => x.challenge === c.id && completions(x) > 0))) return false;
   const fresh = newGame((s.seed * 17 + 101) % 1e9);
@@ -341,9 +341,11 @@ export function ensureCafe(s: GameState): boolean {
       }
     }
   };
-  for (const [x, y] of [[2, 3], [4, 3], [6, 3], [2, 5], [4, 5], [6, 5]] as [number, number][]) add('table', [[x, y]]);
-  add('toy_box', [[10, 4], [9, 4], [10, 5]]);
-  add('toy_ball', [[10, 6], [9, 6], [8, 6]]);
+  // seating on the left in even rows, a play corner for the cats on the right, the aisle to the coffee bar kept clear
+  for (const y of [3, 6, 9]) for (const x of [5, 8, 11, 14]) add('table', [[x, y], [x, y + 1]]);
+  for (const [d, x, y] of [['plant_small', 4, 1], ['flowers', 9, 1], ['flowers', 13, 1], ['plant_small', 18, 1], ['magazine', 17, 6], ['lamp', 3, 6], ['lamp', 17, 10], ['plant_small', 21, 12], ['cactus', 31, 12]] as [string, number, number][]) add(d, [[x, y]]);
+  add('toy_box', [[25, 8], [25, 9], [24, 8]]);
+  add('toy_ball', [[28, 10], [27, 10], [28, 9]]);
   const best = Math.max(s.reputation.level, ...s.stores.map((x) => x.saved?.reputation.level ?? 0));
   ownStyle(s, STORE_STYLE.cafe);
   s.stores.push({

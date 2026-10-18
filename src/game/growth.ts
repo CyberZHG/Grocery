@@ -6,12 +6,21 @@ import type { GameState } from './state';
 export type EquipKind = 'register' | 'oden' | 'deli' | 'oven' | 'coffee' | 'bagging';
 export const EQUIPMENT: EquipKind[] = ['register', 'oden', 'deli', 'oven', 'coffee', 'bagging'];
 
+/** What a cat gets better at by doing it. Only a record of its habits: no effect on the store. */
+export type CatSkill = 'chase' | 'nap' | 'affection' | 'climb' | 'play';
+export const CAT_SKILLS: CatSkill[] = ['chase', 'nap', 'affection', 'climb', 'play'];
+
+export function freshCatSkills(): Record<CatSkill, Leveled> {
+  return Object.fromEntries(CAT_SKILLS.map((k) => [k, { level: 1, exp: 0 }])) as Record<CatSkill, Leveled>;
+}
+
 export interface CatState extends Leveled {
   /** 0-100, rises with petting and treats, drifts down slowly */
   mood: number;
   pets: number;
   petDay: number;
   fedDay: number;
+  skills: Record<CatSkill, Leveled>;
 }
 
 export type RackKind = Exclude<FixtureKind, 'decor'>;
@@ -24,7 +33,7 @@ export function freshGrowth(): Pick<GameState, 'reputation' | 'suppliers' | 'equ
   for (const e of EQUIPMENT) equipment[e] = { level: 1, exp: 0 };
   const racks = {} as Record<RackKind, Leveled>;
   for (const r of RACKS) racks[r] = { level: 1, exp: 0 };
-  return { reputation: { level: 1, exp: 0 }, suppliers, equipment, cat: { level: 1, exp: 0, mood: 60, pets: 0, petDay: 0, fedDay: 0 }, racks };
+  return { reputation: { level: 1, exp: 0 }, suppliers, equipment, cat: { level: 1, exp: 0, mood: 60, pets: 0, petDay: 0, fedDay: 0, skills: freshCatSkills() }, racks };
 }
 
 // ---------- fixture capacity ----------
@@ -115,6 +124,12 @@ export function catAppeal(level: number, mood: number): number {
 
 export function catLover(npcIndex: number): boolean {
   return npcIndex % 4 === 1;
+}
+
+export const catSkillExpToNext = (lv: number) => 10 + 6 * (lv - 1);
+
+export function gainCatSkill(cat: CatState, skill: CatSkill, amount: number): number {
+  return addExp(cat.skills[skill], amount, catSkillExpToNext);
 }
 
 export function gainCat(s: GameState, amount: number): number {

@@ -244,6 +244,9 @@ textarea.code {
 .grow-row { display: grid; grid-template-columns: minmax(80px, 9em) 4.5em 1fr 7.5em; gap: 8px; align-items: center; font-size: 13px; }
 .grow-lv { color: var(--accent); }
 .grow-eff { color: var(--muted); text-align: right; font-size: 12px; }
+/* cafe cat cards are narrow and have no effect text: the bar takes the room */
+.cafe-cat .grow-row { grid-template-columns: 5em 4em 1fr; }
+.cafe-cat .grow-eff { display: none; }
 .trend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
 .trend { background: #2c2734; border: 2px solid var(--edge); padding: 8px; display: flex; flex-direction: column; gap: 2px; }
 .trend-head { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }

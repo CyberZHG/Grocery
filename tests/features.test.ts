@@ -1188,3 +1188,58 @@ describe('secret achievements', () => {
     expect(unlockedCount(s)).toBe(before);
   });
 });
+
+describe('cafe ball', () => {
+  it('a ball pressed into a corner still gets batted back out', async () => {
+    const { CHALLENGES, ensureCafe, switchStore } = await import('../src/game/chain');
+    const s = newGame(9);
+    for (const c of CHALLENGES) if (!s.stores.some((x) => x.challenge === c.id)) s.stores.push({ challenge: c.id, layout: 'base', done: true, progress: 0, saved: null });
+    s.stores[0].done = true;
+    ensureCafe(s);
+    switchStore(s, s.stores.findIndex((x) => x.challenge === 'cafe'));
+    s.fixtures = s.fixtures.filter((f) => f.decor !== 'toy_box');
+    const ball = s.fixtures.find((f) => f.decor === 'toy_ball')!;
+    const sim = new Sim(s);
+    ball.x = sim.layout.w - 1;
+    ball.y = sim.layout.h - 3;
+    ball.at = { x: ball.x + 0.25, y: ball.y + 0.25 };
+    sim.startDay();
+    let kicks = 0;
+    let was = false;
+    for (let n = 0; n < 20000 && !sim.done; n++) {
+      sim.tickReal(0.04);
+      sim.update(0.1);
+      const r = sim.rollingToys().has(ball.id);
+      if (r && !was) kicks++;
+      was = r;
+    }
+    expect(kicks).toBeGreaterThan(10);
+  });
+});
+
+describe('cat skills', () => {
+  it('grow with what cats do, for the cafe cats from other stores too, and old saves get them', async () => {
+    const { CHALLENGES, ensureCafe, switchStore } = await import('../src/game/chain');
+    const { CAT_SKILLS } = await import('../src/game/growth');
+    const s = newGame(11);
+    for (const c of CHALLENGES) if (!s.stores.some((x) => x.challenge === c.id)) s.stores.push({ challenge: c.id, layout: 'base', done: true, progress: 0, saved: { ...JSON.parse(JSON.stringify(newGame(12))) } });
+    s.stores[0].done = true;
+    ensureCafe(s);
+    switchStore(s, s.stores.findIndex((x) => x.challenge === 'cafe'));
+    for (let d = 0; d < 3; d++) runDay(s);
+    const total = (c: GameState['cat']) => CAT_SKILLS.reduce((a, k) => a + c.skills[k].level - 1 + c.skills[k].exp / 100, 0);
+    expect(total(s.cat)).toBeGreaterThan(0);
+    expect(s.cat.skills.nap.level).toBeGreaterThan(1);
+    expect(s.stores.filter((x) => x.saved && total(x.saved.cat) > 0).length).toBeGreaterThan(2);
+    // coats no store has live at the cafe and keep their own skills
+    expect(Object.keys(s.residents).length).toBeGreaterThan(0);
+    expect(Object.values(s.residents).some((r) => total(r) > 0)).toBe(true);
+    const { migrate } = await import('../src/game/state');
+    const old = JSON.parse(JSON.stringify(s));
+    delete old.cat.skills;
+    for (const x of old.stores) if (x.saved) delete x.saved.cat.skills;
+    const m = migrate(old)!;
+    expect(m.cat.skills.chase).toEqual({ level: 1, exp: 0 });
+    for (const x of m.stores) if (x.saved) expect(x.saved.cat.skills.nap.level).toBe(1);
+  });
+});
