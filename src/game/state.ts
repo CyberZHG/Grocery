@@ -27,7 +27,7 @@ export interface FixtureState {
   at?: { x: number; y: number };
 }
 
-export type Role = 'auto' | 'cashier' | 'stocker' | 'service';
+export type Role = 'auto' | 'cashier' | 'stocker' | 'cleaner' | 'service';
 
 export interface StaffState {
   id: number;

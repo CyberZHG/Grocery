@@ -212,7 +212,7 @@ export class Worker {
   constructor(
     readonly staffId: number,
     readonly row: number,
-    readonly role: Role,
+    public role: Role,
     readonly skills: Record<Skill, Leveled>,
     p: P,
     readonly trait: string | null = null,
@@ -2135,6 +2135,8 @@ export class Sim {
     }
     const npc = c.npc;
     c.cash = this.rng.chance(this.rules.cash ?? Math.min(0.9, npc.cash * cashSet().share));
+    // with only card counters out, everyone pays by card
+    if (this.registers.every((r) => r.card)) c.cash = false;
     // cash payers can't use the card-only counters
     const open = this.registers.filter((r) => !r.card || !c.cash);
     let best = open[0];
@@ -2530,7 +2532,9 @@ export class Sim {
       case 'cashier':
         return kind === 'register' || kind === 'bagging';
       case 'stocker':
-        return kind === 'restock' || kind === 'oven' || kind === 'clean' || kind === 'tidy' || kind === 'cat';
+        return kind === 'restock' || kind === 'oven' || kind === 'cat';
+      case 'cleaner':
+        return kind === 'clean' || kind === 'tidy';
       case 'service':
         return kind === 'station' || kind === 'bagging' || kind === 'oven';
     }

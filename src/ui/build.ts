@@ -6,7 +6,7 @@ import { categoryLevels, collectionMult, isUnlocked, levelsNeeded, MAX_PRODUCT_L
 import { autoArrange, autoStock, fixturesNeeded, type StockMode } from '../game/arrange';
 import { activeSlot, autoUnlocked, inCafe } from '../game/chain';
 import type { Game } from '../game/game';
-import { canPlace, checkPlan, counterShape, planOf, queueDirs, type CounterInfo, type CounterPos, type FixturePlacement } from '../game/layout';
+import { canPlace, checkPlan, counterShape, counterSpec, planOf, queueDirs, type CounterInfo, type CounterPos, type FixturePlacement, type QueueDir } from '../game/layout';
 import { saveGame, stash, type FixtureState, type GameState } from '../game/state';
 import type { Hit } from '../render/world';
 import type { UI } from './app';
@@ -21,11 +21,15 @@ function decorPrice(decor: string): number {
   return DECOR_PRICE[decor as DecorKind] ?? FIXTURES.decor.price;
 }
 
-function counterLabel(c: CounterInfo): string {
+function counterLabel(c: Pick<CounterInfo, 'kind' | 'station'>): string {
   if (c.kind === 'register') return t('equip.register');
   if (c.kind === 'card') return t('counter.card');
   if (c.kind === 'bagging') return t('station.bagging');
   return t(`station.${c.station}` as Key);
+}
+
+function stowedLabel(id: string): string {
+  return counterLabel(counterSpec(id));
 }
 
 function fixtureLabel(f: FixtureState): string {
@@ -46,6 +50,8 @@ export class BuildMode {
   /** counter picked for moving, and one being dragged */
   private counter: string | null = null;
   private cdrag: { id: string; dx: number; dy: number; pos: CounterPos } | null = null;
+  /** a put-away counter waiting for a spot on the floor */
+  private unstowing: { id: string; q: QueueDir } | null = null;
   private el: HTMLElement;
 
   constructor(private game: Game, private ui: UI, private host: HTMLElement, private onDone: () => void) {
@@ -77,6 +83,7 @@ export class BuildMode {
     this.selected = id;
     this.counter = null;
     this.placing = null;
+    this.unstowing = null;
     this.sync();
   }
 
@@ -93,7 +100,7 @@ export class BuildMode {
 
   /** The plan with one counter somewhere else, if everything still fits and can be reached. */
   private counterPlan(id: string, pos: CounterPos) {
-    const plan = planOf(this.game.sim.layout);
+    const plan = planOf(this.game.sim.layout, this.state.plan?.stowed);
     plan.counters[id] = pos;
     const ok = checkPlan(this.state.level, activeSlot(this.state).layout, plan, this.state.fixtures.filter((f) => f.placed));
     return ok ? plan : null;
@@ -146,6 +153,7 @@ export class BuildMode {
       this.game.build.selected = this.selected;
       this.game.build.counter = this.counter;
       if (!this.placing) this.game.build.ghost = null;
+      if (!this.unstowing && !this.cdrag) this.game.build.counterGhost = null;
     }
     this.render();
   }
@@ -159,6 +167,10 @@ export class BuildMode {
   }
 
   private hover(wx: number, wy: number): void {
+    if (this.unstowing) {
+      this.unstowGhost(wx, wy);
+      return;
+    }
     const target = this.placing ?? (this.selected !== null ? this.state.fixtures.find((f) => f.id === this.selected) : null);
     if (!target || !this.game.build) return;
     const c = this.game.cell(wx, wy);
@@ -169,6 +181,10 @@ export class BuildMode {
 
   private tap(wx: number, wy: number, hit: Hit | null): void {
     const c = this.game.cell(wx, wy);
+    if (this.unstowing) {
+      this.putBack(c.x, c.y);
+      return;
+    }
     if (this.placing) {
       const f = this.placing;
       const cand = { ...f, x: c.x, y: c.y };
@@ -299,6 +315,11 @@ export class BuildMode {
   /** Steps back one level: drag, placement, then selection. False when there is nothing left to cancel. */
   cancel(): boolean {
     if (this.game.cancelDrag()) return true;
+    if (this.unstowing) {
+      this.unstowing = null;
+      this.sync();
+      return true;
+    }
     if (this.placing) {
       this.cancelPlacing();
       return true;
@@ -387,6 +408,7 @@ export class BuildMode {
     this.placing = f;
     this.fresh = false;
     this.selected = null;
+    this.unstowing = null;
     this.sync();
   }
 
@@ -452,12 +474,23 @@ export class BuildMode {
       ]));
       return;
     }
+    const back = this.unstowing;
+    if (back) {
+      this.el.append(h('div', { class: 'row wrap' }, [
+        h('span', { class: 'tag' }, [stowedLabel(back.id)]),
+        h('span', { class: 'muted' }, [t('build.unstowHint')]),
+        h('button', { class: 'btn small', onclick: () => this.turnBack() }, [t('build.turnQueue')]),
+        h('button', { class: 'btn small ghost', onclick: () => this.cancel() }, [t('common.cancel')]),
+      ]));
+      return;
+    }
     const counter = this.counterInfo(this.counter);
     if (counter) {
       this.el.append(h('div', { class: 'row wrap' }, [
         h('span', { class: 'tag' }, [counterLabel(counter)]),
         h('span', { class: 'muted' }, [t('build.counterHint')]),
         h('button', { class: 'btn small', onclick: () => this.turnQueue(counter.id) }, [t('build.turnQueue')]),
+        h('button', { class: 'btn small', onclick: () => this.stow(counter.id) }, [t('build.stow')]),
       ]));
       return;
     }
@@ -501,6 +534,7 @@ export class BuildMode {
           onclick: () => this.buy('decor', `toy_${k}`),
         }, [`${t(`toy.${k}` as Key)} ${money(TOY_PRICE[k])}`])),
       ]));
+      this.stowedRow();
       this.storedRow();
       return;
     }
@@ -519,7 +553,85 @@ export class BuildMode {
         ]);
       }),
     ]));
+    this.stowedRow();
     this.storedRow();
+  }
+
+  private stowedRow(): void {
+    const away = this.state.plan?.stowed ?? [];
+    if (!away.length) return;
+    this.el.append(h('div', { class: 'row wrap' }, [
+      h('span', { class: 'tag' }, [t('build.stowed')]),
+      ...[...new Set(away.map(stowedLabel))].map((label) => {
+        const ids = away.filter((id) => stowedLabel(id) === label);
+        return h('button', { class: 'btn small', onclick: () => this.unstow(ids[0]) }, [ids.length > 1 ? `${label} ×${ids.length}` : label]);
+      }),
+    ]));
+  }
+
+  private stow(id: string): void {
+    const l = this.game.sim.layout;
+    const c = this.counterInfo(id);
+    if (!c) return;
+    if ((c.kind === 'register' || c.kind === 'card') && l.registers.length <= 1) {
+      this.ui.toast(t('build.lastTill'));
+      return;
+    }
+    const plan = planOf(l);
+    delete plan.counters[id];
+    plan.stowed = [...(this.state.plan?.stowed ?? []), id];
+    this.counter = null;
+    this.applyPlan(plan);
+  }
+
+  /** Picks a put-away counter up; the next tap on the floor sets it down. */
+  private unstow(id: string): void {
+    this.unstowing = { id, q: queueDirs(counterSpec(id).kind, this.game.sim.layout.mirrored)[0] };
+    this.counter = null;
+    this.selected = null;
+    this.placing = null;
+    this.sync();
+  }
+
+  /** The plan with a put-away counter back out at this spot, if everything still fits and can be reached. */
+  private backPlan(id: string, pos: CounterPos) {
+    const plan = planOf(this.game.sim.layout, (this.state.plan?.stowed ?? []).filter((x) => x !== id));
+    plan.counters[id] = pos;
+    return checkPlan(this.state.level, activeSlot(this.state).layout, plan, this.state.fixtures.filter((f) => f.placed)) ? plan : null;
+  }
+
+  private unstowGhost(wx: number, wy: number): void {
+    const u = this.unstowing;
+    if (!u || !this.game.build) return;
+    const c = this.game.cell(wx, wy);
+    const pos = { x: c.x, y: c.y, q: u.q };
+    this.game.build.counterGhost = { info: counterShape(counterSpec(u.id), pos, this.game.sim.layout.mirrored), ok: !!this.backPlan(u.id, pos) };
+  }
+
+  /** Sets the counter down here, its line the chosen way if there's room, otherwise the first way that works. */
+  private putBack(x: number, y: number): void {
+    const u = this.unstowing!;
+    const dirs = queueDirs(counterSpec(u.id).kind, this.game.sim.layout.mirrored);
+    for (const q of [u.q, ...dirs.filter((d) => d !== u.q)]) {
+      const plan = this.backPlan(u.id, { x, y, q });
+      if (plan) {
+        this.unstowing = null;
+        this.counter = u.id;
+        this.applyPlan(plan);
+        return;
+      }
+    }
+    if (this.game.build) this.game.build.counterGhost = { info: counterShape(counterSpec(u.id), { x, y, q: u.q }, this.game.sim.layout.mirrored), ok: false };
+    this.ui.toast(t('build.invalid'));
+  }
+
+  private turnBack(): void {
+    const u = this.unstowing;
+    if (!u) return;
+    const dirs = queueDirs(counterSpec(u.id).kind, this.game.sim.layout.mirrored);
+    u.q = dirs[(dirs.indexOf(u.q) + 1) % dirs.length];
+    const g = this.game.build?.counterGhost;
+    if (g) this.game.build!.counterGhost = { info: counterShape(counterSpec(u.id), { ...g.info.pos, q: u.q }, this.game.sim.layout.mirrored), ok: !!this.backPlan(u.id, { ...g.info.pos, q: u.q }) };
   }
 
   private autoRow(): void {

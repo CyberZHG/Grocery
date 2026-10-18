@@ -754,6 +754,18 @@ describe('cat cafe', () => {
     for (const st of l.stations) expect(dist[st.staff.y * l.w + st.staff.x]).toBeGreaterThanOrEqual(0);
   });
 
+  it('runs a day with the coffee bar and bread window put away', async () => {
+    const { ensureCafe, switchStore, storeLayout } = await import('../src/game/chain');
+    const s = await allDone();
+    ensureCafe(s);
+    switchStore(s, s.stores.length - 1);
+    storeLayout(s);
+    s.plan!.stowed = ['st_coffee', 'st_bakery'];
+    expect(storeLayout(s).stations).toEqual([]);
+    const sim = runDay(s);
+    expect(sim.stats.customers).toBeGreaterThan(0);
+  });
+
   it('a day at the cafe: coffee, a seat at a table, every store’s cat, and cats at play', async () => {
     const { ensureCafe, switchStore, rulesOf } = await import('../src/game/chain');
     const s = await allDone();
@@ -1273,5 +1285,60 @@ describe('stores you are away from', () => {
     expect(got).toBeCloseTo((now.rep - before.rep) * AWAY_EXP, 5);
     const staffGain = main.staff.some((st, i) => st.skills.restock.exp !== away.staff[i].skills.restock.exp || st.skills.restock.level !== away.staff[i].skills.restock.level);
     expect(staffGain).toBe(true);
+  });
+});
+
+describe('roles and stowed counters', () => {
+  it('a cleaner only cleans and tidies', () => {
+    const s = newGame(12);
+    s.staff.push({ id: 97, name: 4, look: 4, wage: 50, role: 'cleaner', skills: freshSkills({ clean: 5 }), hiredDay: 1, trait: null, baseLevels: 0 });
+    const sim = new Sim(s);
+    sim.restockAll();
+    sim.startDay();
+    const seen = new Set<string>();
+    for (let n = 0; !sim.done && n < 40000; n++) {
+      sim.tickReal(0.04);
+      sim.update(0.1);
+      const w = sim.workers.find((x) => x.staffId === 97)!;
+      seen.add(w.task.type);
+    }
+    expect([...seen].every((k) => ['none', 'rest', 'clean', 'tidy'].includes(k))).toBe(true);
+    expect(seen.has('tidy') || seen.has('clean')).toBe(true);
+  });
+
+  it('tills can be put away down to one, and with only card counters out everyone pays by card', async () => {
+    const { storeLayout } = await import('../src/game/chain');
+    const s = newGame(13);
+    s.level = 2;
+    storeLayout(s);
+    s.plan!.stowed = ['reg0', 'reg1', 'card0'];
+    expect(storeLayout(s).registers.length).toBe(1);
+    s.plan = { ...s.plan!, stowed: ['reg0', 'reg1'] };
+    delete s.plan.counters.reg0;
+    delete s.plan.counters.reg1;
+    const l = storeLayout(s);
+    expect(l.registers.map((r) => r.card)).toEqual([true]);
+    expect(s.plan.stowed).toEqual(['reg0', 'reg1']);
+    const sim = runDay(s);
+    expect(sim.stats.revenue).toBeGreaterThan(0);
+    expect(sim.stats.cash).toBe(0);
+    s.plan.stowed = [];
+    expect(storeLayout(s).registers.length).toBe(3);
+  });
+
+  it('service counters and bagging can be put away too; the day runs without them', async () => {
+    const { storeLayout } = await import('../src/game/chain');
+    const s = newGame(14);
+    s.level = LEVELS.length - 1;
+    storeLayout(s);
+    const away = ['st_oden', 'st_deli', 'st_bakery', 'st_coffee', 'bag'];
+    s.plan!.stowed = away;
+    for (const id of away) delete s.plan!.counters[id];
+    const l = storeLayout(s);
+    expect(l.stations).toEqual([]);
+    expect(l.bagging).toBeNull();
+    const sim = runDay(s);
+    expect(sim.stats.revenue).toBeGreaterThan(0);
+    expect(s.plan!.stowed).toEqual(away);
   });
 });

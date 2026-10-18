@@ -41,6 +41,27 @@ export interface BuildDrag {
   end(wx: number, wy: number, commit: boolean): void;
 }
 
+const LEFT_KEY = 'grocery.left';
+
+/** True when the game was paused as the page was left; a paused game doesn't play days on its own while away. */
+function leftPaused(): boolean {
+  try {
+    const raw = localStorage.getItem(LEFT_KEY);
+    clearLeft();
+    return !!raw && !!(JSON.parse(raw) as { paused?: boolean }).paused;
+  } catch {
+    return false;
+  }
+}
+
+function clearLeft(): void {
+  try {
+    localStorage.removeItem(LEFT_KEY);
+  } catch {
+    // nothing to clear
+  }
+}
+
 export class Game {
   state: GameState;
   sim!: Sim;
@@ -72,8 +93,21 @@ export class Game {
     this.state = loadGame() ?? newGame();
     // floor plans can gain counters between versions; anything now in the way goes to storage
     const fit = fitFixtures(this.state);
-    const away = this.catchUp();
+    const away = leftPaused() ? null : this.catchUp();
     this.enterNight(false);
+    // remember whether the game was paused when the page went away; coming back clears it
+    const note = () => {
+      try {
+        localStorage.setItem(LEFT_KEY, JSON.stringify({ paused: this.paused() }));
+      } catch {
+        // storage unavailable: offline days just run as usual
+      }
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) note();
+      else clearLeft();
+    });
+    window.addEventListener('pagehide', note);
     if (away) requestAnimationFrame(() => this.ui.showAway(away));
     requestAnimationFrame(() => this.toastFit(fit));
     this.bindInput();

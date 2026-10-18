@@ -27,7 +27,7 @@ function skillRows(skills: Record<Skill, Leveled>, level: number): HTMLElement {
   }));
 }
 
-const ROLES: Role[] = ['auto', 'cashier', 'stocker', 'service'];
+const ROLES: Role[] = ['auto', 'cashier', 'stocker', 'cleaner', 'service'];
 
 export function staffPanel(g: Game, ui: UI): HTMLElement {
   const st = g.state;
@@ -53,6 +53,8 @@ export function staffPanel(g: Game, ui: UI): HTMLElement {
       class: 'select',
       onchange: (e: Event) => {
         s.role = (e.target as HTMLSelectElement).value as Role;
+        const w = g.sim.workers.find((x) => x.staffId === s.id);
+        if (w) w.role = s.role;
         saveGame(st);
       },
     }, ROLES.map((r) => h('option', { value: r, selected: s.role === r }, [t(`role.${r}`)])));

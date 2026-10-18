@@ -39,12 +39,14 @@ function row(label: string, l: Leveled, toNext: (lv: number) => number, effect: 
   ]);
 }
 
-/** Equipment this store has, going by its floor plan (the cafe's included); the bakery's equipment is its oven. */
+/** Equipment this store has, going by its floor plan (the cafe's included, put-away counters too); the bakery's equipment is its oven. */
 function equipOpen(g: Game, kind: EquipKind): boolean {
   const l = g.sim.layout;
+  const away = g.state.plan?.stowed ?? [];
   if (kind === 'register') return true;
-  if (kind === 'bagging') return !!l.bagging;
-  return l.stations.some((st) => (st.kind === 'bakery' ? 'oven' : st.kind) === kind);
+  if (kind === 'bagging') return !!l.bagging || away.includes('bag');
+  const id = `st_${kind === 'oven' ? 'bakery' : kind}`;
+  return l.stations.some((st) => `st_${st.kind}` === id) || away.includes(id);
 }
 
 export function storePanel(g: Game, ui: UI): HTMLElement {

@@ -94,6 +94,11 @@ export const en = {
   'role.cashier': 'Cashier',
   'role.stocker': 'Stocker',
   'role.service': 'Counter service',
+  'role.cleaner': 'Cleaner',
+  'build.stow': 'Put away',
+  'build.stowed': 'Put away',
+  'build.unstowHint': 'Tap the floor to set it down.',
+  'build.lastTill': 'At least one checkout has to stay out.',
 
   'skill.restock': 'Restocking',
   'skill.checkout': 'Checkout',

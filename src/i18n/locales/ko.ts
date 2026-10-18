@@ -96,6 +96,11 @@ export const ko: Record<Key, string> = {
   'role.cashier': '계산',
   'role.stocker': '진열',
   'role.service': '카운터',
+  'role.cleaner': '청소',
+  'build.stow': '치우기',
+  'build.stowed': '치워 둠',
+  'build.unstowHint': '놓을 바닥을 누르세요.',
+  'build.lastTill': '계산대는 하나 이상 남겨야 합니다.',
 
   'skill.restock': '진열',
   'skill.checkout': '계산',

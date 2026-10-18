@@ -96,6 +96,11 @@ export const zh: Record<Key, string> = {
   'role.cashier': '收银',
   'role.stocker': '补货',
   'role.service': '柜台服务',
+  'role.cleaner': '清洁',
+  'build.stow': '收起',
+  'build.stowed': '已收起',
+  'build.unstowHint': '点地面选择摆放位置。',
+  'build.lastTill': '至少要留一个结账台。',
 
   'skill.restock': '补货',
   'skill.checkout': '结账',

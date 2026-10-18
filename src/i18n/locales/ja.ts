@@ -96,6 +96,11 @@ export const ja: Record<Key, string> = {
   'role.cashier': 'レジ',
   'role.stocker': '品出し',
   'role.service': 'カウンター',
+  'role.cleaner': '清掃',
+  'build.stow': '片付ける',
+  'build.stowed': '片付け中',
+  'build.unstowHint': '置きたい床をタップしてください。',
+  'build.lastTill': '会計できるカウンターを一つは残してください。',
 
   'skill.restock': '品出し',
   'skill.checkout': 'レジ打ち',

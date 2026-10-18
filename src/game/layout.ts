@@ -59,6 +59,8 @@ export interface CounterPos {
 export interface StorePlan {
   counters: Record<string, CounterPos>;
   pillars: P[];
+  /** counters put away for now; at least one till always stays out */
+  stowed?: string[];
 }
 export type CounterKind = 'register' | 'card' | 'station' | 'bagging';
 export interface CounterInfo {
@@ -116,6 +118,22 @@ function specsOf(d: Omit<Layout, 'counters'>): Spec[] {
   if (d.bagging) out.push({ id: 'bag', kind: 'bagging', def: { x: d.bagging.x, y: d.bagging.y, q: 'up' } });
   for (const s of d.stations) out.push({ id: `st_${s.kind}`, kind: 'station', station: s.kind, def: { x: s.x, y: s.y, q: 'down' } });
   return out;
+}
+
+/** What a counter is, from its id: reg0, card0, bag, st_oden. */
+export function counterSpec(id: string): Pick<CounterInfo, 'id' | 'kind' | 'station'> {
+  if (id.startsWith('st_')) return { id, kind: 'station', station: id.slice(3) as StationKind };
+  return { id, kind: id.startsWith('reg') ? 'register' : id.startsWith('card') ? 'card' : 'bagging' };
+}
+
+const isTill = (sp: Spec) => sp.kind === 'register' || sp.kind === 'card';
+
+/** The counters left out, never every till. */
+function outSpecs(specs: Spec[], stowed: string[] = []): Spec[] {
+  const first = specs.find(isTill);
+  const keep = (sp: Spec) => !stowed.includes(sp.id);
+  const allAway = !specs.some((sp) => isTill(sp) && keep(sp));
+  return specs.filter((sp) => keep(sp) || (allAway && sp === first));
 }
 
 const STEP: Record<QueueDir, P> = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
@@ -235,7 +253,7 @@ export function buildLayout(level: number, variant: LayoutVariant = 'base', plan
   const d = defaultLayout(level, variant);
   const fr = frameOf(d);
   const m = d.mirrored;
-  const specs = specsOf(d);
+  const specs = outSpecs(specsOf(d), plan?.stowed);
   if (!plan) return assemble(fr, specs.map((s) => counterShape(s, s.def, m)), d.pillars);
   const inside = (p: P) => p.x >= 0 && p.x < fr.w && p.y >= 1 && p.y <= fr.h - 3;
   const pillars = plan.pillars.filter(inside);
@@ -296,7 +314,7 @@ export function checkPlan(level: number, variant: LayoutVariant, plan: StorePlan
   const fr = frameOf(d);
   const placed: CounterInfo[] = [];
   const clear = blockedBy(fixtures, plan.pillars);
-  for (const s of specsOf(d)) {
+  for (const s of outSpecs(specsOf(d), plan.stowed)) {
     const pos = plan.counters[s.id];
     if (!pos) return null;
     const c = counterShape(s, pos, d.mirrored);
@@ -307,8 +325,11 @@ export function checkPlan(level: number, variant: LayoutVariant, plan: StorePlan
   return connected(l, fixtures) ? l : null;
 }
 
-export function planOf(l: Layout): StorePlan {
-  return { counters: Object.fromEntries(l.counters.map((c) => [c.id, { ...c.pos }])), pillars: l.pillars.map((p) => ({ ...p })) };
+export function planOf(l: Layout, stowed: string[] = []): StorePlan {
+  const out: StorePlan = { counters: Object.fromEntries(l.counters.map((c) => [c.id, { ...c.pos }])), pillars: l.pillars.map((p) => ({ ...p })) };
+  const away = stowed.filter((id) => !l.counters.some((c) => c.id === id));
+  if (away.length) out.stowed = away;
+  return out;
 }
 
 function mirror(l: Omit<Layout, 'counters'>): Omit<Layout, 'counters'> {

@@ -86,7 +86,7 @@ export function activeSlot(s: GameState): StoreSlot {
 /** The store's floor plan; its counters' places are saved the first time, so later expansions build around them. */
 export function storeLayout(s: GameState, level = s.level): Layout {
   const l = buildLayout(level, activeSlot(s).layout, s.plan, s.fixtures.filter((f) => f.placed));
-  if (level === s.level) s.plan = planOf(l);
+  if (level === s.level) s.plan = planOf(l, s.plan?.stowed);
   return l;
 }
 
