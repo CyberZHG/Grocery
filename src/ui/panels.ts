@@ -206,7 +206,8 @@ export function expandPanel(g: Game, ui: UI): HTMLElement {
       saveGame(st);
       g.rebuild();
       g.fit();
-      ui.closeModal();
+      // stay on the panel, showing the next size up
+      ui.rerenderPanel?.();
       ui.refresh();
       g.toastFit(fit);
     },

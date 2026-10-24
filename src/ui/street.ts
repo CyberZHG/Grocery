@@ -100,6 +100,11 @@ export function streetPanel(g: Game, ui: UI): HTMLElement {
 
 let growTab: 'expand' | 'street' | 'chain' = 'expand';
 
+/** After opening a branch, the Expand panel next opens on the new store's size. */
+export function showExpandTab(): void {
+  growTab = 'expand';
+}
+
 /** The Expand panel: store size, the street outside, and the chain. */
 export function growPanel(g: Game, ui: UI): HTMLElement {
   const body = h('div');

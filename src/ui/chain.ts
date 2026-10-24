@@ -8,6 +8,7 @@ import type { Game } from '../game/game';
 import { slotName } from '../game/names';
 import type { UI } from './app';
 import { h } from './dom';
+import { showExpandTab } from './street';
 
 function goalText(g: Game, i: number): string {
   const slot = g.state.stores[i];
@@ -154,6 +155,7 @@ export function chainPanel(g: Game, ui: UI): HTMLElement {
         class: 'btn primary', disabled: !!block || !night,
         onclick: () => ui.confirm(t('chain.confirm', { name: t(`challenge.${next.id}.name` as Key) }), () => {
           g.openBranch();
+          showExpandTab();
           ui.closeModal();
           ui.refresh();
           ui.toast(t('chain.opened', { name: slotName(g.state, g.state.active) }));
